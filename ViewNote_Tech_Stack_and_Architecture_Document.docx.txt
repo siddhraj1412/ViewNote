@@ -1,0 +1,36 @@
+
+Technical Specifications &amp; Tech Stack Document
+Project Name: ViewNote
+Tagline: Watch blind. Rate honestly.
+Document Type: Technical Architecture &amp; Developer Handoff
+Version: 1.0
+1. Project Overview
+ViewNote is a web-based platform for tracking, reviewing, and managing movies and TV series in a spoiler-free environment.The system focuses on honest ratings, personal journaling, and minimal social pressure.
+2. Objectives
+- Build a scalable full-stack web application- Provide secure authentication- Enable personal content tracking- Integrate external movie databases- Deploy on cloud infrastructure
+3. Recommended Tech Stack
+Frontend: Next.js (React Framework)Styling: Tailwind CSS + Shadcn UIBackend: Firebase (BaaS)Database: Firestore (NoSQL)Authentication: Firebase AuthExternal API: TMDB APIHosting: VercelVersion Control: GitHub
+4. Frontend Architecture
+- Framework: Next.js (App Router)- State Management: React Context / Zustand- Routing: File-based routing- Image Optimization: Next/Image- PWA Support (Optional)
+5. Backend Architecture
+- Firebase Authentication for user management- Firestore for structured data storage- Security Rules for access control- Optional Cloud Functions for automation
+6. Database Design (High-Level)
+Collections:users/ratings/watchlist/progress/reviews/Each document is indexed by userId and contentId.
+7. External API Integration
+TMDB API is used for:- Movie metadata- Series metadata- Posters and banners- Cast and crew dataAPI Key management through environment variables.
+8. Security &amp; Privacy
+- HTTPS enforced by Vercel- Firebase security rules- JWT-based authentication- Encrypted data transmission- Private-by-default user content
+9. Deployment Strategy
+- Continuous deployment using GitHub + Vercel- Firebase hosting for backend services- Environment configuration via .env files
+10. Developer Handoff Requirements
+The following must be provided to the developer:1. Firebase Project Credentials2. TMDB API Key3. UI/UX Design Document4. Feature List (V1 Scope)5. Branding Assets (Logo, Colors)6. Database Schema7. Authentication Rules8. Hosting Access
+11. Environment Configuration
+Required Environment Variables:NEXT_PUBLIC_FIREBASE_API_KEYNEXT_PUBLIC_FIREBASE_AUTH_DOMAINNEXT_PUBLIC_FIREBASE_PROJECT_IDNEXT_PUBLIC_FIREBASE_STORAGE_BUCKETNEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_IDNEXT_PUBLIC_FIREBASE_APP_IDTMDB_API_KEY
+12. Performance Optimization
+- API response caching- Lazy loading images- Code splitting- CDN delivery- Compression
+13. Testing Strategy
+- Unit Testing: Jest- UI Testing: Playwright- Manual Testing- Load Testing (Optional)
+14. Maintenance &amp; Scalability
+- Modular code structure- Monitoring via Firebase Analytics- Scalable database design- Future ML integration support
+15. Future Enhancements
+- Recommendation Engine- Mobile App (React Native)- Social Features- Offline Mode- AI-based personalization

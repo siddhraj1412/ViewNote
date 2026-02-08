@@ -1,0 +1,37 @@
+
+UI/UX Design Document
+Project: Movie &amp; Series Tracking Platform
+Theme: Cinematic &amp; Moody (Dark Mode First)
+Inspiration: Letterboxd Dribbble Redesigns
+1. Design Philosophy
+The application follows a cinematic, immersive dark-theme design.Focus is on minimal distractions, strong visuals, and calm user experience.Posters and banners are primary visual elements.
+2. Color Palette
+Primary Background: #0F1115 (Deep Black)Secondary Background: #1A1D24Accent Color: #00C896 (Green)Warning: #FF5C5CText Primary: #FFFFFFText Secondary: #B0B3C0
+3. Typography
+Primary Font: Inter / SF Pro / PoppinsHeadings: BoldBody: RegularPoster Titles: Semi-BoldLine Height: 1.5
+4. Layout System
+Desktop First: 1440pxMain Grid: 12 ColumnsCard Radius: 12pxSpacing: 8px SystemResponsive: Tablet &amp; Mobile Friendly
+5. Landing Page
+Hero Banner with Movie BackdropTagline and CTA ButtonFeatured Movies SliderLogin / Signup Button
+6. Login / Signup Page
+Center Card LayoutBlurred BackgroundMinimal Input FieldsSocial Login Buttons
+7. Home Dashboard
+Trending CarouselContinue WatchingWatchlist PreviewPopular SeriesQuick Access Menu
+8. Movie / Series Page
+Banner + PosterPrimary ActionsRating SectionSynopsisCast CarouselReviewsSimilar Content
+9. Cast / Person Page
+Profile BannerFilmography GridWatched Percentage BarUser Ratings
+10. Profile / Journal Page
+User InfoWatch History TimelineStats OverviewSaved Reviews
+11. Review Modal
+Popup OverlayRating ButtonsStar SystemText AreaSave Button
+12. Share Card Design
+Poster BackgroundUser RatingQuote OverlayBrand LogoExport Image
+13. Icons &amp; UI Elements
+Lucide / HeroIconsRounded ButtonsSoft ShadowsHover Animations
+14. Accessibility
+Contrast Ratio WCAG AAKeyboard NavigationReadable FontsScreen Reader Support
+15. Performance Guidelines
+Lazy Loading ImagesSkeleton ScreensCaching API ResponsesOptimize Fonts
+16. Future Enhancements
+Theme SwitcherCustom SkinsAdvanced AnimationsMobile App UI

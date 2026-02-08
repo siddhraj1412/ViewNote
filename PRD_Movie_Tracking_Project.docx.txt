@@ -1,0 +1,14 @@
+
+PRODUCT REQUIREMENTS DOCUMENT (PRD)
+Project: Movie &amp; Series Tracking Platform
+1. Product OverviewA web-based platform for tracking, rating, and reviewing movies and series in a spoiler-free environment.
+2. Problem StatementUsers are influenced by hype and spoilers. There is a need for a calm, honest, personal tracking platform.
+3. Target Users- College students- Movie/Series enthusiasts- Casual viewers
+4. Goals- Build a full-stack application- Demonstrate API integration- Provide deployable product
+5. Core Features (V1)- Authentication (Google/Email)- Movie &amp; Series Data (TMDB API)- Watchlist &amp; Status- Rating System (Worth It / Only If Free / Skip)- Optional Stars &amp; Reviews- Blind Mode- Cast Analytics- Personal Journal
+6. Out of Scope- Recommendation System- Chat- Clubs- ML System
+7. Tech Stack- Frontend: Next.js, Tailwind- Backend: Firebase- API: TMDB- Hosting: Vercel
+8. Database (High Level)Users, Ratings, Watchlist, Progress
+9. Security- Firebase Auth- Private reviews- Secure APIs
+10. TimelineMonth 1: SetupMonth 2: Core FeaturesMonth 3: Testing &amp; Deployment
+11. Future Scope- Recommendation Engine- Mobile App- Social Features
