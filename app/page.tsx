@@ -6,6 +6,7 @@ import Image from "next/image";
 import { tmdb, Movie } from "@/lib/tmdb";
 import Button from "@/components/ui/Button";
 import { Play, TrendingUp } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 export default function HomePage() {
     const [trendingMovies, setTrendingMovies] = useState<Movie[]>([]);

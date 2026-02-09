@@ -1,20 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { tmdb } from "@/lib/tmdb";
 import Button from "@/components/ui/Button";
+import RatingModal from "@/components/RatingModal";
 import { Star, Plus, Check, Calendar, Clock } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { useRatings } from "@/hooks/useRatings";
+import { useToast } from "@/context/ToastContext";
 
 export default function MovieDetailsPage() {
     const params = useParams();
+    const router = useRouter();
     const movieId = Number(params.id);
     const [movie, setMovie] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [ratingModalOpen, setRatingModalOpen] = useState(false);
+    const [watchlistLoading, setWatchlistLoading] = useState(false);
+
     const { user } = useAuth();
+    const { isInWatchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
+    const { getRating } = useRatings();
+    const { showToast } = useToast();
+
+    const inWatchlist = isInWatchlist(movieId);
+    const userRating = getRating(movieId);
 
     useEffect(() => {
         const fetchMovie = async () => {
@@ -23,13 +37,44 @@ export default function MovieDetailsPage() {
                 setMovie(data);
             } catch (error) {
                 console.error("Error fetching movie:", error);
+                showToast("Failed to load movie details", "error");
             } finally {
                 setLoading(false);
             }
         };
 
         fetchMovie();
-    }, [movieId]);
+    }, [movieId, showToast]);
+
+    const handleWatchlistToggle = async () => {
+        if (!user) {
+            router.push("/login");
+            return;
+        }
+
+        setWatchlistLoading(true);
+        try {
+            if (inWatchlist) {
+                await removeFromWatchlist(movieId);
+                showToast("Removed from watchlist", "success");
+            } else {
+                await addToWatchlist(movieId, "movie", movie.title, movie.poster_path);
+                showToast("Added to watchlist", "success");
+            }
+        } catch (error) {
+            showToast("Failed to update watchlist", "error");
+        } finally {
+            setWatchlistLoading(false);
+        }
+    };
+
+    const handleRateClick = () => {
+        if (!user) {
+            router.push("/login");
+            return;
+        }
+        setRatingModalOpen(true);
+    };
 
     if (loading) {
         return (
@@ -42,7 +87,12 @@ export default function MovieDetailsPage() {
     if (!movie) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
-                <div className="text-2xl text-textSecondary">Movie not found</div>
+                <div className="text-center">
+                    <h1 className="text-3xl font-bold mb-4">Movie not found</h1>
+                    <Link href="/" className="text-accent hover:underline">
+                        Go back home
+                    </Link>
+                </div>
             </div>
         );
     }
@@ -111,18 +161,31 @@ export default function MovieDetailsPage() {
                             ))}
                         </div>
 
-                        {user && (
-                            <div className="flex gap-4 mb-8">
-                                <Button>
-                                    <Plus size={18} className="mr-2" />
-                                    Add to Watchlist
-                                </Button>
-                                <Button variant="secondary">
-                                    <Star size={18} className="mr-2" />
-                                    Rate
-                                </Button>
-                            </div>
-                        )}
+                        <div className="flex gap-4 mb-8">
+                            <Button
+                                onClick={handleWatchlistToggle}
+                                disabled={watchlistLoading}
+                                variant={inWatchlist ? "secondary" : "primary"}
+                            >
+                                {watchlistLoading ? (
+                                    "Loading..."
+                                ) : inWatchlist ? (
+                                    <>
+                                        <Check size={18} className="mr-2" />
+                                        In Watchlist
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus size={18} className="mr-2" />
+                                        Add to Watchlist
+                                    </>
+                                )}
+                            </Button>
+                            <Button variant="secondary" onClick={handleRateClick}>
+                                <Star size={18} className="mr-2" />
+                                {userRating ? `Rated ${userRating}/5` : "Rate"}
+                            </Button>
+                        </div>
 
                         <div className="mb-8">
                             <h2 className="text-2xl font-bold mb-3">Overview</h2>
@@ -132,7 +195,12 @@ export default function MovieDetailsPage() {
                         {director && (
                             <div className="mb-4">
                                 <span className="text-textSecondary">Directed by: </span>
-                                <span className="font-semibold">{director.name}</span>
+                                <Link
+                                    href={`/person/${director.id}`}
+                                    className="font-semibold hover:text-accent transition"
+                                >
+                                    {director.name}
+                                </Link>
                             </div>
                         )}
                     </div>
@@ -169,6 +237,17 @@ export default function MovieDetailsPage() {
                     </section>
                 )}
             </div>
+
+            {/* Rating Modal */}
+            <RatingModal
+                isOpen={ratingModalOpen}
+                onClose={() => setRatingModalOpen(false)}
+                mediaId={movieId}
+                mediaType="movie"
+                title={movie.title}
+                poster_path={movie.poster_path}
+                currentRating={userRating || 0}
+            />
         </main>
     );
 }

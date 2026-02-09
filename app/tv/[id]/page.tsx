@@ -1,20 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { tmdb } from "@/lib/tmdb";
 import Button from "@/components/ui/Button";
-import { Star, Plus, Calendar, Tv as TvIcon } from "lucide-react";
+import RatingModal from "@/components/RatingModal";
+import { Star, Plus, Check, Calendar, Tv as TvIcon } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useWatchlist } from "@/hooks/useWatchlist";
+import { useRatings } from "@/hooks/useRatings";
+import { useToast } from "@/context/ToastContext";
 
 export default function TVDetailsPage() {
     const params = useParams();
+    const router = useRouter();
     const tvId = Number(params.id);
     const [show, setShow] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [ratingModalOpen, setRatingModalOpen] = useState(false);
+    const [watchlistLoading, setWatchlistLoading] = useState(false);
+
     const { user } = useAuth();
+    const { isInWatchlist, addToWatchlist, removeFromWatchlist } = useWatchlist();
+    const { getRating } = useRatings();
+    const { showToast } = useToast();
+
+    const inWatchlist = isInWatchlist(tvId);
+    const userRating = getRating(tvId);
 
     useEffect(() => {
         const fetchShow = async () => {
@@ -23,13 +37,44 @@ export default function TVDetailsPage() {
                 setShow(data);
             } catch (error) {
                 console.error("Error fetching TV show:", error);
+                showToast("Failed to load TV show details", "error");
             } finally {
                 setLoading(false);
             }
         };
 
         fetchShow();
-    }, [tvId]);
+    }, [tvId, showToast]);
+
+    const handleWatchlistToggle = async () => {
+        if (!user) {
+            router.push("/login");
+            return;
+        }
+
+        setWatchlistLoading(true);
+        try {
+            if (inWatchlist) {
+                await removeFromWatchlist(tvId);
+                showToast("Removed from watchlist", "success");
+            } else {
+                await addToWatchlist(tvId, "tv", show.name, show.poster_path);
+                showToast("Added to watchlist", "success");
+            }
+        } catch (error) {
+            showToast("Failed to update watchlist", "error");
+        } finally {
+            setWatchlistLoading(false);
+        }
+    };
+
+    const handleRateClick = () => {
+        if (!user) {
+            router.push("/login");
+            return;
+        }
+        setRatingModalOpen(true);
+    };
 
     if (loading) {
         return (
@@ -42,7 +87,12 @@ export default function TVDetailsPage() {
     if (!show) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
-                <div className="text-2xl text-textSecondary">TV show not found</div>
+                <div className="text-center">
+                    <h1 className="text-3xl font-bold mb-4">TV show not found</h1>
+                    <Link href="/" className="text-accent hover:underline">
+                        Go back home
+                    </Link>
+                </div>
             </div>
         );
     }
@@ -111,18 +161,31 @@ export default function TVDetailsPage() {
                             ))}
                         </div>
 
-                        {user && (
-                            <div className="flex gap-4 mb-8">
-                                <Button>
-                                    <Plus size={18} className="mr-2" />
-                                    Add to Watchlist
-                                </Button>
-                                <Button variant="secondary">
-                                    <Star size={18} className="mr-2" />
-                                    Rate
-                                </Button>
-                            </div>
-                        )}
+                        <div className="flex gap-4 mb-8">
+                            <Button
+                                onClick={handleWatchlistToggle}
+                                disabled={watchlistLoading}
+                                variant={inWatchlist ? "secondary" : "primary"}
+                            >
+                                {watchlistLoading ? (
+                                    "Loading..."
+                                ) : inWatchlist ? (
+                                    <>
+                                        <Check size={18} className="mr-2" />
+                                        In Watchlist
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus size={18} className="mr-2" />
+                                        Add to Watchlist
+                                    </>
+                                )}
+                            </Button>
+                            <Button variant="secondary" onClick={handleRateClick}>
+                                <Star size={18} className="mr-2" />
+                                {userRating ? `Rated ${userRating}/5` : "Rate"}
+                            </Button>
+                        </div>
 
                         <div className="mb-8">
                             <h2 className="text-2xl font-bold mb-3">Overview</h2>
@@ -132,7 +195,12 @@ export default function TVDetailsPage() {
                         {creator && (
                             <div className="mb-4">
                                 <span className="text-textSecondary">Created by: </span>
-                                <span className="font-semibold">{creator.name}</span>
+                                <Link
+                                    href={`/person/${creator.id}`}
+                                    className="font-semibold hover:text-accent transition"
+                                >
+                                    {creator.name}
+                                </Link>
                             </div>
                         )}
                     </div>
@@ -169,6 +237,17 @@ export default function TVDetailsPage() {
                     </section>
                 )}
             </div>
+
+            {/* Rating Modal */}
+            <RatingModal
+                isOpen={ratingModalOpen}
+                onClose={() => setRatingModalOpen(false)}
+                mediaId={tvId}
+                mediaType="tv"
+                title={show.name}
+                poster_path={show.poster_path}
+                currentRating={userRating || 0}
+            />
         </main>
     );
 }
