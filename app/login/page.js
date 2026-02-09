@@ -1,0 +1,97 @@
+"use client";
+
+import { useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
+import { Chrome } from "lucide-react";
+
+export default function LoginPage() {
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
+    const { signIn, signInWithGoogle } = useAuth();
+    const router = useRouter();
+
+    const handleEmailLogin = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError("");
+        try {
+            await signIn(email, password);
+            router.push("/profile");
+        } catch (err) {
+            setError("Invalid email or password");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGoogleLogin = async () => {
+        try {
+            await signInWithGoogle();
+            router.push("/profile");
+        } catch (err) {
+            setError("Google sign in failed");
+        }
+    };
+
+    return (
+        <main className="min-h-[80vh] flex items-center justify-center p-4 bg-background">
+            <div className="w-full max-w-md">
+                <div className="bg-secondary p-8 rounded-3xl border border-white/5 shadow-2xl">
+                    <h1 className="text-4xl font-black mb-2 text-center">WELCOME BACK</h1>
+                    <p className="text-textSecondary text-center mb-8">Pick up right where you left off.</p>
+
+                    <form onSubmit={handleEmailLogin} className="space-y-4">
+                        <Input
+                            label="Email"
+                            type="email"
+                            placeholder="name@example.com"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                        />
+                        <Input
+                            label="Password"
+                            type="password"
+                            placeholder="••••••••"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                        />
+
+                        {error && <p className="text-warning text-sm font-medium">{error}</p>}
+
+                        <Button type="submit" className="w-full" disabled={loading}>
+                            {loading ? "Signing in..." : "Sign In"}
+                        </Button>
+                    </form>
+
+                    <div className="relative my-8">
+                        <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t border-white/10"></span>
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-secondary px-2 text-textSecondary uppercase tracking-widest font-bold">Or continue with</span>
+                        </div>
+                    </div>
+
+                    <Button variant="outline" className="w-full" onClick={handleGoogleLogin}>
+                        <Chrome size={20} className="mr-2" /> Google
+                    </Button>
+
+                    <p className="mt-8 text-center text-textSecondary">
+                        Don't have an account?{" "}
+                        <Link href="/signup" className="text-accent font-bold hover:underline">
+                            Sign Up
+                        </Link>
+                    </p>
+                </div>
+            </div>
+        </main>
+    );
+}

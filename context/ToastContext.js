@@ -1,26 +1,14 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState } from "react";
 import { CheckCircle, XCircle, Info } from "lucide-react";
 
-type ToastType = "success" | "error" | "info";
+const ToastContext = createContext();
 
-interface Toast {
-    id: number;
-    message: string;
-    type: ToastType;
-}
+export function ToastProvider({ children }) {
+    const [toasts, setToasts] = useState([]);
 
-interface ToastContextType {
-    showToast: (message: string, type?: ToastType) => void;
-}
-
-const ToastContext = createContext<ToastContextType | undefined>(undefined);
-
-export function ToastProvider({ children }: { children: ReactNode }) {
-    const [toasts, setToasts] = useState<Toast[]>([]);
-
-    const showToast = (message: string, type: ToastType = "info") => {
+    const showToast = (message, type = "info") => {
         const id = Date.now();
         setToasts((prev) => [...prev, { id, message, type }]);
 
@@ -33,8 +21,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         <ToastContext.Provider value={{ showToast }}>
             {children}
 
-            {/* Toast Container */}
-            <div className="fixed bottom-4 right-4 z-50 space-y-2">
+            <div className="fixed bottom-4 right-4 z-[200] space-y-2">
                 {toasts.map((toast) => (
                     <div
                         key={toast.id}

@@ -7,16 +7,6 @@ import Button from "@/components/ui/Button";
 import { useRatings } from "@/hooks/useRatings";
 import { useAuth } from "@/context/AuthContext";
 
-interface RatingModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    mediaId: number;
-    mediaType: "movie" | "tv";
-    title: string;
-    poster_path: string | null;
-    currentRating?: number;
-}
-
 export default function RatingModal({
     isOpen,
     onClose,
@@ -25,7 +15,7 @@ export default function RatingModal({
     title,
     poster_path,
     currentRating = 0,
-}: RatingModalProps) {
+}) {
     const [rating, setRating] = useState(currentRating);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -49,7 +39,7 @@ export default function RatingModal({
         try {
             await saveRating(mediaId, mediaType, rating, title, poster_path);
             onClose();
-        } catch (err: any) {
+        } catch (err) {
             setError(err.message || "Failed to save rating");
         } finally {
             setLoading(false);

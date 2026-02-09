@@ -7,17 +7,17 @@ import Link from "next/link";
 import { tmdb } from "@/lib/tmdb";
 import Button from "@/components/ui/Button";
 import RatingModal from "@/components/RatingModal";
-import { Star, Plus, Check, Calendar, Tv as TvIcon } from "lucide-react";
+import { Star, Plus, Check, Calendar, Clock } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useRatings } from "@/hooks/useRatings";
 import { useToast } from "@/context/ToastContext";
 
-export default function TVDetailsPage() {
+export default function MovieDetailsPage() {
     const params = useParams();
     const router = useRouter();
-    const tvId = Number(params.id);
-    const [show, setShow] = useState<any>(null);
+    const movieId = Number(params.id);
+    const [movie, setMovie] = useState(null);
     const [loading, setLoading] = useState(true);
     const [ratingModalOpen, setRatingModalOpen] = useState(false);
     const [watchlistLoading, setWatchlistLoading] = useState(false);
@@ -27,24 +27,24 @@ export default function TVDetailsPage() {
     const { getRating } = useRatings();
     const { showToast } = useToast();
 
-    const inWatchlist = isInWatchlist(tvId);
-    const userRating = getRating(tvId);
+    const inWatchlist = isInWatchlist(movieId);
+    const userRating = getRating(movieId);
 
     useEffect(() => {
-        const fetchShow = async () => {
+        const fetchMovie = async () => {
             try {
-                const data = await tmdb.getTVDetails(tvId);
-                setShow(data);
+                const data = await tmdb.getMovieDetails(movieId);
+                setMovie(data);
             } catch (error) {
-                console.error("Error fetching TV show:", error);
-                showToast("Failed to load TV show details", "error");
+                console.error("Error fetching movie:", error);
+                showToast("Failed to load movie details", "error");
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchShow();
-    }, [tvId, showToast]);
+        fetchMovie();
+    }, [movieId, showToast]);
 
     const handleWatchlistToggle = async () => {
         if (!user) {
@@ -55,10 +55,10 @@ export default function TVDetailsPage() {
         setWatchlistLoading(true);
         try {
             if (inWatchlist) {
-                await removeFromWatchlist(tvId);
+                await removeFromWatchlist(movieId);
                 showToast("Removed from watchlist", "success");
             } else {
-                await addToWatchlist(tvId, "tv", show.name, show.poster_path);
+                await addToWatchlist(movieId, "movie", movie.title, movie.poster_path);
                 showToast("Added to watchlist", "success");
             }
         } catch (error) {
@@ -84,11 +84,11 @@ export default function TVDetailsPage() {
         );
     }
 
-    if (!show) {
+    if (!movie) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="text-center">
-                    <h1 className="text-3xl font-bold mb-4">TV show not found</h1>
+                    <h1 className="text-3xl font-bold mb-4">Movie not found</h1>
                     <Link href="/" className="text-accent hover:underline">
                         Go back home
                     </Link>
@@ -97,17 +97,16 @@ export default function TVDetailsPage() {
         );
     }
 
-    const creator = show.created_by?.[0];
-    const cast = show.credits?.cast?.slice(0, 10) || [];
+    const director = movie.credits?.crew?.find((person) => person.job === "Director");
+    const cast = movie.credits?.cast?.slice(0, 10) || [];
 
     return (
         <main className="min-h-screen bg-background">
-            {/* Hero Section */}
             <div className="relative h-[60vh] overflow-hidden">
                 <div className="absolute inset-0">
                     <Image
-                        src={tmdb.getImageUrl(show.backdrop_path, "original")}
-                        alt={show.name}
+                        src={tmdb.getImageUrl(movie.backdrop_path, "original")}
+                        alt={movie.title}
                         fill
                         className="object-cover"
                         priority
@@ -116,42 +115,39 @@ export default function TVDetailsPage() {
                 </div>
             </div>
 
-            {/* Content */}
             <div className="container mx-auto px-4 -mt-40 relative z-10">
                 <div className="flex flex-col md:flex-row gap-8">
-                    {/* Poster */}
                     <div className="flex-shrink-0">
                         <div className="relative w-64 aspect-[2/3] rounded-xl overflow-hidden shadow-2xl">
                             <Image
-                                src={tmdb.getImageUrl(show.poster_path)}
-                                alt={show.name}
+                                src={tmdb.getImageUrl(movie.poster_path)}
+                                alt={movie.title}
                                 fill
                                 className="object-cover"
                             />
                         </div>
                     </div>
 
-                    {/* Info */}
                     <div className="flex-1">
-                        <h1 className="text-5xl font-bold mb-4">{show.name}</h1>
+                        <h1 className="text-5xl font-bold mb-4">{movie.title}</h1>
 
                         <div className="flex flex-wrap items-center gap-4 text-textSecondary mb-6">
                             <div className="flex items-center gap-2">
                                 <Calendar size={18} />
-                                <span>{show.first_air_date?.split("-")[0]}</span>
+                                <span>{movie.release_date?.split("-")[0]}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <TvIcon size={18} />
-                                <span>{show.number_of_seasons} Season{show.number_of_seasons !== 1 ? "s" : ""}</span>
+                                <Clock size={18} />
+                                <span>{movie.runtime} min</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Star size={18} className="text-accent" fill="currentColor" />
-                                <span>{show.vote_average?.toFixed(1)}/10</span>
+                                <span>{movie.vote_average?.toFixed(1)}/10</span>
                             </div>
                         </div>
 
                         <div className="flex flex-wrap gap-2 mb-6">
-                            {show.genres?.map((genre: any) => (
+                            {movie.genres?.map((genre) => (
                                 <span
                                     key={genre.id}
                                     className="bg-secondary px-3 py-1 rounded-full text-sm"
@@ -189,29 +185,28 @@ export default function TVDetailsPage() {
 
                         <div className="mb-8">
                             <h2 className="text-2xl font-bold mb-3">Overview</h2>
-                            <p className="text-textSecondary leading-relaxed">{show.overview}</p>
+                            <p className="text-textSecondary leading-relaxed">{movie.overview}</p>
                         </div>
 
-                        {creator && (
+                        {director && (
                             <div className="mb-4">
-                                <span className="text-textSecondary">Created by: </span>
+                                <span className="text-textSecondary">Directed by: </span>
                                 <Link
-                                    href={`/person/${creator.id}`}
+                                    href={`/person/${director.id}`}
                                     className="font-semibold hover:text-accent transition"
                                 >
-                                    {creator.name}
+                                    {director.name}
                                 </Link>
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* Cast */}
                 {cast.length > 0 && (
                     <section className="mt-12">
                         <h2 className="text-3xl font-bold mb-6">Cast</h2>
                         <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-4">
-                            {cast.map((person: any) => (
+                            {cast.map((person) => (
                                 <Link
                                     key={person.id}
                                     href={`/person/${person.id}`}
@@ -238,14 +233,13 @@ export default function TVDetailsPage() {
                 )}
             </div>
 
-            {/* Rating Modal */}
             <RatingModal
                 isOpen={ratingModalOpen}
                 onClose={() => setRatingModalOpen(false)}
-                mediaId={tvId}
-                mediaType="tv"
-                title={show.name}
-                poster_path={show.poster_path}
+                mediaId={movieId}
+                mediaType="movie"
+                title={movie.title}
+                poster_path={movie.poster_path}
                 currentRating={userRating || 0}
             />
         </main>

@@ -14,22 +14,11 @@ import {
     serverTimestamp,
 } from "firebase/firestore";
 
-export interface WatchlistItem {
-    id: string;
-    userId: string;
-    mediaId: number;
-    mediaType: "movie" | "tv";
-    title: string;
-    poster_path: string | null;
-    addedAt: any;
-}
-
 export function useWatchlist() {
     const { user } = useAuth();
-    const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+    const [watchlist, setWatchlist] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // Fetch watchlist
     useEffect(() => {
         if (!user) {
             setWatchlist([]);
@@ -47,7 +36,7 @@ export function useWatchlist() {
                 const items = snapshot.docs.map((doc) => ({
                     id: doc.id,
                     ...doc.data(),
-                })) as WatchlistItem[];
+                }));
                 setWatchlist(items);
             } catch (error) {
                 console.error("Error fetching watchlist:", error);
@@ -59,18 +48,11 @@ export function useWatchlist() {
         fetchWatchlist();
     }, [user]);
 
-    // Check if item is in watchlist
-    const isInWatchlist = (mediaId: number) => {
+    const isInWatchlist = (mediaId) => {
         return watchlist.some((item) => item.mediaId === mediaId);
     };
 
-    // Add to watchlist
-    const addToWatchlist = async (
-        mediaId: number,
-        mediaType: "movie" | "tv",
-        title: string,
-        poster_path: string | null
-    ) => {
+    const addToWatchlist = async (mediaId, mediaType, title, poster_path) => {
         if (!user) throw new Error("User not authenticated");
 
         try {
@@ -83,7 +65,7 @@ export function useWatchlist() {
                 addedAt: serverTimestamp(),
             });
 
-            const newItem: WatchlistItem = {
+            const newItem = {
                 id: docRef.id,
                 userId: user.uid,
                 mediaId,
@@ -101,8 +83,7 @@ export function useWatchlist() {
         }
     };
 
-    // Remove from watchlist
-    const removeFromWatchlist = async (mediaId: number) => {
+    const removeFromWatchlist = async (mediaId) => {
         if (!user) throw new Error("User not authenticated");
 
         try {

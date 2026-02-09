@@ -14,23 +14,11 @@ import {
     serverTimestamp,
 } from "firebase/firestore";
 
-export interface Rating {
-    id: string;
-    userId: string;
-    mediaId: number;
-    mediaType: "movie" | "tv";
-    rating: number; // 0-5 with 0.5 increments
-    title: string;
-    poster_path: string | null;
-    ratedAt: any;
-}
-
 export function useRatings() {
     const { user } = useAuth();
-    const [ratings, setRatings] = useState<Rating[]>([]);
+    const [ratings, setRatings] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // Fetch ratings
     useEffect(() => {
         if (!user) {
             setRatings([]);
@@ -48,7 +36,7 @@ export function useRatings() {
                 const items = snapshot.docs.map((doc) => ({
                     id: doc.id,
                     ...doc.data(),
-                })) as Rating[];
+                }));
                 setRatings(items);
             } catch (error) {
                 console.error("Error fetching ratings:", error);
@@ -60,27 +48,18 @@ export function useRatings() {
         fetchRatings();
     }, [user]);
 
-    // Get rating for specific media
-    const getRating = (mediaId: number): number | null => {
+    const getRating = (mediaId) => {
         const rating = ratings.find((r) => r.mediaId === mediaId);
         return rating ? rating.rating : null;
     };
 
-    // Add or update rating
-    const setRating = async (
-        mediaId: number,
-        mediaType: "movie" | "tv",
-        rating: number,
-        title: string,
-        poster_path: string | null
-    ) => {
+    const setRating = async (mediaId, mediaType, rating, title, poster_path) => {
         if (!user) throw new Error("User not authenticated");
 
         try {
             const existingRating = ratings.find((r) => r.mediaId === mediaId);
 
             if (existingRating) {
-                // Update existing rating
                 await updateDoc(doc(db, "ratings", existingRating.id), {
                     rating,
                     ratedAt: serverTimestamp(),
@@ -92,7 +71,6 @@ export function useRatings() {
                     )
                 );
             } else {
-                // Add new rating
                 const docRef = await addDoc(collection(db, "ratings"), {
                     userId: user.uid,
                     mediaId,
@@ -103,7 +81,7 @@ export function useRatings() {
                     ratedAt: serverTimestamp(),
                 });
 
-                const newRating: Rating = {
+                const newRating = {
                     id: docRef.id,
                     userId: user.uid,
                     mediaId,

@@ -3,14 +3,7 @@
 import { useState } from "react";
 import { Star } from "lucide-react";
 
-interface StarRatingProps {
-    value: number; // 0-5
-    onChange?: (value: number) => void;
-    readonly?: boolean;
-    size?: number;
-}
-
-const RATING_LABELS: { [key: number]: string } = {
+const RATING_LABELS = {
     0.5: "Didn't work",
     1.0: "Very Poor",
     1.5: "Poor",
@@ -28,18 +21,18 @@ export default function StarRating({
     onChange,
     readonly = false,
     size = 24,
-}: StarRatingProps) {
-    const [hoverValue, setHoverValue] = useState<number | null>(null);
+}) {
+    const [hoverValue, setHoverValue] = useState(null);
 
     const displayValue = hoverValue !== null ? hoverValue : value;
     const displayLabel = RATING_LABELS[displayValue] || "";
 
-    const handleClick = (starValue: number) => {
+    const handleClick = (starValue) => {
         if (readonly || !onChange) return;
         onChange(starValue);
     };
 
-    const handleMouseEnter = (starValue: number) => {
+    const handleMouseEnter = (starValue) => {
         if (readonly) return;
         setHoverValue(starValue);
     };
@@ -61,7 +54,6 @@ export default function StarRating({
                             className="relative cursor-pointer"
                             onMouseLeave={handleMouseLeave}
                         >
-                            {/* Half star (left side) */}
                             <div
                                 className="absolute inset-0 w-1/2 overflow-hidden"
                                 onClick={() => handleClick(star - 0.5)}
@@ -76,7 +68,6 @@ export default function StarRating({
                                 />
                             </div>
 
-                            {/* Full star (right side) */}
                             <div
                                 className="relative"
                                 onClick={() => handleClick(star)}
@@ -95,7 +86,6 @@ export default function StarRating({
                 })}
             </div>
 
-            {/* Label */}
             {displayLabel && (
                 <div className="text-sm text-textSecondary">
                     {displayValue.toFixed(1)} - {displayLabel}
