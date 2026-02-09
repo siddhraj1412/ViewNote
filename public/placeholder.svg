@@ -1,0 +1,29 @@
+export default function PlaceholderImage() {
+  return (
+    <svg
+      width="500"
+      height="750"
+      viewBox="0 0 500 750"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect width="500" height="750" fill="#1A1D24" />
+      <path
+        d="M250 300L275 350H225L250 300Z"
+        fill="#B0B3C0"
+        opacity="0.3"
+      />
+      <circle cx="250" cy="400" r="50" fill="#B0B3C0" opacity="0.3" />
+      <text
+        x="250"
+        y="500"
+        textAnchor="middle"
+        fill="#B0B3C0"
+        fontSize="20"
+        fontFamily="sans-serif"
+      >
+        No Image
+      </text>
+    </svg>
+  );
+}
