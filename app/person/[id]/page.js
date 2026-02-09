@@ -5,28 +5,54 @@ import { useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { tmdb } from "@/lib/tmdb";
-import { Calendar, MapPin, Film } from "lucide-react";
+import { Film, Tv, Calendar, MapPin, User } from "lucide-react";
 
-export default function PersonDetailsPage() {
+export default function PersonPage() {
     const params = useParams();
-    const personId = Number(params.id);
     const [person, setPerson] = useState(null);
+    const [credits, setCredits] = useState({ movies: [], tv: [] });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchPerson = async () => {
+        const fetchPersonData = async () => {
             try {
-                const data = await tmdb.getPersonDetails(personId);
-                setPerson(data);
+                setLoading(true);
+                const [personData, creditsData] = await Promise.all([
+                    tmdb.getPersonDetails(params.id),
+                    tmdb.getPersonCredits(params.id),
+                ]);
+
+                setPerson(personData);
+
+                // Separate and sort credits
+                const movieCredits = creditsData.cast
+                    .filter((c) => c.media_type === "movie")
+                    .sort((a, b) => {
+                        const dateA = a.release_date || "0000";
+                        const dateB = b.release_date || "0000";
+                        return dateB.localeCompare(dateA);
+                    });
+
+                const tvCredits = creditsData.cast
+                    .filter((c) => c.media_type === "tv")
+                    .sort((a, b) => {
+                        const dateA = a.first_air_date || "0000";
+                        const dateB = b.first_air_date || "0000";
+                        return dateB.localeCompare(dateA);
+                    });
+
+                setCredits({ movies: movieCredits, tv: tvCredits });
             } catch (error) {
-                console.error("Error fetching person:", error);
+                console.error("Error fetching person data:", error);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchPerson();
-    }, [personId]);
+        if (params.id) {
+            fetchPersonData();
+        }
+    }, [params.id]);
 
     if (loading) {
         return (
@@ -44,83 +70,172 @@ export default function PersonDetailsPage() {
         );
     }
 
-    const filmography = person.combined_credits?.cast
-        ?.sort((a, b) => (b.release_date || b.first_air_date || "").localeCompare(a.release_date || a.first_air_date || ""))
-        .slice(0, 20) || [];
-
     return (
-        <main className="min-h-screen bg-background py-16">
-            <div className="container mx-auto px-4">
-                <div className="flex flex-col md:flex-row gap-12">
-                    {/* Sidebar */}
-                    <div className="w-full md:w-1/3 flex flex-col items-center text-center">
-                        <div className="relative w-64 aspect-square rounded-full overflow-hidden mb-8 border-4 border-accent/20">
-                            <Image
-                                src={tmdb.getImageUrl(person.profile_path, "h632")}
-                                alt={person.name}
-                                fill
-                                className="object-cover"
-                            />
-                        </div>
+        <main className="min-h-screen bg-background">
+            <div className="container mx-auto px-4 py-12">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Left Column - Person Info */}
+                    <div className="lg:col-span-1">
+                        <div className="sticky top-24">
+                            {/* Profile Image */}
+                            <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden mb-6">
+                                <Image
+                                    src={tmdb.getImageUrl(person.profile_path, "w500", "profile")}
+                                    alt={person.name}
+                                    fill
+                                    className="object-cover"
+                                    priority
+                                />
+                            </div>
 
-                        <h1 className="text-4xl font-bold mb-6">{person.name}</h1>
+                            {/* Name */}
+                            <h1 className="text-3xl font-bold mb-4">{person.name}</h1>
 
-                        <div className="space-y-4 text-textSecondary">
-                            {person.birthday && (
-                                <div className="flex items-center justify-center gap-2">
-                                    <Calendar size={18} />
-                                    <span>Born: {person.birthday}</span>
+                            {/* Biography */}
+                            {person.biography && (
+                                <div className="mb-6">
+                                    <h2 className="text-xl font-semibold mb-2 text-accent">Biography</h2>
+                                    <p className="text-textSecondary leading-relaxed">
+                                        {person.biography}
+                                    </p>
                                 </div>
                             )}
-                            {person.place_of_birth && (
-                                <div className="flex items-center justify-center gap-2">
-                                    <MapPin size={18} />
-                                    <span>{person.place_of_birth}</span>
-                                </div>
-                            )}
+
+                            {/* Personal Info */}
+                            <div className="space-y-4">
+                                {person.birthday && (
+                                    <div className="flex items-start gap-3">
+                                        <Calendar className="text-accent mt-1" size={20} />
+                                        <div>
+                                            <p className="text-sm text-textSecondary">Born</p>
+                                            <p className="font-medium">
+                                                {new Date(person.birthday).toLocaleDateString("en-US", {
+                                                    year: "numeric",
+                                                    month: "long",
+                                                    day: "numeric",
+                                                })}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {person.place_of_birth && (
+                                    <div className="flex items-start gap-3">
+                                        <MapPin className="text-accent mt-1" size={20} />
+                                        <div>
+                                            <p className="text-sm text-textSecondary">Place of Birth</p>
+                                            <p className="font-medium">{person.place_of_birth}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {person.known_for_department && (
+                                    <div className="flex items-start gap-3">
+                                        <User className="text-accent mt-1" size={20} />
+                                        <div>
+                                            <p className="text-sm text-textSecondary">Known For</p>
+                                            <p className="font-medium">{person.known_for_department}</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
-                    {/* Main Content */}
-                    <div className="w-full md:w-2/3">
-                        <section className="mb-12">
-                            <h2 className="text-2xl font-bold mb-4">Biography</h2>
-                            <p className="text-textSecondary leading-relaxed whitespace-pre-wrap">
-                                {person.biography || "No biography available."}
-                            </p>
-                        </section>
+                    {/* Right Column - Credits */}
+                    <div className="lg:col-span-2">
+                        {/* Movie Credits */}
+                        {credits.movies.length > 0 && (
+                            <section className="mb-12">
+                                <div className="flex items-center gap-2 mb-6">
+                                    <Film className="text-accent" size={28} />
+                                    <h2 className="text-3xl font-bold">Movies</h2>
+                                </div>
 
-                        <section>
-                            <div className="flex items-center gap-2 mb-6">
-                                <Film className="text-accent" size={24} />
-                                <h2 className="text-2xl font-bold">Filmography</h2>
-                            </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                    {credits.movies.map((movie) => (
+                                        <Link
+                                            key={movie.id}
+                                            href={`/movie/${movie.id}`}
+                                            className="group"
+                                        >
+                                            <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
+                                                <Image
+                                                    src={tmdb.getImageUrl(movie.poster_path)}
+                                                    alt={movie.title}
+                                                    fill
+                                                    className="object-cover group-hover:scale-105 transition-transform duration-300"
+                                                />
+                                            </div>
+                                            <h3 className="font-medium text-sm line-clamp-2 mb-1">
+                                                {movie.title}
+                                            </h3>
+                                            {movie.character && (
+                                                <p className="text-xs text-textSecondary line-clamp-1">
+                                                    as {movie.character}
+                                                </p>
+                                            )}
+                                            {movie.release_date && (
+                                                <p className="text-xs text-textSecondary">
+                                                    {new Date(movie.release_date).getFullYear()}
+                                                </p>
+                                            )}
+                                        </Link>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
 
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
-                                {filmography.map((item) => (
-                                    <Link
-                                        key={`${item.media_type}-${item.id}`}
-                                        href={`/${item.media_type}/${item.id}`}
-                                        className="group"
-                                    >
-                                        <div className="relative aspect-[2/3] rounded-xl overflow-hidden mb-2 group-hover:scale-105 transition-transform duration-300">
-                                            <Image
-                                                src={tmdb.getImageUrl(item.poster_path)}
-                                                alt={item.title || item.name}
-                                                fill
-                                                className="object-cover"
-                                            />
-                                        </div>
-                                        <p className="font-semibold text-sm line-clamp-2 group-hover:text-accent transition">
-                                            {item.title || item.name}
-                                        </p>
-                                        <p className="text-xs text-textSecondary">
-                                            {item.character}
-                                        </p>
-                                    </Link>
-                                ))}
+                        {/* TV Credits */}
+                        {credits.tv.length > 0 && (
+                            <section>
+                                <div className="flex items-center gap-2 mb-6">
+                                    <Tv className="text-accent" size={28} />
+                                    <h2 className="text-3xl font-bold">TV Shows</h2>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                    {credits.tv.map((show) => (
+                                        <Link
+                                            key={show.id}
+                                            href={`/tv/${show.id}`}
+                                            className="group"
+                                        >
+                                            <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
+                                                <Image
+                                                    src={tmdb.getImageUrl(show.poster_path)}
+                                                    alt={show.name}
+                                                    fill
+                                                    className="object-cover group-hover:scale-105 transition-transform duration-300"
+                                                />
+                                            </div>
+                                            <h3 className="font-medium text-sm line-clamp-2 mb-1">
+                                                {show.name}
+                                            </h3>
+                                            {show.character && (
+                                                <p className="text-xs text-textSecondary line-clamp-1">
+                                                    as {show.character}
+                                                </p>
+                                            )}
+                                            {show.first_air_date && (
+                                                <p className="text-xs text-textSecondary">
+                                                    {new Date(show.first_air_date).getFullYear()}
+                                                </p>
+                                            )}
+                                        </Link>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+
+                        {/* Empty State */}
+                        {credits.movies.length === 0 && credits.tv.length === 0 && (
+                            <div className="text-center py-12">
+                                <p className="text-textSecondary text-lg">
+                                    No credits available for this person.
+                                </p>
                             </div>
-                        </section>
+                        )}
                     </div>
                 </div>
             </div>

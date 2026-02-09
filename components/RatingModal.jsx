@@ -7,6 +7,14 @@ import Button from "@/components/ui/Button";
 import { useRatings } from "@/hooks/useRatings";
 import { useAuth } from "@/context/AuthContext";
 
+const RATING_LABELS = {
+    1: "Terrible",
+    2: "Poor",
+    3: "Average",
+    4: "Good",
+    5: "Excellent",
+};
+
 export default function RatingModal({
     isOpen,
     onClose,
@@ -49,8 +57,13 @@ export default function RatingModal({
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Rate: ${title}`}>
             <div className="space-y-6">
-                <div className="flex justify-center py-4">
+                <div className="flex flex-col items-center py-4">
                     <StarRating value={rating} onChange={setRating} size={32} />
+                    {rating > 0 && (
+                        <p className="mt-3 text-lg font-semibold text-accent">
+                            {RATING_LABELS[rating]}
+                        </p>
+                    )}
                 </div>
 
                 {error && (

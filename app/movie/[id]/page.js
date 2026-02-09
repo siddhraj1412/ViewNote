@@ -105,8 +105,8 @@ export default function MovieDetailsPage() {
             <div className="relative h-[60vh] overflow-hidden">
                 <div className="absolute inset-0">
                     <Image
-                        src={tmdb.getImageUrl(movie.backdrop_path, "original")}
-                        alt={movie.title}
+                        src={tmdb.getBannerUrl(movie.backdrop_path, movie.poster_path)}
+                        alt={movie.title || "Movie banner"}
                         fill
                         className="object-cover"
                         priority
@@ -214,8 +214,8 @@ export default function MovieDetailsPage() {
                                 >
                                     <div className="relative aspect-square rounded-full overflow-hidden mb-2">
                                         <Image
-                                            src={tmdb.getImageUrl(person.profile_path, "w200")}
-                                            alt={person.name}
+                                            src={tmdb.getImageUrl(person.profile_path, "w200", "profile")}
+                                            alt={person.name || "Cast member"}
                                             fill
                                             className="object-cover group-hover:scale-110 transition-transform"
                                         />

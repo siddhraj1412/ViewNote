@@ -9,10 +9,11 @@ import { tmdb } from "@/lib/tmdb";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useRatings } from "@/hooks/useRatings";
 import Card from "@/components/ui/Card";
-import { Film, Star, Calendar } from "lucide-react";
+import Button from "@/components/ui/Button";
+import { Film, Star, Calendar, Settings, LogOut } from "lucide-react";
 
 export default function ProfilePage() {
-    const { user, loading: authLoading } = useAuth();
+    const { user, loading: authLoading, logout } = useAuth();
     const router = useRouter();
     const { watchlist, loading: watchlistLoading } = useWatchlist();
     const { ratings, loading: ratingsLoading } = useRatings();
@@ -22,6 +23,15 @@ export default function ProfilePage() {
             router.push("/login");
         }
     }, [user, authLoading, router]);
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+            router.push("/");
+        } catch (error) {
+            console.error("Logout failed:", error);
+        }
+    };
 
     if (authLoading || watchlistLoading || ratingsLoading) {
         return (
@@ -93,10 +103,7 @@ export default function ProfilePage() {
                                 <p className="text-xl text-textSecondary mb-4">
                                     Your watchlist is empty
                                 </p>
-                                <Link
-                                    href="/search"
-                                    className="text-accent hover:underline"
-                                >
+                                <Link href="/search" className="text-accent hover:underline">
                                     Start adding movies and shows
                                 </Link>
                             </div>
@@ -127,7 +134,7 @@ export default function ProfilePage() {
                 </section>
 
                 {/* Ratings Section */}
-                <section>
+                <section className="mb-12">
                     <div className="flex items-center gap-2 mb-6">
                         <Star className="text-accent" size={28} />
                         <h2 className="text-3xl font-bold">My Ratings</h2>
@@ -140,10 +147,7 @@ export default function ProfilePage() {
                                 <p className="text-xl text-textSecondary mb-4">
                                     You haven't rated anything yet
                                 </p>
-                                <Link
-                                    href="/"
-                                    className="text-accent hover:underline"
-                                >
+                                <Link href="/" className="text-accent hover:underline">
                                     Explore trending content
                                 </Link>
                             </div>
@@ -168,12 +172,20 @@ export default function ProfilePage() {
                                                 </h3>
                                                 <div className="flex items-center gap-4 text-sm text-textSecondary">
                                                     <div className="flex items-center gap-1">
-                                                        <Star size={16} className="text-accent" fill="currentColor" />
+                                                        <Star
+                                                            size={16}
+                                                            className="text-accent"
+                                                            fill="currentColor"
+                                                        />
                                                         <span>{item.rating}/5</span>
                                                     </div>
                                                     <div className="flex items-center gap-1">
                                                         <Calendar size={16} />
-                                                        <span>{item.ratedAt?.toDate ? item.ratedAt.toDate().toLocaleDateString() : "Recently"}</span>
+                                                        <span>
+                                                            {item.ratedAt?.toDate
+                                                                ? item.ratedAt.toDate().toLocaleDateString()
+                                                                : "Recently"}
+                                                        </span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -183,6 +195,38 @@ export default function ProfilePage() {
                             ))}
                         </div>
                     )}
+                </section>
+
+                {/* Settings Section */}
+                <section>
+                    <div className="flex items-center gap-2 mb-6">
+                        <Settings className="text-accent" size={28} />
+                        <h2 className="text-3xl font-bold">Settings</h2>
+                    </div>
+
+                    <Card>
+                        <div className="space-y-4">
+                            <div className="border-b border-white/5 pb-4">
+                                <h3 className="text-lg font-semibold mb-2">Account</h3>
+                                <p className="text-textSecondary text-sm mb-4">
+                                    Manage your account settings and preferences
+                                </p>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h4 className="font-medium mb-1">Sign Out</h4>
+                                    <p className="text-sm text-textSecondary">
+                                        Sign out of your ViewNote account
+                                    </p>
+                                </div>
+                                <Button variant="danger" onClick={handleLogout}>
+                                    <LogOut size={18} className="mr-2" />
+                                    Sign Out
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
                 </section>
             </div>
         </main>

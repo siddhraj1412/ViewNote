@@ -78,6 +78,7 @@ export function useRatings() {
                     rating,
                     title,
                     poster_path,
+                    watched: true, // Auto-mark as watched when rating
                     ratedAt: serverTimestamp(),
                 });
 
@@ -89,6 +90,7 @@ export function useRatings() {
                     rating,
                     title,
                     poster_path,
+                    watched: true,
                     ratedAt: new Date(),
                 };
 

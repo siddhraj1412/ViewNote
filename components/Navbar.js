@@ -1,25 +1,14 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, User, LogOut, Menu, X } from "lucide-react";
+import { Search, User, Menu, X } from "lucide-react";
 import { useState } from "react";
 import Button from "./ui/Button";
 
 export default function Navbar() {
-    const { user, logout } = useAuth();
-    const router = useRouter();
+    const { user } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-    const handleLogout = async () => {
-        try {
-            await logout();
-            router.push("/");
-        } catch (error) {
-            console.error("Logout failed:", error);
-        }
-    };
 
     return (
         <nav className="border-b border-white/5 bg-background/80 backdrop-blur-md sticky top-0 z-50">
@@ -28,30 +17,38 @@ export default function Navbar() {
                     <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center">
                         <span className="text-background font-black text-xl">V</span>
                     </div>
-                    <span className="text-2xl font-black tracking-tighter hidden sm:block">VIEWNOTE</span>
+                    <span className="text-2xl font-black tracking-tighter hidden sm:block">
+                        VIEWNOTE
+                    </span>
                 </Link>
 
                 {/* Desktop Nav */}
                 <div className="hidden md:flex items-center gap-8">
-                    <Link href="/search" className="text-textSecondary hover:text-accent transition">
+                    <Link
+                        href="/search"
+                        className="text-textSecondary hover:text-accent transition"
+                    >
                         <Search size={24} />
                     </Link>
 
                     {user ? (
-                        <div className="flex items-center gap-4">
-                            <Link href="/profile" className="flex items-center gap-2 text-textSecondary hover:text-accent transition">
-                                <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
-                                    <User size={18} />
-                                </div>
-                                <span className="font-medium">{user.displayName || user.email.split("@")[0]}</span>
-                            </Link>
-                            <button onClick={handleLogout} className="text-textSecondary hover:text-warning transition">
-                                <LogOut size={20} />
-                            </button>
-                        </div>
+                        <Link
+                            href="/profile"
+                            className="flex items-center gap-2 text-textSecondary hover:text-accent transition"
+                        >
+                            <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
+                                <User size={18} />
+                            </div>
+                            <span className="font-medium">
+                                {user.displayName || user.email?.split("@")[0]}
+                            </span>
+                        </Link>
                     ) : (
                         <div className="flex items-center gap-4">
-                            <Link href="/login" className="text-textSecondary hover:text-textPrimary font-medium">
+                            <Link
+                                href="/login"
+                                className="text-textSecondary hover:text-textPrimary font-medium"
+                            >
                                 Sign In
                             </Link>
                             <Link href="/signup">
@@ -62,7 +59,10 @@ export default function Navbar() {
                 </div>
 
                 {/* Mobile Menu Button */}
-                <button className="md:hidden text-textPrimary" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+                <button
+                    className="md:hidden text-textPrimary"
+                    onClick={() => setIsMenuOpen(!isMenuOpen)}
+                >
                     {isMenuOpen ? <X size={28} /> : <Menu size={28} />}
                 </button>
             </div>
@@ -70,22 +70,27 @@ export default function Navbar() {
             {/* Mobile Nav Overlay */}
             {isMenuOpen && (
                 <div className="md:hidden absolute top-20 left-0 right-0 bg-secondary p-4 space-y-4 border-b border-white/5 animate-slide-down">
-                    <Link href="/search" className="flex items-center gap-3 p-3 text-lg" onClick={() => setIsMenuOpen(false)}>
+                    <Link
+                        href="/search"
+                        className="flex items-center gap-3 p-3 text-lg"
+                        onClick={() => setIsMenuOpen(false)}
+                    >
                         <Search /> Search
                     </Link>
                     {user ? (
-                        <>
-                            <Link href="/profile" className="flex items-center gap-3 p-3 text-lg" onClick={() => setIsMenuOpen(false)}>
-                                <User /> Profile
-                            </Link>
-                            <button onClick={handleLogout} className="flex items-center gap-3 p-3 text-lg text-warning w-full text-left">
-                                <LogOut /> Sign Out
-                            </button>
-                        </>
+                        <Link
+                            href="/profile"
+                            className="flex items-center gap-3 p-3 text-lg"
+                            onClick={() => setIsMenuOpen(false)}
+                        >
+                            <User /> Profile
+                        </Link>
                     ) : (
                         <div className="flex flex-col gap-3">
                             <Link href="/login" onClick={() => setIsMenuOpen(false)}>
-                                <Button variant="secondary" className="w-full">Sign In</Button>
+                                <Button variant="secondary" className="w-full">
+                                    Sign In
+                                </Button>
                             </Link>
                             <Link href="/signup" onClick={() => setIsMenuOpen(false)}>
                                 <Button className="w-full">Get Started</Button>

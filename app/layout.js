@@ -3,6 +3,8 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { ToastProvider } from "@/context/ToastContext";
 import Navbar from "@/components/Navbar";
+import ScrollToTop from "@/components/ScrollToTop";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -15,12 +17,15 @@ export default function RootLayout({ children }) {
     return (
         <html lang="en">
             <body className={inter.className}>
-                <AuthProvider>
-                    <ToastProvider>
-                        <Navbar />
-                        {children}
-                    </ToastProvider>
-                </AuthProvider>
+                <ErrorBoundary>
+                    <AuthProvider>
+                        <ToastProvider>
+                            <ScrollToTop />
+                            <Navbar />
+                            {children}
+                        </ToastProvider>
+                    </AuthProvider>
+                </ErrorBoundary>
             </body>
         </html>
     );
