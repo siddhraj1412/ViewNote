@@ -1,14 +1,28 @@
-<svg width="400" height="600" xmlns="http://www.w3.org/2000/svg">
+<svg width="500" height="750" xmlns="http://www.w3.org/2000/svg">
+  <!-- Royal Blue Background -->
+  <rect width="500" height="750" fill="#4169E1"/>
+  
+  <!-- Gradient Overlay -->
   <defs>
     <linearGradient id="grad1" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#1A1D24;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0F1115;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#5B7FE8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2952D9;stop-opacity:1" />
     </linearGradient>
   </defs>
-  <rect width="400" height="600" fill="url(#grad1)"/>
-  <g transform="translate(200, 300)">
-    <rect x="-60" y="-80" width="120" height="160" rx="8" fill="#2A2D34" opacity="0.5"/>
-    <path d="M -40 -40 L -40 40 L 40 40 L 40 -40 Z M -20 -20 L 20 0 L -20 20 Z" fill="#00C896" opacity="0.3"/>
+  <rect width="500" height="750" fill="url(#grad1)"/>
+  
+  <!-- Film Icon -->
+  <g transform="translate(250, 375)">
+    <rect x="-60" y="-80" width="120" height="160" rx="8" fill="none" stroke="white" stroke-width="4"/>
+    <circle cx="-40" cy="-60" r="8" fill="white"/>
+    <circle cx="40" cy="-60" r="8" fill="white"/>
+    <circle cx="-40" cy="60" r="8" fill="white"/>
+    <circle cx="40" cy="60" r="8" fill="white"/>
+    <rect x="-40" y="-40" width="80" height="80" rx="4" fill="white" opacity="0.3"/>
   </g>
-  <text x="200" y="420" font-family="Inter, sans-serif" font-size="16" fill="#B0B3C0" text-anchor="middle" opacity="0.6">No Poster Available</text>
+  
+  <!-- Text -->
+  <text x="250" y="500" font-family="Arial, sans-serif" font-size="24" fill="white" text-anchor="middle" opacity="0.8">
+    No Poster Available
+  </text>
 </svg>

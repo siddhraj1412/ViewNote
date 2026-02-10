@@ -8,11 +8,16 @@ import { useRatings } from "@/hooks/useRatings";
 import { useAuth } from "@/context/AuthContext";
 
 const RATING_LABELS = {
-    1: "Terrible",
-    2: "Poor",
-    3: "Average",
-    4: "Good",
-    5: "Excellent",
+    0.5: "Didn't work",
+    1.0: "Very Poor",
+    1.5: "Poor",
+    2.0: "Weak",
+    2.5: "Mixed",
+    3.0: "Decent",
+    3.5: "Good",
+    4.0: "Very Good",
+    4.5: "Outstanding",
+    5.0: "Exceptional",
 };
 
 export default function RatingModal({
@@ -54,16 +59,38 @@ export default function RatingModal({
         }
     };
 
+    const getRatingLabel = (value) => {
+        if (value === 0) return "Select a rating";
+        return RATING_LABELS[value] || "";
+    };
+
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Rate: ${title}`}>
             <div className="space-y-6">
                 <div className="flex flex-col items-center py-4">
-                    <StarRating value={rating} onChange={setRating} size={32} />
-                    {rating > 0 && (
-                        <p className="mt-3 text-lg font-semibold text-accent">
-                            {RATING_LABELS[rating]}
-                        </p>
-                    )}
+                    <StarRating
+                        value={rating}
+                        onChange={setRating}
+                        size={40}
+                        showHalfStars={true}
+                    />
+                    <div className="mt-4 text-center">
+                        {rating > 0 && (
+                            <>
+                                <p className="text-4xl font-bold text-accent mb-2">
+                                    {rating.toFixed(1)}
+                                </p>
+                                <p className="text-lg font-semibold text-textSecondary">
+                                    {getRatingLabel(rating)}
+                                </p>
+                            </>
+                        )}
+                        {rating === 0 && (
+                            <p className="text-lg text-textSecondary">
+                                {getRatingLabel(0)}
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 {error && (

@@ -1,15 +1,41 @@
-<svg width="1920" height="600" xmlns="http://www.w3.org/2000/svg">
+<svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">
+  <!-- Royal Blue Background -->
+  <rect width="1920" height="1080" fill="#4169E1"/>
+  
+  <!-- Gradient Overlay -->
   <defs>
-    <linearGradient id="bannerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#0F1115;stop-opacity:1" />
-      <stop offset="50%" style="stop-color:#1A1D24;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0F1115;stop-opacity:1" />
+    <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#5B7FE8;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#4169E1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2952D9;stop-opacity:1" />
     </linearGradient>
   </defs>
-  <rect width="1920" height="600" fill="url(#bannerGrad)"/>
-  <g transform="translate(960, 300)">
-    <circle cx="0" cy="0" r="80" fill="#00C896" opacity="0.1"/>
-    <circle cx="0" cy="0" r="60" fill="#00C896" opacity="0.15"/>
-    <circle cx="0" cy="0" r="40" fill="#00C896" opacity="0.2"/>
+  <rect width="1920" height="1080" fill="url(#grad3)"/>
+  
+  <!-- Film Reel Pattern -->
+  <g opacity="0.1">
+    <rect x="400" y="300" width="200" height="150" rx="8" fill="none" stroke="white" stroke-width="6"/>
+    <rect x="700" y="300" width="200" height="150" rx="8" fill="none" stroke="white" stroke-width="6"/>
+    <rect x="1000" y="300" width="200" height="150" rx="8" fill="none" stroke="white" stroke-width="6"/>
+    <rect x="1300" y="300" width="200" height="150" rx="8" fill="none" stroke="white" stroke-width="6"/>
+    
+    <rect x="400" y="600" width="200" height="150" rx="8" fill="none" stroke="white" stroke-width="6"/>
+    <rect x="700" y="600" width="200" height="150" rx="8" fill="none" stroke="white" stroke-width="6"/>
+    <rect x="1000" y="600" width="200" height="150" rx="8" fill="none" stroke="white" stroke-width="6"/>
+    <rect x="1300" y="600" width="200" height="150" rx="8" fill="none" stroke="white" stroke-width="6"/>
   </g>
+  
+  <!-- Center Icon -->
+  <g transform="translate(960, 540)">
+    <rect x="-80" y="-100" width="160" height="200" rx="12" fill="none" stroke="white" stroke-width="6" opacity="0.6"/>
+    <circle cx="-50" cy="-70" r="12" fill="white" opacity="0.6"/>
+    <circle cx="50" cy="-70" r="12" fill="white" opacity="0.6"/>
+    <circle cx="-50" cy="70" r="12" fill="white" opacity="0.6"/>
+    <circle cx="50" cy="70" r="12" fill="white" opacity="0.6"/>
+  </g>
+  
+  <!-- Text -->
+  <text x="960" y="700" font-family="Arial, sans-serif" font-size="36" fill="white" text-anchor="middle" opacity="0.7">
+    No Banner Available
+  </text>
 </svg>

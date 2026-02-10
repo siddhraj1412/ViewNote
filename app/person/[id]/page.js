@@ -10,7 +10,12 @@ import { Film, Tv, Calendar, MapPin, User } from "lucide-react";
 export default function PersonPage() {
     const params = useParams();
     const [person, setPerson] = useState(null);
-    const [credits, setCredits] = useState({ movies: [], tv: [] });
+    const [credits, setCredits] = useState({
+        moviesActing: [],
+        moviesCrew: [],
+        tvActing: [],
+        tvCrew: [],
+    });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -24,8 +29,8 @@ export default function PersonPage() {
 
                 setPerson(personData);
 
-                // Separate and sort credits
-                const movieCredits = creditsData.cast
+                // Separate and sort all credits
+                const moviesActing = (creditsData.cast || [])
                     .filter((c) => c.media_type === "movie")
                     .sort((a, b) => {
                         const dateA = a.release_date || "0000";
@@ -33,7 +38,25 @@ export default function PersonPage() {
                         return dateB.localeCompare(dateA);
                     });
 
-                const tvCredits = creditsData.cast
+                const moviesCrew = (creditsData.crew || [])
+                    .filter((c) => c.media_type === "movie")
+                    .sort((a, b) => {
+                        const dateA = a.release_date || "0000";
+                        const dateB = b.release_date || "0000";
+                        return dateB.localeCompare(dateA);
+                    });
+
+                // Group movie crew by department
+                const moviesCrewByDept = moviesCrew.reduce((acc, credit) => {
+                    const dept = credit.department || "Other";
+                    if (!acc[dept]) {
+                        acc[dept] = [];
+                    }
+                    acc[dept].push(credit);
+                    return acc;
+                }, {});
+
+                const tvActing = (creditsData.cast || [])
                     .filter((c) => c.media_type === "tv")
                     .sort((a, b) => {
                         const dateA = a.first_air_date || "0000";
@@ -41,7 +64,30 @@ export default function PersonPage() {
                         return dateB.localeCompare(dateA);
                     });
 
-                setCredits({ movies: movieCredits, tv: tvCredits });
+                const tvCrew = (creditsData.crew || [])
+                    .filter((c) => c.media_type === "tv")
+                    .sort((a, b) => {
+                        const dateA = a.first_air_date || "0000";
+                        const dateB = b.first_air_date || "0000";
+                        return dateB.localeCompare(dateA);
+                    });
+
+                // Group TV crew by department
+                const tvCrewByDept = tvCrew.reduce((acc, credit) => {
+                    const dept = credit.department || "Other";
+                    if (!acc[dept]) {
+                        acc[dept] = [];
+                    }
+                    acc[dept].push(credit);
+                    return acc;
+                }, {});
+
+                setCredits({
+                    moviesActing,
+                    moviesCrew: moviesCrewByDept,
+                    tvActing,
+                    tvCrew: tvCrewByDept,
+                });
             } catch (error) {
                 console.error("Error fetching person data:", error);
             } finally {
@@ -70,15 +116,57 @@ export default function PersonPage() {
         );
     }
 
+    const CreditGrid = ({ items, mediaType }) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {items.map((item, index) => (
+                <Link
+                    key={`${item.id}-${index}`}
+                    href={`/${mediaType}/${item.id}`}
+                    className="group"
+                >
+                    <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
+                        <Image
+                            src={tmdb.getImageUrl(item.poster_path)}
+                            alt={item.title || item.name}
+                            fill
+                            className="object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                        />
+                    </div>
+                    <h3 className="font-medium text-sm line-clamp-2 mb-1">
+                        {item.title || item.name}
+                    </h3>
+                    {item.character && (
+                        <p className="text-xs text-textSecondary line-clamp-1">
+                            as {item.character}
+                        </p>
+                    )}
+                    {item.job && (
+                        <p className="text-xs text-textSecondary line-clamp-1">
+                            {item.job}
+                        </p>
+                    )}
+                    {(item.release_date || item.first_air_date) && (
+                        <p className="text-xs text-textSecondary">
+                            {new Date(
+                                item.release_date || item.first_air_date
+                            ).getFullYear()}
+                        </p>
+                    )}
+                </Link>
+            ))}
+        </div>
+    );
+
     return (
         <main className="min-h-screen bg-background">
             <div className="container mx-auto px-4 py-12">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Left Column - Person Info */}
                     <div className="lg:col-span-1">
-                        <div className="sticky top-24">
+                        <div className="lg:sticky lg:top-24 space-y-6">
                             {/* Profile Image */}
-                            <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden mb-6">
+                            <div className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden">
                                 <Image
                                     src={tmdb.getImageUrl(person.profile_path, "w500", "profile")}
                                     alt={person.name}
@@ -89,13 +177,15 @@ export default function PersonPage() {
                             </div>
 
                             {/* Name */}
-                            <h1 className="text-3xl font-bold mb-4">{person.name}</h1>
+                            <h1 className="text-3xl font-bold">{person.name}</h1>
 
                             {/* Biography */}
                             {person.biography && (
-                                <div className="mb-6">
-                                    <h2 className="text-xl font-semibold mb-2 text-accent">Biography</h2>
-                                    <p className="text-textSecondary leading-relaxed">
+                                <div>
+                                    <h2 className="text-xl font-semibold mb-2 text-accent">
+                                        Biography
+                                    </h2>
+                                    <p className="text-textSecondary leading-relaxed text-sm">
                                         {person.biography}
                                     </p>
                                 </div>
@@ -123,7 +213,9 @@ export default function PersonPage() {
                                     <div className="flex items-start gap-3">
                                         <MapPin className="text-accent mt-1" size={20} />
                                         <div>
-                                            <p className="text-sm text-textSecondary">Place of Birth</p>
+                                            <p className="text-sm text-textSecondary">
+                                                Place of Birth
+                                            </p>
                                             <p className="font-medium">{person.place_of_birth}</p>
                                         </div>
                                     </div>
@@ -134,7 +226,9 @@ export default function PersonPage() {
                                         <User className="text-accent mt-1" size={20} />
                                         <div>
                                             <p className="text-sm text-textSecondary">Known For</p>
-                                            <p className="font-medium">{person.known_for_department}</p>
+                                            <p className="font-medium">
+                                                {person.known_for_department}
+                                            </p>
                                         </div>
                                     </div>
                                 )}
@@ -143,99 +237,128 @@ export default function PersonPage() {
                     </div>
 
                     {/* Right Column - Credits */}
-                    <div className="lg:col-span-2">
-                        {/* Movie Credits */}
-                        {credits.movies.length > 0 && (
-                            <section className="mb-12">
+                    <div className="lg:col-span-2 space-y-12">
+                        {/* Movies - Acting */}
+                        {credits.moviesActing.length > 0 && (
+                            <section>
                                 <div className="flex items-center gap-2 mb-6">
                                     <Film className="text-accent" size={28} />
-                                    <h2 className="text-3xl font-bold">Movies</h2>
+                                    <h2 className="text-3xl font-bold">Movies - Acting</h2>
                                 </div>
-
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                    {credits.movies.map((movie) => (
-                                        <Link
-                                            key={movie.id}
-                                            href={`/movie/${movie.id}`}
-                                            className="group"
-                                        >
-                                            <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
-                                                <Image
-                                                    src={tmdb.getImageUrl(movie.poster_path)}
-                                                    alt={movie.title}
-                                                    fill
-                                                    className="object-cover group-hover:scale-105 transition-transform duration-300"
-                                                />
-                                            </div>
-                                            <h3 className="font-medium text-sm line-clamp-2 mb-1">
-                                                {movie.title}
-                                            </h3>
-                                            {movie.character && (
-                                                <p className="text-xs text-textSecondary line-clamp-1">
-                                                    as {movie.character}
-                                                </p>
-                                            )}
-                                            {movie.release_date && (
-                                                <p className="text-xs text-textSecondary">
-                                                    {new Date(movie.release_date).getFullYear()}
-                                                </p>
-                                            )}
-                                        </Link>
-                                    ))}
-                                </div>
+                                <CreditGrid items={credits.moviesActing} mediaType="movie" />
                             </section>
                         )}
 
-                        {/* TV Credits */}
-                        {credits.tv.length > 0 && (
+                        {/* Movies - Crew */}
+                        {Object.keys(credits.moviesCrew).length > 0 && (
+                            <section className="space-y-8">
+                                {["Directing", "Writing", "Production", "Camera", "Sound", "Editing"].map(
+                                    (dept) =>
+                                        credits.moviesCrew?.[dept] && (
+                                            <div key={dept}>
+                                                <div className="flex items-center gap-2 mb-6">
+                                                    <Film className="text-accent" size={28} />
+                                                    <h2 className="text-3xl font-bold">
+                                                        Movies - As {dept === "Directing" ? "Director" : dept === "Writing" ? "Writer" : dept}
+                                                    </h2>
+                                                </div>
+                                                <CreditGrid
+                                                    items={credits.moviesCrew[dept]}
+                                                    mediaType="movie"
+                                                />
+                                            </div>
+                                        )
+                                )}
+                                {/* Other departments */}
+                                {Object.keys(credits.moviesCrew)
+                                    .filter(
+                                        (dept) =>
+                                            !["Directing", "Writing", "Production", "Camera", "Sound", "Editing"].includes(dept)
+                                    )
+                                    .sort()
+                                    .map((dept) => (
+                                        <div key={dept}>
+                                            <div className="flex items-center gap-2 mb-6">
+                                                <Film className="text-accent" size={28} />
+                                                <h2 className="text-3xl font-bold">
+                                                    Movies - As {dept}
+                                                </h2>
+                                            </div>
+                                            <CreditGrid
+                                                items={credits.moviesCrew[dept]}
+                                                mediaType="movie"
+                                            />
+                                        </div>
+                                    ))}
+                            </section>
+                        )}
+
+                        {/* TV - Acting */}
+                        {credits.tvActing.length > 0 && (
                             <section>
                                 <div className="flex items-center gap-2 mb-6">
                                     <Tv className="text-accent" size={28} />
-                                    <h2 className="text-3xl font-bold">TV Shows</h2>
+                                    <h2 className="text-3xl font-bold">TV Shows - Acting</h2>
                                 </div>
+                                <CreditGrid items={credits.tvActing} mediaType="tv" />
+                            </section>
+                        )}
 
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                    {credits.tv.map((show) => (
-                                        <Link
-                                            key={show.id}
-                                            href={`/tv/${show.id}`}
-                                            className="group"
-                                        >
-                                            <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
-                                                <Image
-                                                    src={tmdb.getImageUrl(show.poster_path)}
-                                                    alt={show.name}
-                                                    fill
-                                                    className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        {/* TV - Crew */}
+                        {Object.keys(credits.tvCrew).length > 0 && (
+                            <section className="space-y-8">
+                                {["Directing", "Writing", "Production", "Camera", "Sound", "Editing"].map(
+                                    (dept) =>
+                                        credits.tvCrew[dept] && (
+                                            <div key={dept}>
+                                                <div className="flex items-center gap-2 mb-6">
+                                                    <Tv className="text-accent" size={28} />
+                                                    <h2 className="text-3xl font-bold">
+                                                        TV Shows - As {dept === "Directing" ? "Director" : dept === "Writing" ? "Writer" : dept}
+                                                    </h2>
+                                                </div>
+                                                <CreditGrid
+                                                    items={credits.tvCrew[dept]}
+                                                    mediaType="tv"
                                                 />
                                             </div>
-                                            <h3 className="font-medium text-sm line-clamp-2 mb-1">
-                                                {show.name}
-                                            </h3>
-                                            {show.character && (
-                                                <p className="text-xs text-textSecondary line-clamp-1">
-                                                    as {show.character}
-                                                </p>
-                                            )}
-                                            {show.first_air_date && (
-                                                <p className="text-xs text-textSecondary">
-                                                    {new Date(show.first_air_date).getFullYear()}
-                                                </p>
-                                            )}
-                                        </Link>
+                                        )
+                                )}
+                                {/* Other departments */}
+                                {Object.keys(credits.tvCrew)
+                                    .filter(
+                                        (dept) =>
+                                            !["Directing", "Writing", "Production", "Camera", "Sound", "Editing"].includes(dept)
+                                    )
+                                    .sort()
+                                    .map((dept) => (
+                                        <div key={dept}>
+                                            <div className="flex items-center gap-2 mb-6">
+                                                <Tv className="text-accent" size={28} />
+                                                <h2 className="text-3xl font-bold">
+                                                    TV Shows - As {dept}
+                                                </h2>
+                                            </div>
+                                            <CreditGrid
+                                                items={credits.tvCrew[dept]}
+                                                mediaType="tv"
+                                            />
+                                        </div>
                                     ))}
-                                </div>
                             </section>
                         )}
 
                         {/* Empty State */}
-                        {credits.movies.length === 0 && credits.tv.length === 0 && (
-                            <div className="text-center py-12">
-                                <p className="text-textSecondary text-lg">
-                                    No credits available for this person.
-                                </p>
-                            </div>
-                        )}
+                        {credits.moviesActing.length === 0 &&
+                            Object.keys(credits.moviesCrew).length === 0 &&
+                            credits.tvActing.length === 0 &&
+                            Object.keys(credits.tvCrew).length === 0 && (
+                                <div className="text-center py-12">
+                                    <p className="text-textSecondary text-lg">
+                                        No credits available for this person.
+                                    </p>
+                                </div>
+                            )}
                     </div>
                 </div>
             </div>

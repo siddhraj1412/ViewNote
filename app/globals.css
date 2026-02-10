@@ -5,7 +5,7 @@
 :root {
   --background: #0F1115;
   --secondary: #1A1D24;
-  --accent: #00C896;
+  --accent: #4169E1;
   --warning: #FF5C5C;
   --text-primary: #FFFFFF;
   --text-secondary: #B0B3C0;
@@ -83,4 +83,16 @@ img {
 
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
+}
+
+/* Scrollbar hide utility */
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }

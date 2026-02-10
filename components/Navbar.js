@@ -1,104 +1,116 @@
 "use client";
 
-import { useAuth } from "@/context/AuthContext";
-import Link from "next/link";
-import { Search, User, Menu, X } from "lucide-react";
 import { useState } from "react";
-import Button from "./ui/Button";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Search, User, LogOut, Film } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import SearchOverlay from "./SearchOverlay";
 
 export default function Navbar() {
-    const { user } = useAuth();
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [showSearch, setShowSearch] = useState(false);
+    const { user, logout } = useAuth();
+    const pathname = usePathname();
+
+    // Header is now solid on all pages (non-transparent)
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+        } catch (error) {
+            console.error("Logout failed:", error);
+        }
+    };
 
     return (
-        <nav className="border-b border-white/5 bg-background/80 backdrop-blur-md sticky top-0 z-50">
-            <div className="container mx-auto px-4 h-20 flex items-center justify-between">
-                <Link href="/" className="flex items-center gap-2">
-                    <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center">
-                        <span className="text-background font-black text-xl">V</span>
-                    </div>
-                    <span className="text-2xl font-black tracking-tighter hidden sm:block">
-                        VIEWNOTE
-                    </span>
-                </Link>
-
-                {/* Desktop Nav */}
-                <div className="hidden md:flex items-center gap-8">
-                    <Link
-                        href="/search"
-                        className="text-textSecondary hover:text-accent transition"
-                    >
-                        <Search size={24} />
-                    </Link>
-
-                    {user ? (
+        <>
+            {/* Navbar - Solid background on all pages */}
+            <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-white/10">
+                <div className="container mx-auto px-4">
+                    <div className="flex items-center justify-between h-16">
+                        {/* Logo */}
                         <Link
-                            href="/profile"
-                            className="flex items-center gap-2 text-textSecondary hover:text-accent transition"
+                            href="/"
+                            className="flex items-center gap-2 text-2xl font-bold hover:text-accent transition group"
                         >
-                            <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
-                                <User size={18} />
-                            </div>
-                            <span className="font-medium">
-                                {user.displayName || user.email?.split("@")[0]}
-                            </span>
+                            <Film className="text-accent group-hover:scale-110 transition-transform" size={28} />
+                            <span>ViewNote</span>
                         </Link>
-                    ) : (
-                        <div className="flex items-center gap-4">
+
+                        {/* Navigation Links */}
+                        <div className="hidden md:flex items-center gap-6">
                             <Link
-                                href="/login"
-                                className="text-textSecondary hover:text-textPrimary font-medium"
+                                href="/"
+                                className={`hover:text-accent transition ${pathname === "/" ? "text-accent font-semibold" : ""}`}
                             >
-                                Sign In
+                                Home
                             </Link>
-                            <Link href="/signup">
-                                <Button size="sm">Get Started</Button>
-                            </Link>
+                            {user && (
+                                <Link
+                                    href="/profile"
+                                    className={`hover:text-accent transition ${pathname === "/profile" ? "text-accent font-semibold" : ""}`}
+                                >
+                                    Profile
+                                </Link>
+                            )}
                         </div>
-                    )}
+
+                        {/* Right Side Actions */}
+                        <div className="flex items-center gap-4">
+                            {/* Search Button */}
+                            <button
+                                onClick={() => setShowSearch(true)}
+                                className="p-2 hover:bg-white/10 rounded-lg transition"
+                                aria-label="Search"
+                            >
+                                <Search size={22} />
+                            </button>
+
+                            {/* User Menu */}
+                            {user ? (
+                                <div className="flex items-center gap-3">
+                                    <Link
+                                        href="/profile"
+                                        className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition"
+                                    >
+                                        <User size={18} />
+                                        <span className="text-sm font-medium">
+                                            {user.displayName || user.email?.split("@")[0]}
+                                        </span>
+                                    </Link>
+                                    <button
+                                        onClick={handleLogout}
+                                        className="p-2 hover:bg-white/10 rounded-lg transition"
+                                        aria-label="Logout"
+                                    >
+                                        <LogOut size={20} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <Link
+                                        href="/login"
+                                        className="px-4 py-2 hover:bg-white/10 rounded-lg transition text-sm font-medium"
+                                    >
+                                        Login
+                                    </Link>
+                                    <Link
+                                        href="/signup"
+                                        className="px-4 py-2 bg-accent hover:bg-accent/90 rounded-lg transition text-sm font-medium"
+                                    >
+                                        Sign Up
+                                    </Link>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
-                {/* Mobile Menu Button */}
-                <button
-                    className="md:hidden text-textPrimary"
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                >
-                    {isMenuOpen ? <X size={28} /> : <Menu size={28} />}
-                </button>
-            </div>
 
-            {/* Mobile Nav Overlay */}
-            {isMenuOpen && (
-                <div className="md:hidden absolute top-20 left-0 right-0 bg-secondary p-4 space-y-4 border-b border-white/5 animate-slide-down">
-                    <Link
-                        href="/search"
-                        className="flex items-center gap-3 p-3 text-lg"
-                        onClick={() => setIsMenuOpen(false)}
-                    >
-                        <Search /> Search
-                    </Link>
-                    {user ? (
-                        <Link
-                            href="/profile"
-                            className="flex items-center gap-3 p-3 text-lg"
-                            onClick={() => setIsMenuOpen(false)}
-                        >
-                            <User /> Profile
-                        </Link>
-                    ) : (
-                        <div className="flex flex-col gap-3">
-                            <Link href="/login" onClick={() => setIsMenuOpen(false)}>
-                                <Button variant="secondary" className="w-full">
-                                    Sign In
-                                </Button>
-                            </Link>
-                            <Link href="/signup" onClick={() => setIsMenuOpen(false)}>
-                                <Button className="w-full">Get Started</Button>
-                            </Link>
-                        </div>
-                    )}
-                </div>
-            )}
-        </nav>
+            </nav>
+
+            {/* Search Overlay */}
+            <SearchOverlay isOpen={showSearch} onClose={() => setShowSearch(false)} />
+        </>
     );
 }

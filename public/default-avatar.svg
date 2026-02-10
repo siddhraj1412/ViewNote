@@ -1,15 +1,21 @@
-<svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Royal Blue Background -->
+  <circle cx="100" cy="100" r="100" fill="#4169E1"/>
+  
+  <!-- Gradient Overlay -->
   <defs>
-    <linearGradient id="avatarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#2A2D34;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#1A1D24;stop-opacity:1" />
-    </linearGradient>
+    <radialGradient id="grad2">
+      <stop offset="0%" style="stop-color:#5B7FE8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2952D9;stop-opacity:1" />
+    </radialGradient>
   </defs>
-  <circle cx="200" cy="200" r="200" fill="url(#avatarGrad)"/>
-  <g transform="translate(200, 200)">
+  <circle cx="100" cy="100" r="100" fill="url(#grad2)"/>
+  
+  <!-- User Icon -->
+  <g transform="translate(100, 100)">
     <!-- Head -->
-    <circle cx="0" cy="-30" r="50" fill="#00C896" opacity="0.3"/>
+    <circle cx="0" cy="-20" r="25" fill="white" opacity="0.9"/>
     <!-- Body -->
-    <ellipse cx="0" cy="80" rx="70" ry="90" fill="#00C896" opacity="0.3"/>
+    <path d="M -35 50 Q -35 10, 0 10 Q 35 10, 35 50 Z" fill="white" opacity="0.9"/>
   </g>
 </svg>
