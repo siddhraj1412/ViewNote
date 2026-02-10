@@ -5,10 +5,34 @@
             "@/*": [
                 "./*"
             ]
-        }
+        },
+        "target": "ES2020",
+        "lib": [
+            "ES2020",
+            "DOM",
+            "DOM.Iterable"
+        ],
+        "jsx": "preserve",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "resolveJsonModule": true,
+        "allowJs": true,
+        "checkJs": false,
+        "noEmit": true,
+        "incremental": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "strict": false,
+        "forceConsistentCasingInFileNames": true
     },
+    "include": [
+        "**/*.js",
+        "**/*.jsx",
+        ".next/types/**/*.ts"
+    ],
     "exclude": [
         "node_modules",
-        ".next"
+        ".next",
+        "out"
     ]
 }

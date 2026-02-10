@@ -46,20 +46,21 @@ export default function CastSlider({ cast = [] }) {
                         href={`/person/${person.id}`}
                         className="flex-shrink-0 w-32 group/card"
                     >
-                        <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
+                        {/* Circular Profile Image - NO SCALE EFFECT */}
+                        <div className="relative w-32 h-32 rounded-full overflow-hidden mb-3 bg-secondary ring-2 ring-white/10 transition-shadow duration-300 group-hover/card:shadow-lg group-hover/card:shadow-accent/20">
                             <Image
                                 src={tmdb.getImageUrl(person.profile_path, "w185", "profile")}
                                 alt={person.name}
                                 fill
-                                className="object-cover group-hover/card:scale-105 transition-transform duration-300"
+                                className="object-cover"
                                 loading="lazy"
                             />
                         </div>
-                        <h3 className="font-medium text-sm line-clamp-2 mb-1">
+                        <h3 className="font-medium text-sm line-clamp-2 mb-1 text-center group-hover/card:text-accent transition-colors">
                             {person.name}
                         </h3>
                         {person.character && (
-                            <p className="text-xs text-textSecondary line-clamp-2">
+                            <p className="text-xs text-textSecondary line-clamp-2 text-center">
                                 {person.character}
                             </p>
                         )}

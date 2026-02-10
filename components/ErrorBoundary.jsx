@@ -2,41 +2,66 @@
 
 import { Component } from "react";
 
-/**
- * Error Boundary Component
- * Catches JavaScript errors anywhere in the child component tree
- */
-class ErrorBoundary extends Component {
+export default class ErrorBoundary extends Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false, error: null };
+        this.state = { hasError: false, error: null, errorInfo: null };
     }
 
     static getDerivedStateFromError(error) {
-        return { hasError: true, error };
+        return { hasError: true };
     }
 
     componentDidCatch(error, errorInfo) {
-        console.error("Error caught by boundary:", error, errorInfo);
+        console.error("ErrorBoundary caught:", error, errorInfo);
+        this.setState({ error, errorInfo });
+
+        // Log to monitoring service in production
+        if (process.env.NODE_ENV === "production") {
+            // Send to error tracking service (Sentry, LogRocket, etc.)
+            console.error("Production error:", { error, errorInfo });
+        }
     }
+
+    handleReset = () => {
+        this.setState({ hasError: false, error: null, errorInfo: null });
+    };
 
     render() {
         if (this.state.hasError) {
             return (
                 <div className="min-h-screen bg-background flex items-center justify-center p-4">
-                    <div className="max-w-md w-full bg-secondary p-8 rounded-2xl border border-white/5 text-center">
-                        <h1 className="text-3xl font-bold mb-4 text-warning">
-                            Something went wrong
-                        </h1>
+                    <div className="max-w-md w-full bg-secondary border border-white/10 rounded-2xl p-8 text-center">
+                        <div className="text-6xl mb-4">⚠️</div>
+                        <h1 className="text-2xl font-bold mb-2">Something went wrong</h1>
                         <p className="text-textSecondary mb-6">
                             We encountered an unexpected error. Please try refreshing the page.
                         </p>
-                        <button
-                            onClick={() => window.location.reload()}
-                            className="bg-accent text-background px-6 py-3 rounded-xl font-bold hover:bg-opacity-90 transition"
-                        >
-                            Refresh Page
-                        </button>
+                        {process.env.NODE_ENV === "development" && this.state.error && (
+                            <details className="mb-6 text-left">
+                                <summary className="cursor-pointer text-sm text-textSecondary mb-2">
+                                    Error Details
+                                </summary>
+                                <pre className="text-xs bg-background p-4 rounded-lg overflow-auto max-h-40">
+                                    {this.state.error.toString()}
+                                    {this.state.errorInfo?.componentStack}
+                                </pre>
+                            </details>
+                        )}
+                        <div className="flex gap-3 justify-center">
+                            <button
+                                onClick={this.handleReset}
+                                className="px-6 py-3 bg-white/5 hover:bg-white/10 rounded-lg transition font-medium"
+                            >
+                                Try Again
+                            </button>
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="px-6 py-3 bg-accent hover:bg-accent/90 rounded-lg transition font-medium"
+                            >
+                                Refresh Page
+                            </button>
+                        </div>
                     </div>
                 </div>
             );
@@ -45,5 +70,3 @@ class ErrorBoundary extends Component {
         return this.props.children;
     }
 }
-
-export default ErrorBoundary;

@@ -61,9 +61,9 @@ export default function CrewSection({ crew = [] }) {
                             <Link
                                 key={`${director.id}-${index}`}
                                 href={`/person/${director.id}`}
-                                className="flex items-center gap-4 group"
+                                className="flex flex-col items-center gap-3 group w-32"
                             >
-                                <div className="relative w-16 h-16 rounded-full overflow-hidden bg-secondary flex-shrink-0">
+                                <div className="relative w-32 h-32 rounded-full overflow-hidden bg-secondary ring-2 ring-white/10">
                                     <Image
                                         src={tmdb.getImageUrl(
                                             director.profile_path,
@@ -75,11 +75,11 @@ export default function CrewSection({ crew = [] }) {
                                         className="object-cover group-hover:scale-110 transition-transform duration-300"
                                     />
                                 </div>
-                                <div>
-                                    <p className="font-semibold group-hover:text-accent transition">
+                                <div className="text-center">
+                                    <p className="font-semibold group-hover:text-accent transition text-sm">
                                         {director.name}
                                     </p>
-                                    <p className="text-sm text-textSecondary">Director</p>
+                                    <p className="text-xs text-textSecondary">Director</p>
                                 </div>
                             </Link>
                         ))}

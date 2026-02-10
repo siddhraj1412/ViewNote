@@ -1,53 +1,70 @@
-"use client";
-
-import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
-export default function Modal({ isOpen, onClose, title, children }) {
-    const modalRef = useRef();
+export default function Modal({ isOpen, onClose, children, title, maxWidth = "80vw" }) {
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
-        const handleEscape = (e) => {
+        setMounted(true);
+        return () => setMounted(false);
+    }, []);
+
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = "hidden";
+        } else {
+            document.body.style.overflow = "unset";
+        }
+
+        const handleEsc = (e) => {
             if (e.key === "Escape") onClose();
         };
 
         if (isOpen) {
-            document.body.style.overflow = "hidden";
-            window.addEventListener("keydown", handleEscape);
+            window.addEventListener("keydown", handleEsc);
         }
 
         return () => {
             document.body.style.overflow = "unset";
-            window.removeEventListener("keydown", handleEscape);
+            window.removeEventListener("keydown", handleEsc);
         };
     }, [isOpen, onClose]);
 
-    if (!isOpen) return null;
+    if (!mounted || !isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            onClick={onClose}
+        >
             {/* Backdrop */}
-            <div
-                className="absolute inset-0 bg-background/90 backdrop-blur-sm animate-fade-in"
-                onClick={onClose}
-            />
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
 
-            {/* Content */}
+            {/* Modal Container */}
             <div
-                ref={modalRef}
-                className="relative bg-secondary w-full max-w-lg rounded-3xl border border-white/10 shadow-2xl animate-scale-in"
+                className="relative bg-secondary border border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[80vh]"
+                style={{ maxWidth, width: "100%" }}
+                onClick={(e) => e.stopPropagation()}
             >
-                <div className="px-8 py-6 border-b border-white/5 flex items-center justify-between">
-                    <h2 className="text-2xl font-black tracking-tighter uppercase">{title}</h2>
+                {/* Header - Sticky */}
+                <div className="flex items-center justify-between p-6 border-b border-white/10 flex-shrink-0">
+                    <h2 className="text-2xl font-bold">{title}</h2>
                     <button
                         onClick={onClose}
-                        className="text-textSecondary hover:text-textPrimary transition"
+                        className="p-2 hover:bg-white/5 rounded-lg transition"
+                        aria-label="Close"
                     >
-                        <X size={28} />
+                        <X size={24} />
                     </button>
                 </div>
-                <div className="p-8">{children}</div>
+
+                {/* Content - Scrollable */}
+                <div className="flex-1 overflow-y-auto">
+                    {children}
+                </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
