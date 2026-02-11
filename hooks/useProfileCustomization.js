@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useStore } from "@/store/useStore";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
+import eventBus from "@/lib/eventBus";
 
 /**
  * Hook to load and manage user-specific customizations for profile display
@@ -21,8 +22,11 @@ export function useProfileCustomization(userId) {
 
         loadAllCustomizations();
 
-        // Subscribe to customization updates
+        // Subscribe to customization updates using eventBus
         const handleCustomizationUpdate = (data) => {
+            // Safety guard
+            if (!data) return;
+
             if (data.source !== "cross-tab") {
                 // Refresh from store
                 const storeCustomizations = useStore.getState().customizations;
@@ -35,14 +39,20 @@ export function useProfileCustomization(userId) {
             loadAllCustomizations();
         };
 
-        store.events.on("CUSTOMIZATION_UPDATED", handleCustomizationUpdate);
-        store.events.on("PROFILE_UPDATED", handleProfileUpdate);
+        // Safety guards before subscribing
+        if (eventBus && typeof eventBus.on === "function") {
+            eventBus.on("CUSTOMIZATION_UPDATED", handleCustomizationUpdate);
+            eventBus.on("PROFILE_UPDATED", handleProfileUpdate);
+        }
 
         return () => {
-            store.events.off("CUSTOMIZATION_UPDATED", handleCustomizationUpdate);
-            store.events.off("PROFILE_UPDATED", handleProfileUpdate);
+            // Safety guards before unsubscribing
+            if (eventBus && typeof eventBus.off === "function") {
+                eventBus.off("CUSTOMIZATION_UPDATED", handleCustomizationUpdate);
+                eventBus.off("PROFILE_UPDATED", handleProfileUpdate);
+            }
         };
-    }, [userId]);
+    }, [userId, store]);
 
     const loadAllCustomizations = async () => {
         setLoading(true);
@@ -60,18 +70,18 @@ export function useProfileCustomization(userId) {
                 const data = doc.data();
                 const key = `${data.mediaType}_${data.mediaId}`;
                 customizationsMap[key] = {
-                    customPoster: data.customPoster || null,
-                    customBanner: data.customBanner || null,
+                    customPoster: data.customPoster,
+                    customBanner: data.customBanner,
                     updatedAt: data.updatedAt,
                 };
             });
 
             setCustomizations(customizationsMap);
 
-            // Also sync to Zustand store for consistency
+            // Sync to store
             Object.entries(customizationsMap).forEach(([key, value]) => {
                 const [mediaType, mediaId] = key.split("_");
-                store.setCustomization(mediaId, mediaType, value);
+                store.setCustomization(parseInt(mediaId), mediaType, value);
             });
         } catch (error) {
             console.error("Error loading customizations:", error);
@@ -80,41 +90,21 @@ export function useProfileCustomization(userId) {
         }
     };
 
-    /**
-     * Get custom poster for a specific media
-     */
     const getCustomPoster = (mediaId, mediaType, defaultPoster) => {
         const key = `${mediaType}_${mediaId}`;
         return customizations[key]?.customPoster || defaultPoster;
     };
 
-    /**
-     * Get custom banner for a specific media
-     */
     const getCustomBanner = (mediaId, mediaType, defaultBanner) => {
         const key = `${mediaType}_${mediaId}`;
         return customizations[key]?.customBanner || defaultBanner;
     };
 
-    /**
-     * Check if media has custom poster
-     */
-    const hasCustomPoster = (mediaId, mediaType) => {
+    const hasCustomization = (mediaId, mediaType) => {
         const key = `${mediaType}_${mediaId}`;
-        return !!customizations[key]?.customPoster;
+        return !!customizations[key];
     };
 
-    /**
-     * Check if media has custom banner
-     */
-    const hasCustomBanner = (mediaId, mediaType) => {
-        const key = `${mediaType}_${mediaId}`;
-        return !!customizations[key]?.customBanner;
-    };
-
-    /**
-     * Refresh customizations (for live updates)
-     */
     const refresh = () => {
         loadAllCustomizations();
     };
@@ -124,8 +114,7 @@ export function useProfileCustomization(userId) {
         loading,
         getCustomPoster,
         getCustomBanner,
-        hasCustomPoster,
-        hasCustomBanner,
+        hasCustomization,
         refresh,
     };
 }

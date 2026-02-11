@@ -6,44 +6,33 @@ import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
 
-export default function WatchedSection({ watchedMovies = [], watchedTV = [] }) {
-    const [activeTab, setActiveTab] = useState("movies");
+export default function WatchedSection({ watchedMovies = [], watchedTV = [], filter = "all" }) {
+    // Determine what to display based on filter
+    const getDisplayData = () => {
+        switch (filter) {
+            case "movies":
+                return { data: watchedMovies, type: "movie", label: "movies" };
+            case "series":
+                return { data: watchedTV, type: "tv", label: "series" };
+            case "short":
+                return { data: [], type: "movie", label: "short films" };
+            case "all":
+            default:
+                return { data: [...watchedMovies, ...watchedTV], type: "all", label: "items" };
+        }
+    };
 
-    const displayData = activeTab === "movies" ? watchedMovies : watchedTV;
+    const { data: displayData, type: mediaType, label } = getDisplayData();
 
     return (
         <section>
-            <h2 className="text-3xl font-bold mb-6">Watched</h2>
-
-            {/* Tabs */}
-            <div className="flex gap-4 mb-6">
-                <button
-                    onClick={() => setActiveTab("movies")}
-                    className={`px-6 py-2 rounded-lg font-semibold transition ${activeTab === "movies"
-                            ? "bg-accent text-background"
-                            : "bg-secondary text-textSecondary hover:bg-white/5"
-                        }`}
-                >
-                    Movies ({watchedMovies.length})
-                </button>
-                <button
-                    onClick={() => setActiveTab("tv")}
-                    className={`px-6 py-2 rounded-lg font-semibold transition ${activeTab === "tv"
-                            ? "bg-accent text-background"
-                            : "bg-secondary text-textSecondary hover:bg-white/5"
-                        }`}
-                >
-                    TV Shows ({watchedTV.length})
-                </button>
-            </div>
-
-            {/* Grid */}
+            {/* Grid — no duplicate heading or tabs */}
             {displayData.length > 0 ? (
                 <MediaGrid>
                     {displayData.map((item) => (
                         <Link
                             key={item.id}
-                            href={`/${activeTab === "movies" ? "movie" : "tv"}/${item.mediaId}`}
+                            href={`/${mediaType === "all" ? (item.mediaType || "movie") : mediaType}/${item.mediaId}`}
                             className="group"
                         >
                             <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow">
@@ -65,7 +54,7 @@ export default function WatchedSection({ watchedMovies = [], watchedTV = [] }) {
                 </MediaGrid>
             ) : (
                 <div className="text-center py-12 text-textSecondary">
-                    No {activeTab} watched yet
+                    No {label} watched yet
                 </div>
             )}
         </section>

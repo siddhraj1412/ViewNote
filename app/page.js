@@ -21,8 +21,19 @@ export default function HomePage() {
                     tmdb.getTrendingMovies(),
                     tmdb.getTrendingTV(),
                 ]);
-                setTrendingMovies(movies.slice(0, 10));
-                setTrendingTV(tv.slice(0, 10));
+
+                // Shuffle for random discovery
+                const shuffle = (arr) => {
+                    const shuffled = [...arr];
+                    for (let i = shuffled.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                    }
+                    return shuffled;
+                };
+
+                setTrendingMovies(shuffle(movies).slice(0, 10));
+                setTrendingTV(shuffle(tv).slice(0, 10));
             } catch (error) {
                 console.error("Error fetching trending content:", error);
             } finally {

@@ -1,24 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-
-// Event emitter for cross-component communication
-const eventEmitter = {
-    listeners: {},
-    on(event, callback) {
-        if (!this.listeners[event]) {
-            this.listeners[event] = [];
-        }
-        this.listeners[event].push(callback);
-    },
-    off(event, callback) {
-        if (!this.listeners[event]) return;
-        this.listeners[event] = this.listeners[event].filter((cb) => cb !== callback);
-    },
-    emit(event, data) {
-        if (!this.listeners[event]) return;
-        this.listeners[event].forEach((callback) => callback(data));
-    },
-};
+import eventBus from "@/lib/eventBus";
 
 export const useStore = create(
     persist(
@@ -35,9 +17,6 @@ export const useStore = create(
             // Pending optimistic updates
             pendingUpdates: {},
 
-            // Event emitter
-            events: eventEmitter,
-
             // Set customization
             setCustomization: (mediaId, mediaType, data) => {
                 set((state) => ({
@@ -52,14 +31,14 @@ export const useStore = create(
                 }));
 
                 // Emit event for live updates
-                eventEmitter.emit("CUSTOMIZATION_UPDATED", {
+                eventBus.emit("CUSTOMIZATION_UPDATED", {
                     mediaId,
                     mediaType,
                     data,
                 });
 
                 // Emit profile update event
-                eventEmitter.emit("PROFILE_UPDATED", {
+                eventBus.emit("PROFILE_UPDATED", {
                     type: "customization",
                     mediaId,
                     mediaType,
@@ -78,42 +57,9 @@ export const useStore = create(
                     delete newCustomizations[`${mediaType}_${mediaId}`];
                     return { customizations: newCustomizations };
                 });
-
-                // Emit event
-                eventEmitter.emit("CUSTOMIZATION_UPDATED", {
-                    mediaId,
-                    mediaType,
-                    data: null,
-                });
             },
 
-            // Optimistic update tracking
-            startOptimisticUpdate: (key, data) => {
-                set((state) => ({
-                    pendingUpdates: {
-                        ...state.pendingUpdates,
-                        [key]: { data, timestamp: Date.now() },
-                    },
-                }));
-            },
-
-            completeOptimisticUpdate: (key) => {
-                set((state) => {
-                    const newPending = { ...state.pendingUpdates };
-                    delete newPending[key];
-                    return { pendingUpdates: newPending };
-                });
-            },
-
-            rollbackOptimisticUpdate: (key, previousData) => {
-                set((state) => {
-                    const newPending = { ...state.pendingUpdates };
-                    delete newPending[key];
-                    return { pendingUpdates: newPending };
-                });
-            },
-
-            // Rating methods
+            // Set rating
             setRating: (mediaId, mediaType, rating) => {
                 set((state) => ({
                     ratings: {
@@ -121,15 +67,9 @@ export const useStore = create(
                         [`${mediaType}_${mediaId}`]: rating,
                     },
                 }));
-
-                eventEmitter.emit("PROFILE_UPDATED", {
-                    type: "rating",
-                    mediaId,
-                    mediaType,
-                    rating,
-                });
             },
 
+            // Get rating
             getRating: (mediaId, mediaType) => {
                 return get().ratings[`${mediaType}_${mediaId}`] || null;
             },
@@ -142,13 +82,6 @@ export const useStore = create(
                         [`${mediaType}_${mediaId}`]: true,
                     },
                 }));
-
-                eventEmitter.emit("PROFILE_UPDATED", {
-                    type: "watchlist",
-                    action: "add",
-                    mediaId,
-                    mediaType,
-                });
             },
 
             removeFromWatchlist: (mediaId, mediaType) => {
@@ -157,37 +90,54 @@ export const useStore = create(
                     delete newWatchlist[`${mediaType}_${mediaId}`];
                     return { watchlist: newWatchlist };
                 });
-
-                eventEmitter.emit("PROFILE_UPDATED", {
-                    type: "watchlist",
-                    action: "remove",
-                    mediaId,
-                    mediaType,
-                });
             },
 
             isInWatchlist: (mediaId, mediaType) => {
                 return !!get().watchlist[`${mediaType}_${mediaId}`];
             },
 
-            // Clear all state
-            clearAll: () => {
-                set({
-                    customizations: {},
-                    ratings: {},
-                    watchlist: {},
-                    pendingUpdates: {},
+            // Optimistic update tracking
+            startOptimisticUpdate: (key, data) => {
+                set((state) => ({
+                    pendingUpdates: {
+                        ...state.pendingUpdates,
+                        [key]: {
+                            data,
+                            timestamp: Date.now(),
+                        },
+                    },
+                }));
+            },
+
+            completeOptimisticUpdate: (key) => {
+                set((state) => {
+                    const newPending = { ...state.pendingUpdates };
+                    delete newPending[key];
+                    return { pendingUpdates: newPending };
+                });
+            },
+
+            rollbackOptimisticUpdate: (key) => {
+                set((state) => {
+                    const newPending = { ...state.pendingUpdates };
+                    delete newPending[key];
+                    return { pendingUpdates: newPending };
                 });
             },
         }),
         {
             name: "viewnote-storage",
             storage: createJSONStorage(() => localStorage),
+            partialize: (state) => ({
+                customizations: state.customizations,
+                ratings: state.ratings,
+                watchlist: state.watchlist,
+            }),
         }
     )
 );
 
-// Cross-tab sync via storage event
+// Cross-tab synchronization
 if (typeof window !== "undefined") {
     window.addEventListener("storage", (e) => {
         if (e.key === "viewnote-storage" && e.newValue) {
@@ -195,23 +145,17 @@ if (typeof window !== "undefined") {
                 const newState = JSON.parse(e.newValue);
                 const currentState = useStore.getState();
 
-                // Update store if changed
-                if (JSON.stringify(newState.state.customizations) !== JSON.stringify(currentState.customizations)) {
-                    useStore.setState({ customizations: newState.state.customizations });
-                    eventEmitter.emit("CUSTOMIZATION_UPDATED", { source: "cross-tab" });
-                }
+                // Only update if state actually changed
+                if (JSON.stringify(newState.state) !== JSON.stringify(currentState)) {
+                    useStore.setState(newState.state);
 
-                if (JSON.stringify(newState.state.ratings) !== JSON.stringify(currentState.ratings)) {
-                    useStore.setState({ ratings: newState.state.ratings });
-                    eventEmitter.emit("PROFILE_UPDATED", { source: "cross-tab", type: "rating" });
-                }
-
-                if (JSON.stringify(newState.state.watchlist) !== JSON.stringify(currentState.watchlist)) {
-                    useStore.setState({ watchlist: newState.state.watchlist });
-                    eventEmitter.emit("PROFILE_UPDATED", { source: "cross-tab", type: "watchlist" });
+                    // Emit events for cross-tab updates
+                    eventBus.emit("PROFILE_UPDATED", {
+                        type: "cross-tab-sync",
+                    });
                 }
             } catch (error) {
-                console.error("Error syncing cross-tab state:", error);
+                console.error("Error syncing across tabs:", error);
             }
         }
     });

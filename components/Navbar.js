@@ -3,47 +3,42 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, User, LogOut, Film } from "lucide-react";
+import { Search, User, Film, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import SearchOverlay from "./SearchOverlay";
+import useScrollDirection from "@/hooks/useScrollDirection";
 
 export default function Navbar() {
     const [showSearch, setShowSearch] = useState(false);
     const [scrolled, setScrolled] = useState(false);
-    const { user, logout } = useAuth();
+    const [isFixed, setIsFixed] = useState(false);
+    const { user } = useAuth();
     const pathname = usePathname();
+    const scrollDirection = useScrollDirection();
 
     useEffect(() => {
         const handleScroll = () => {
-            setScrolled(window.scrollY > 20);
+            const scrollY = window.scrollY;
+            setScrolled(scrollY > 20);
+            setIsFixed(scrollY > 100);
         };
         window.addEventListener("scroll", handleScroll);
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
-    const handleLogout = async () => {
-        try {
-            await logout();
-        } catch (error) {
-            console.error("Logout failed:", error);
-        }
-    };
-
     return (
         <>
-            {/* Cineb-style Transparent Glassmorphism Header */}
+            {/* True Overlay Header */}
             <nav
-                className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-7xl transition-all duration-300 ${scrolled
-                    ? "bg-black/60 backdrop-blur-xl shadow-2xl"
-                    : "bg-black/40 backdrop-blur-lg shadow-xl"
+                className={`${isFixed ? 'fixed' : 'absolute'} top-0 left-0 right-0 z-[9999] transition-all duration-300 ${scrollDirection === "down" ? "-translate-y-full" : "translate-y-0"
                     }`}
                 style={{
-                    borderRadius: "16px",
-                    border: "1px solid rgba(255, 255, 255, 0.1)",
-                    willChange: "transform, opacity",
+                    backgroundColor: scrolled ? "rgba(0, 0, 0, 0.2)" : "transparent",
+                    backdropFilter: scrolled ? "blur(10px)" : "none",
+                    WebkitBackdropFilter: scrolled ? "blur(10px)" : "none",
                 }}
             >
-                <div className="px-6">
+                <div className="container mx-auto px-6">
                     <div className="flex items-center justify-between h-16">
                         {/* Logo */}
                         <Link
@@ -97,13 +92,13 @@ export default function Navbar() {
                                             {user.displayName || user.email?.split("@")[0]}
                                         </span>
                                     </Link>
-                                    <button
-                                        onClick={handleLogout}
+                                    <Link
+                                        href="/settings"
                                         className="p-2.5 hover:bg-white/10 rounded-xl transition-all backdrop-blur-sm"
-                                        aria-label="Logout"
+                                        aria-label="Settings"
                                     >
-                                        <LogOut size={18} />
-                                    </button>
+                                        <Settings size={18} />
+                                    </Link>
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-2">
@@ -126,8 +121,7 @@ export default function Navbar() {
                 </div>
             </nav>
 
-            {/* Spacer for fixed header */}
-            <div className="h-24" />
+            {/* No spacer — header is overlay, sits ON banner */}
 
             {/* Search Overlay */}
             <SearchOverlay isOpen={showSearch} onClose={() => setShowSearch(false)} />

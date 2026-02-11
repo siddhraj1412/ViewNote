@@ -3,6 +3,7 @@ import { useStore } from "@/store/useStore";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
+import eventBus from "@/lib/eventBus";
 
 /**
  * Hook for media detail pages to get and subscribe to live customization updates
@@ -25,8 +26,11 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
 
         loadCustomization();
 
-        // Subscribe to live updates
+        // Subscribe to live updates using eventBus
         const handleUpdate = (data) => {
+            // Safety guard
+            if (!data || !eventBus) return;
+
             if (data.mediaId === mediaId && data.mediaType === mediaType) {
                 // Update from store
                 const customization = store.getCustomization(mediaId, mediaType);
@@ -40,12 +44,18 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
             }
         };
 
-        store.events.on("CUSTOMIZATION_UPDATED", handleUpdate);
+        // Safety guard before subscribing
+        if (eventBus && typeof eventBus.on === "function") {
+            eventBus.on("CUSTOMIZATION_UPDATED", handleUpdate);
+        }
 
         return () => {
-            store.events.off("CUSTOMIZATION_UPDATED", handleUpdate);
+            // Safety guard before unsubscribing
+            if (eventBus && typeof eventBus.off === "function") {
+                eventBus.off("CUSTOMIZATION_UPDATED", handleUpdate);
+            }
         };
-    }, [user, mediaId, mediaType, defaultPoster, defaultBanner]);
+    }, [user, mediaId, mediaType, defaultPoster, defaultBanner, store]);
 
     const loadCustomization = async () => {
         setLoading(true);

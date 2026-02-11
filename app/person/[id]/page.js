@@ -29,14 +29,33 @@ export default function PersonPage() {
 
                 setPerson(personData);
 
-                // Separate and sort all credits
-                const moviesActing = (creditsData.cast || [])
-                    .filter((c) => c.media_type === "movie")
-                    .sort((a, b) => {
-                        const dateA = a.release_date || "0000";
-                        const dateB = b.release_date || "0000";
-                        return dateB.localeCompare(dateA);
+                // Group credits by media_id to prevent duplicates
+                const groupByMediaId = (credits) => {
+                    const grouped = {};
+                    credits.forEach((credit) => {
+                        const key = credit.id;
+                        if (!grouped[key]) {
+                            grouped[key] = { ...credit, roles: [] };
+                        }
+                        if (credit.character) {
+                            grouped[key].roles.push(credit.character);
+                        } else if (credit.job) {
+                            grouped[key].roles.push(credit.job);
+                        }
                     });
+                    return Object.values(grouped);
+                };
+
+                // Separate and sort all credits
+                const moviesActing = groupByMediaId(
+                    (creditsData.cast || [])
+                        .filter((c) => c.media_type === "movie")
+                        .sort((a, b) => {
+                            const dateA = a.release_date || "0000";
+                            const dateB = b.release_date || "0000";
+                            return dateB.localeCompare(dateA);
+                        })
+                );
 
                 const moviesCrew = (creditsData.crew || [])
                     .filter((c) => c.media_type === "movie")
@@ -56,13 +75,20 @@ export default function PersonPage() {
                     return acc;
                 }, {});
 
-                const tvActing = (creditsData.cast || [])
-                    .filter((c) => c.media_type === "tv")
-                    .sort((a, b) => {
-                        const dateA = a.first_air_date || "0000";
-                        const dateB = b.first_air_date || "0000";
-                        return dateB.localeCompare(dateA);
-                    });
+                // Group each department's credits by media_id
+                Object.keys(moviesCrewByDept).forEach((dept) => {
+                    moviesCrewByDept[dept] = groupByMediaId(moviesCrewByDept[dept]);
+                });
+
+                const tvActing = groupByMediaId(
+                    (creditsData.cast || [])
+                        .filter((c) => c.media_type === "tv")
+                        .sort((a, b) => {
+                            const dateA = a.first_air_date || "0000";
+                            const dateB = b.first_air_date || "0000";
+                            return dateB.localeCompare(dateA);
+                        })
+                );
 
                 const tvCrew = (creditsData.crew || [])
                     .filter((c) => c.media_type === "tv")
@@ -81,6 +107,11 @@ export default function PersonPage() {
                     acc[dept].push(credit);
                     return acc;
                 }, {});
+
+                // Group each department's credits by media_id
+                Object.keys(tvCrewByDept).forEach((dept) => {
+                    tvCrewByDept[dept] = groupByMediaId(tvCrewByDept[dept]);
+                });
 
                 setCredits({
                     moviesActing,
@@ -136,12 +167,17 @@ export default function PersonPage() {
                     <h3 className="font-medium text-sm line-clamp-2 mb-1">
                         {item.title || item.name}
                     </h3>
-                    {item.character && (
+                    {item.roles && item.roles.length > 0 && (
+                        <p className="text-xs text-textSecondary line-clamp-2">
+                            {item.roles.join(" • ")}
+                        </p>
+                    )}
+                    {item.character && !item.roles && (
                         <p className="text-xs text-textSecondary line-clamp-1">
                             as {item.character}
                         </p>
                     )}
-                    {item.job && (
+                    {item.job && !item.roles && (
                         <p className="text-xs text-textSecondary line-clamp-1">
                             {item.job}
                         </p>
