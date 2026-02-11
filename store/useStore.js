@@ -1,18 +1,44 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
-/**
- * Global state store using Zustand
- * Handles user customization, ratings, watchlist, and optimistic updates
- */
+// Event emitter for cross-component communication
+const eventEmitter = {
+    listeners: {},
+    on(event, callback) {
+        if (!this.listeners[event]) {
+            this.listeners[event] = [];
+        }
+        this.listeners[event].push(callback);
+    },
+    off(event, callback) {
+        if (!this.listeners[event]) return;
+        this.listeners[event] = this.listeners[event].filter((cb) => cb !== callback);
+    },
+    emit(event, data) {
+        if (!this.listeners[event]) return;
+        this.listeners[event].forEach((callback) => callback(data));
+    },
+};
 
 export const useStore = create(
     persist(
         (set, get) => ({
-            // User customization state
+            // Customizations state
             customizations: {},
 
-            // Set customization for a specific media
+            // Ratings state
+            ratings: {},
+
+            // Watchlist state
+            watchlist: {},
+
+            // Pending optimistic updates
+            pendingUpdates: {},
+
+            // Event emitter
+            events: eventEmitter,
+
+            // Set customization
             setCustomization: (mediaId, mediaType, data) => {
                 set((state) => ({
                     customizations: {
@@ -24,9 +50,23 @@ export const useStore = create(
                         },
                     },
                 }));
+
+                // Emit event for live updates
+                eventEmitter.emit("CUSTOMIZATION_UPDATED", {
+                    mediaId,
+                    mediaType,
+                    data,
+                });
+
+                // Emit profile update event
+                eventEmitter.emit("PROFILE_UPDATED", {
+                    type: "customization",
+                    mediaId,
+                    mediaType,
+                });
             },
 
-            // Get customization for a specific media
+            // Get customization
             getCustomization: (mediaId, mediaType) => {
                 return get().customizations[`${mediaType}_${mediaId}`] || null;
             },
@@ -38,49 +78,16 @@ export const useStore = create(
                     delete newCustomizations[`${mediaType}_${mediaId}`];
                     return { customizations: newCustomizations };
                 });
+
+                // Emit event
+                eventEmitter.emit("CUSTOMIZATION_UPDATED", {
+                    mediaId,
+                    mediaType,
+                    data: null,
+                });
             },
 
-            // Ratings state
-            ratings: {},
-
-            setRating: (mediaId, mediaType, rating) => {
-                set((state) => ({
-                    ratings: {
-                        ...state.ratings,
-                        [`${mediaType}_${mediaId}`]: {
-                            rating,
-                            updatedAt: new Date().toISOString(),
-                        },
-                    },
-                }));
-            },
-
-            getRating: (mediaId, mediaType) => {
-                return get().ratings[`${mediaType}_${mediaId}`]?.rating || null;
-            },
-
-            // Watchlist state
-            watchlist: [],
-
-            addToWatchlist: (item) => {
-                set((state) => ({
-                    watchlist: [...state.watchlist.filter((i) => i.id !== item.id), item],
-                }));
-            },
-
-            removeFromWatchlist: (itemId) => {
-                set((state) => ({
-                    watchlist: state.watchlist.filter((i) => i.id !== itemId),
-                }));
-            },
-
-            isInWatchlist: (itemId) => {
-                return get().watchlist.some((i) => i.id === itemId);
-            },
-
-            // Optimistic update state
-            pendingUpdates: {},
-
+            // Optimistic update tracking
             startOptimisticUpdate: (key, data) => {
                 set((state) => ({
                     pendingUpdates: {
@@ -106,12 +113,69 @@ export const useStore = create(
                 });
             },
 
+            // Rating methods
+            setRating: (mediaId, mediaType, rating) => {
+                set((state) => ({
+                    ratings: {
+                        ...state.ratings,
+                        [`${mediaType}_${mediaId}`]: rating,
+                    },
+                }));
+
+                eventEmitter.emit("PROFILE_UPDATED", {
+                    type: "rating",
+                    mediaId,
+                    mediaType,
+                    rating,
+                });
+            },
+
+            getRating: (mediaId, mediaType) => {
+                return get().ratings[`${mediaType}_${mediaId}`] || null;
+            },
+
+            // Watchlist methods
+            addToWatchlist: (mediaId, mediaType) => {
+                set((state) => ({
+                    watchlist: {
+                        ...state.watchlist,
+                        [`${mediaType}_${mediaId}`]: true,
+                    },
+                }));
+
+                eventEmitter.emit("PROFILE_UPDATED", {
+                    type: "watchlist",
+                    action: "add",
+                    mediaId,
+                    mediaType,
+                });
+            },
+
+            removeFromWatchlist: (mediaId, mediaType) => {
+                set((state) => {
+                    const newWatchlist = { ...state.watchlist };
+                    delete newWatchlist[`${mediaType}_${mediaId}`];
+                    return { watchlist: newWatchlist };
+                });
+
+                eventEmitter.emit("PROFILE_UPDATED", {
+                    type: "watchlist",
+                    action: "remove",
+                    mediaId,
+                    mediaType,
+                });
+            },
+
+            isInWatchlist: (mediaId, mediaType) => {
+                return !!get().watchlist[`${mediaType}_${mediaId}`];
+            },
+
             // Clear all state
             clearAll: () => {
                 set({
                     customizations: {},
                     ratings: {},
-                    watchlist: [],
+                    watchlist: {},
                     pendingUpdates: {},
                 });
             },
@@ -122,3 +186,33 @@ export const useStore = create(
         }
     )
 );
+
+// Cross-tab sync via storage event
+if (typeof window !== "undefined") {
+    window.addEventListener("storage", (e) => {
+        if (e.key === "viewnote-storage" && e.newValue) {
+            try {
+                const newState = JSON.parse(e.newValue);
+                const currentState = useStore.getState();
+
+                // Update store if changed
+                if (JSON.stringify(newState.state.customizations) !== JSON.stringify(currentState.customizations)) {
+                    useStore.setState({ customizations: newState.state.customizations });
+                    eventEmitter.emit("CUSTOMIZATION_UPDATED", { source: "cross-tab" });
+                }
+
+                if (JSON.stringify(newState.state.ratings) !== JSON.stringify(currentState.ratings)) {
+                    useStore.setState({ ratings: newState.state.ratings });
+                    eventEmitter.emit("PROFILE_UPDATED", { source: "cross-tab", type: "rating" });
+                }
+
+                if (JSON.stringify(newState.state.watchlist) !== JSON.stringify(currentState.watchlist)) {
+                    useStore.setState({ watchlist: newState.state.watchlist });
+                    eventEmitter.emit("PROFILE_UPDATED", { source: "cross-tab", type: "watchlist" });
+                }
+            } catch (error) {
+                console.error("Error syncing cross-tab state:", error);
+            }
+        }
+    });
+}

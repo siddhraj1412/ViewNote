@@ -8,41 +8,36 @@ import { tmdb } from "@/lib/tmdb";
 import ActionBar from "@/components/ActionBar";
 import CastSlider from "@/components/CastSlider";
 import CrewSection from "@/components/CrewSection";
-import { Calendar, Tv as TvIcon, Star } from "lucide-react";
+import ProductionSection from "@/components/ProductionSection";
+import { Calendar, Clock, Star, Tv } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useRatings } from "@/hooks/useRatings";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { useMediaCustomization } from "@/hooks/useMediaCustomization";
 
 export default function TVDetailsPage() {
     const params = useParams();
     const tvId = Number(params.id);
-    const [tv, setTV] = useState(null);
+    const [tv, setTv] = useState(null);
     const [stronglyRelated, setStronglyRelated] = useState([]);
-    const [customPoster, setCustomPoster] = useState(null);
-    const [customBanner, setCustomBanner] = useState(null);
     const [loading, setLoading] = useState(true);
 
     const { user } = useAuth();
     const { getRating } = useRatings();
     const userRating = getRating(tvId);
 
+    // Use live customization hook
+    const { customPoster, customBanner } = useMediaCustomization(
+        tvId,
+        "tv",
+        tv?.poster_path,
+        tv?.backdrop_path
+    );
+
     useEffect(() => {
         const fetchTV = async () => {
             try {
                 const data = await tmdb.getTVDetails(tvId);
-                setTV(data);
-
-                // Fetch user-specific poster/banner if logged in
-                if (user) {
-                    const prefRef = doc(db, "user_media_preferences", `${user.uid}_tv_${tvId}`);
-                    const prefDoc = await getDoc(prefRef);
-                    if (prefDoc.exists()) {
-                        const prefs = prefDoc.data();
-                        if (prefs.customPoster) setCustomPoster(prefs.customPoster);
-                        if (prefs.customBanner) setCustomBanner(prefs.customBanner);
-                    }
-                }
+                setTv(data);
 
                 // Fetch strongly related TV shows
                 const related = await tmdb.getStronglyRelated(tvId, "tv", data);
@@ -55,7 +50,7 @@ export default function TVDetailsPage() {
         };
 
         fetchTV();
-    }, [tvId, user]);
+    }, [tvId]);
 
     if (loading) {
         return (
@@ -199,6 +194,11 @@ export default function TVDetailsPage() {
                     </section>
                 )}
 
+                {/* Production Companies */}
+                {tv.production_companies && tv.production_companies.length > 0 && (
+                    <ProductionSection productions={tv.production_companies} />
+                )}
+
                 {/* Strongly Related */}
                 {stronglyRelated.length > 0 && (
                     <section>
@@ -211,7 +211,7 @@ export default function TVDetailsPage() {
                                             src={tmdb.getImageUrl(related.poster_path)}
                                             alt={related.name}
                                             fill
-                                            className="object-cover group-hover:scale-105 transition-transform duration-300"
+                                            className="object-cover"
                                         />
                                         {related.similarityScore && (
                                             <div className="absolute top-2 right-2 bg-accent text-background px-2 py-1 rounded text-xs font-bold">

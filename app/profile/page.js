@@ -3,14 +3,16 @@
 import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import Link from "next/link";
-import { tmdb } from "@/lib/tmdb";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useRatings } from "@/hooks/useRatings";
 import Card from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
-import { Film, Star, Calendar, Settings, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
+import FavoritesMatrix from "@/components/favorites/FavoritesMatrix";
+import WatchedSection from "@/components/profile/WatchedSection";
+import PausedSection from "@/components/profile/PausedSection";
+import WatchingSection from "@/components/profile/WatchingSection";
+import ReviewsSection from "@/components/profile/ReviewsSection";
+import ListsSection from "@/components/profile/ListsSection";
 
 export default function ProfilePage() {
     const { user, loading: authLoading, logout } = useAuth();
@@ -50,16 +52,26 @@ export default function ProfilePage() {
             <div className="container mx-auto px-4 py-12">
                 {/* User Header */}
                 <div className="mb-12">
-                    <div className="flex items-center gap-6 mb-6">
-                        <div className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center text-4xl font-bold">
-                            {user.email?.[0].toUpperCase()}
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-6">
+                            <div className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center text-4xl font-bold">
+                                {user.email?.[0].toUpperCase()}
+                            </div>
+                            <div>
+                                <h1 className="text-4xl font-bold mb-2">
+                                    {user.displayName || user.email?.split("@")[0]}
+                                </h1>
+                                <p className="text-textSecondary">{user.email}</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-4xl font-bold mb-2">
-                                {user.displayName || user.email?.split("@")[0]}
-                            </h1>
-                            <p className="text-textSecondary">{user.email}</p>
-                        </div>
+
+                        <button
+                            onClick={handleLogout}
+                            className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-white/10 rounded-lg transition"
+                        >
+                            <LogOut size={20} />
+                            Logout
+                        </button>
                     </div>
 
                     {/* Stats */}
@@ -89,145 +101,35 @@ export default function ProfilePage() {
                     </div>
                 </div>
 
-                {/* Watchlist Section */}
-                <section className="mb-12">
-                    <div className="flex items-center gap-2 mb-6">
-                        <Film className="text-accent" size={28} />
-                        <h2 className="text-3xl font-bold">My Watchlist</h2>
-                    </div>
+                {/* Favorites Matrix */}
+                <div className="mb-16">
+                    <FavoritesMatrix />
+                </div>
 
-                    {watchlist.length === 0 ? (
-                        <Card>
-                            <div className="text-center py-12">
-                                <Film className="mx-auto mb-4 text-textSecondary" size={48} />
-                                <p className="text-xl text-textSecondary mb-4">
-                                    Your watchlist is empty
-                                </p>
-                                <Link href="/search" className="text-accent hover:underline">
-                                    Start adding movies and shows
-                                </Link>
-                            </div>
-                        </Card>
-                    ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
-                            {watchlist.map((item) => (
-                                <Link
-                                    key={item.id}
-                                    href={`/${item.mediaType}/${item.mediaId}`}
-                                    className="group"
-                                >
-                                    <div className="relative aspect-[2/3] rounded-xl overflow-hidden mb-2">
-                                        <Image
-                                            src={tmdb.getImageUrl(item.poster_path)}
-                                            alt={item.title}
-                                            fill
-                                            className="object-cover group-hover:scale-105 transition-transform"
-                                        />
-                                    </div>
-                                    <p className="font-semibold text-sm line-clamp-2 group-hover:text-accent transition">
-                                        {item.title}
-                                    </p>
-                                </Link>
-                            ))}
-                        </div>
-                    )}
-                </section>
+                {/* Watched Section */}
+                <div className="mb-16">
+                    <WatchedSection watchedMovies={[]} watchedTV={[]} />
+                </div>
 
-                {/* Ratings Section */}
-                <section className="mb-12">
-                    <div className="flex items-center gap-2 mb-6">
-                        <Star className="text-accent" size={28} />
-                        <h2 className="text-3xl font-bold">My Ratings</h2>
-                    </div>
+                {/* Paused Section */}
+                <div className="mb-16">
+                    <PausedSection pausedMovies={[]} pausedTV={[]} />
+                </div>
 
-                    {ratings.length === 0 ? (
-                        <Card>
-                            <div className="text-center py-12">
-                                <Star className="mx-auto mb-4 text-textSecondary" size={48} />
-                                <p className="text-xl text-textSecondary mb-4">
-                                    You haven't rated anything yet
-                                </p>
-                                <Link href="/" className="text-accent hover:underline">
-                                    Explore trending content
-                                </Link>
-                            </div>
-                        </Card>
-                    ) : (
-                        <div className="space-y-4">
-                            {ratings.map((item) => (
-                                <Card key={item.id} hover>
-                                    <Link href={`/${item.mediaType}/${item.mediaId}`}>
-                                        <div className="flex gap-4">
-                                            <div className="relative w-20 aspect-[2/3] rounded-lg overflow-hidden flex-shrink-0">
-                                                <Image
-                                                    src={tmdb.getImageUrl(item.poster_path)}
-                                                    alt={item.title}
-                                                    fill
-                                                    className="object-cover"
-                                                />
-                                            </div>
-                                            <div className="flex-1">
-                                                <h3 className="font-bold text-lg mb-1">
-                                                    {item.title}
-                                                </h3>
-                                                <div className="flex items-center gap-4 text-sm text-textSecondary">
-                                                    <div className="flex items-center gap-1">
-                                                        <Star
-                                                            size={16}
-                                                            className="text-accent"
-                                                            fill="currentColor"
-                                                        />
-                                                        <span>{item.rating}/5</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <Calendar size={16} />
-                                                        <span>
-                                                            {item.ratedAt?.toDate
-                                                                ? item.ratedAt.toDate().toLocaleDateString()
-                                                                : "Recently"}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </Card>
-                            ))}
-                        </div>
-                    )}
-                </section>
+                {/* Watching Section */}
+                <div className="mb-16">
+                    <WatchingSection />
+                </div>
 
-                {/* Settings Section */}
-                <section>
-                    <div className="flex items-center gap-2 mb-6">
-                        <Settings className="text-accent" size={28} />
-                        <h2 className="text-3xl font-bold">Settings</h2>
-                    </div>
+                {/* Reviews Section */}
+                <div className="mb-16">
+                    <ReviewsSection />
+                </div>
 
-                    <Card>
-                        <div className="space-y-4">
-                            <div className="border-b border-white/5 pb-4">
-                                <h3 className="text-lg font-semibold mb-2">Account</h3>
-                                <p className="text-textSecondary text-sm mb-4">
-                                    Manage your account settings and preferences
-                                </p>
-                            </div>
-
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h4 className="font-medium mb-1">Sign Out</h4>
-                                    <p className="text-sm text-textSecondary">
-                                        Sign out of your ViewNote account
-                                    </p>
-                                </div>
-                                <Button variant="danger" onClick={handleLogout}>
-                                    <LogOut size={18} className="mr-2" />
-                                    Sign Out
-                                </Button>
-                            </div>
-                        </div>
-                    </Card>
-                </section>
+                {/* Lists Section */}
+                <div className="mb-16">
+                    <ListsSection />
+                </div>
             </div>
         </main>
     );

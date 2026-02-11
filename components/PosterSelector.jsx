@@ -112,8 +112,8 @@ export default function PosterSelector({ isOpen, onClose, mediaId, mediaType, de
                                 key={index}
                                 onClick={() => setSelectedPoster(poster.file_path)}
                                 className={`relative aspect-[2/3] rounded-lg overflow-hidden transition-all ${selectedPoster === poster.file_path
-                                        ? "ring-4 ring-accent"
-                                        : "hover:ring-2 hover:ring-white/30"
+                                    ? "ring-4 ring-accent"
+                                    : "hover:ring-2 hover:ring-white/30"
                                     }`}
                             >
                                 <Image

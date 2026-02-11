@@ -34,8 +34,8 @@ export default function Navbar() {
             {/* Cineb-style Transparent Glassmorphism Header */}
             <nav
                 className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-7xl transition-all duration-300 ${scrolled
-                        ? "bg-black/60 backdrop-blur-xl shadow-2xl"
-                        : "bg-black/40 backdrop-blur-lg shadow-xl"
+                    ? "bg-black/60 backdrop-blur-xl shadow-2xl"
+                    : "bg-black/40 backdrop-blur-lg shadow-xl"
                     }`}
                 style={{
                     borderRadius: "16px",
@@ -50,7 +50,7 @@ export default function Navbar() {
                             href="/"
                             className="flex items-center gap-2 text-2xl font-bold hover:text-accent transition-all group"
                         >
-                            <Film className="text-accent group-hover:scale-110 transition-transform" size={28} />
+                            <Film className="text-accent transition-colors" size={28} />
                             <span className="drop-shadow-lg">ViewNote</span>
                         </Link>
 

@@ -69,7 +69,7 @@ function ResultsContent() {
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8">
                     {(activeTab === "movies" ? results.movies : results.tv).map((item) => (
                         <Link key={item.id} href={`/${activeTab === "movies" ? "movie" : "tv"}/${item.id}`} className="group">
-                            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:scale-105 transition-transform duration-300">
+                            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
                                 <Image
                                     src={tmdb.getImageUrl(item.poster_path)}
                                     alt={item.title || item.name}

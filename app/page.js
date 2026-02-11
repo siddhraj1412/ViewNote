@@ -97,7 +97,7 @@ export default function HomePage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
                     {trendingMovies.map((movie) => (
                         <Link key={movie.id} href={`/movie/${movie.id}`} className="group">
-                            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:scale-105 transition-transform duration-300">
+                            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
                                 <Image
                                     src={tmdb.getImageUrl(movie.poster_path)}
                                     alt={movie.title || "Movie poster"}
@@ -130,7 +130,7 @@ export default function HomePage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
                     {trendingTV.map((show) => (
                         <Link key={show.id} href={`/tv/${show.id}`} className="group">
-                            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:scale-105 transition-transform duration-300">
+                            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
                                 <Image
                                     src={tmdb.getImageUrl(show.poster_path)}
                                     alt={show.name || "TV show poster"}

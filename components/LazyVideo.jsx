@@ -32,7 +32,7 @@ export default function LazyVideo({ videoKey, title, className = '' }) {
                         loading="lazy"
                     />
                     <div className="absolute inset-0 bg-black/40 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                        <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center group-hover:shadow-lg group-hover:shadow-red-600/30 transition-shadow">
                             <svg
                                 className="w-8 h-8 text-white ml-1"
                                 fill="currentColor"

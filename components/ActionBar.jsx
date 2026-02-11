@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useToast } from "@/context/ToastContext";
+import showToast from "@/lib/toast";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import {
@@ -31,7 +31,7 @@ export default function ActionBar({
     currentRating = 0,
 }) {
     const { user } = useAuth();
-    const { showToast } = useToast();
+
     const [isWatched, setIsWatched] = useState(initialWatched);
     const [isSaved, setIsSaved] = useState(initialSaved);
     const [showRatingModal, setShowRatingModal] = useState(false);
@@ -42,7 +42,7 @@ export default function ActionBar({
 
     const handleWatchedToggle = async () => {
         if (!user) {
-            showToast("Please sign in to mark as watched", "warning");
+            showToast.info("Please sign in to mark as watched");
             return;
         }
 
@@ -54,7 +54,7 @@ export default function ActionBar({
                 // Remove watched status
                 await deleteDoc(actionRef);
                 setIsWatched(false);
-                showToast("Removed from watched", "success");
+                showToast.success("Removed from watched");
             } else {
                 // Mark as watched
                 await setDoc(actionRef, {
@@ -68,11 +68,11 @@ export default function ActionBar({
                     updatedAt: serverTimestamp(),
                 }, { merge: true });
                 setIsWatched(true);
-                showToast("Marked as watched", "success");
+                showToast.success("Marked as watched");
             }
         } catch (error) {
             console.error("Error toggling watched:", error);
-            showToast("Failed to update watched status", "error");
+            showToast.error("Failed to update watched status");
         } finally {
             setLoading(false);
         }
@@ -80,7 +80,7 @@ export default function ActionBar({
 
     const handleSaveToggle = async () => {
         if (!user) {
-            showToast("Please sign in to save", "warning");
+            showToast.info("Please sign in to save");
             return;
         }
 
@@ -95,7 +95,7 @@ export default function ActionBar({
                     updatedAt: serverTimestamp(),
                 }, { merge: true });
                 setIsSaved(false);
-                showToast("Removed from saved", "success");
+                showToast.success("Removed from saved");
             } else {
                 // Save
                 await setDoc(actionRef, {
@@ -109,11 +109,11 @@ export default function ActionBar({
                     updatedAt: serverTimestamp(),
                 }, { merge: true });
                 setIsSaved(true);
-                showToast("Saved successfully", "success");
+                showToast.success("Saved successfully");
             }
         } catch (error) {
             console.error("Error toggling saved:", error);
-            showToast("Failed to update saved status", "error");
+            showToast.error("Failed to update saved status");
         } finally {
             setLoading(false);
         }
@@ -121,7 +121,7 @@ export default function ActionBar({
 
     const handlePause = async () => {
         if (!user) {
-            showToast("Please sign in", "warning");
+            showToast.info("Please sign in");
             return;
         }
 
@@ -137,11 +137,11 @@ export default function ActionBar({
                 pausedAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             }, { merge: true });
-            showToast("Marked as paused", "success");
+            showToast.success("Marked as paused");
             setShowMoreMenu(false);
         } catch (error) {
             console.error("Error pausing:", error);
-            showToast("Failed to pause", "error");
+            showToast.error("Failed to pause");
         }
     };
 
@@ -163,11 +163,11 @@ export default function ActionBar({
                 droppedAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             }, { merge: true });
-            showToast("Marked as dropped", "success");
+            showToast.success("Marked as dropped");
             setShowMoreMenu(false);
         } catch (error) {
             console.error("Error dropping:", error);
-            showToast("Failed to drop", "error");
+            showToast.error("Failed to drop");
         }
     };
 
@@ -180,7 +180,7 @@ export default function ActionBar({
                     title: title,
                     url: url,
                 });
-                showToast("Shared successfully", "success");
+                showToast.success("Shared successfully");
             } catch (error) {
                 if (error.name !== "AbortError") {
                     console.error("Error sharing:", error);
@@ -190,10 +190,10 @@ export default function ActionBar({
             // Fallback: Copy to clipboard
             try {
                 await navigator.clipboard.writeText(url);
-                showToast("Link copied to clipboard", "success");
+                showToast.success("Link copied to clipboard");
             } catch (error) {
                 console.error("Error copying:", error);
-                showToast("Failed to copy link", "error");
+                showToast.error("Failed to copy link");
             }
         }
         setShowMoreMenu(false);
@@ -435,7 +435,7 @@ export default function ActionBar({
                 onClose={() => setShowBannerSelector(false)}
                 mediaId={mediaId}
                 mediaType={mediaType}
-                defaultPoster={posterPath}
+                defaultBanner={posterPath}
             />
         </>
     );

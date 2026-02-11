@@ -112,8 +112,8 @@ export default function BannerSelector({ isOpen, onClose, mediaId, mediaType, de
                                 key={index}
                                 onClick={() => setSelectedBanner(banner.file_path)}
                                 className={`relative aspect-video rounded-lg overflow-hidden transition-all ${selectedBanner === banner.file_path
-                                        ? "ring-4 ring-accent"
-                                        : "hover:ring-2 hover:ring-white/30"
+                                    ? "ring-4 ring-accent"
+                                    : "hover:ring-2 hover:ring-white/30"
                                     }`}
                             >
                                 <Image

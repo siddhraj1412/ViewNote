@@ -1,3 +1,5 @@
+"use client";
+
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
@@ -41,14 +43,14 @@ export default function Modal({ isOpen, onClose, children, title, maxWidth = "80
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
 
-            {/* Modal Container */}
+            {/* Modal Container - flex column with overflow hidden for sticky footer */}
             <div
-                className="relative bg-secondary border border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[80vh]"
-                style={{ maxWidth, width: "100%" }}
+                className="relative bg-secondary border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+                style={{ maxWidth, width: "100%", maxHeight: "85vh" }}
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header - Sticky */}
-                <div className="flex items-center justify-between p-6 border-b border-white/10 flex-shrink-0">
+                {/* Header - Fixed at top */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0 bg-secondary z-10">
                     <h2 className="text-2xl font-bold">{title}</h2>
                     <button
                         onClick={onClose}
@@ -59,8 +61,8 @@ export default function Modal({ isOpen, onClose, children, title, maxWidth = "80
                     </button>
                 </div>
 
-                {/* Content - Scrollable */}
-                <div className="flex-1 overflow-y-auto">
+                {/* Content - Scrollable middle section */}
+                <div className="flex-1 overflow-y-auto min-h-0">
                     {children}
                 </div>
             </div>

@@ -129,7 +129,7 @@ export default function PersonPage() {
                             src={tmdb.getImageUrl(item.poster_path)}
                             alt={item.title || item.name}
                             fill
-                            className="object-cover group-hover:scale-105 transition-transform duration-300"
+                            className="object-cover"
                             loading="lazy"
                         />
                     </div>
