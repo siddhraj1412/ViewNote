@@ -1,129 +1,209 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Upload, X, Image as ImageIcon, Loader2 } from "lucide-react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { Upload, X, ZoomIn, ZoomOut, Loader2, RotateCcw } from "lucide-react";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import showToast from "@/lib/toast";
+import eventBus from "@/lib/eventBus";
 
-// ── Client-side image compression: square crop, resize 512x512, webp ≤200KB ──
-async function compressImage(file) {
+// ── Render cropped canvas from user position/zoom ──
+function renderCroppedCanvas(img, pos, zoom, size = 512) {
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    const minDim = Math.min(img.width, img.height);
+    const cropSize = minDim / zoom;
+    const maxOffsetX = img.width - cropSize;
+    const maxOffsetY = img.height - cropSize;
+    const sx = Math.max(0, Math.min(maxOffsetX, (img.width - cropSize) / 2 - pos.x * (img.width / 2)));
+    const sy = Math.max(0, Math.min(maxOffsetY, (img.height - cropSize) / 2 - pos.y * (img.height / 2)));
+
+    ctx.drawImage(img, sx, sy, cropSize, cropSize, 0, 0, size, size);
+    return canvas;
+}
+
+// ── Compress to webp ≤200KB ──
+function compressCanvas(canvas) {
     return new Promise((resolve, reject) => {
-        const img = new window.Image();
-        img.onload = () => {
-            // Validate min resolution
-            if (img.width < 200 || img.height < 200) {
-                reject(new Error("Image must be at least 200×200 pixels."));
-                return;
-            }
-            // Validate max resolution
-            if (img.width > 4096 || img.height > 4096) {
-                reject(new Error("Image must be at most 4096×4096 pixels."));
-                return;
-            }
-            // Square center crop
-            const size = Math.min(img.width, img.height);
-            const sx = (img.width - size) / 2;
-            const sy = (img.height - size) / 2;
-            const canvas = document.createElement("canvas");
-            canvas.width = 512;
-            canvas.height = 512;
-            const ctx = canvas.getContext("2d");
-            // Enable high-quality downscaling
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = "high";
-            ctx.drawImage(img, sx, sy, size, size, 0, 0, 512, 512);
-
-            // Try decreasing quality until ≤200KB
-            const tryQuality = (q) => {
-                canvas.toBlob(
-                    (blob) => {
-                        if (!blob) { reject(new Error("Compression failed")); return; }
-                        if (blob.size > 200 * 1024 && q > 0.3) {
-                            tryQuality(q - 0.1);
-                        } else {
-                            resolve(blob);
-                        }
-                    },
-                    "image/webp",
-                    q
-                );
-            };
-            tryQuality(0.85);
+        const tryQuality = (q) => {
+            canvas.toBlob(
+                (blob) => {
+                    if (!blob) { reject(new Error("Compression failed")); return; }
+                    if (blob.size > 200 * 1024 && q > 0.3) {
+                        tryQuality(q - 0.1);
+                    } else {
+                        resolve(blob);
+                    }
+                },
+                "image/webp",
+                q
+            );
         };
-        img.onerror = () => reject(new Error("Failed to load image"));
-        img.src = URL.createObjectURL(file);
+        tryQuality(0.85);
     });
 }
 
 export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvatar, onUploadSuccess }) {
     const [file, setFile] = useState(null);
-    const [previewUrl, setPreviewUrl] = useState(null);
+    const [imgElement, setImgElement] = useState(null);
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
     const [dragActive, setDragActive] = useState(false);
+
+    // Crop state
+    const [zoom, setZoom] = useState(1);
+    const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [dragging, setDragging] = useState(false);
+    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [posStart, setPosStart] = useState({ x: 0, y: 0 });
+
     const fileInputRef = useRef(null);
     const uploadTaskRef = useRef(null);
+    const cropAreaRef = useRef(null);
+
+    // Reset state when modal opens/closes
+    useEffect(() => {
+        if (!isOpen) {
+            setFile(null);
+            setImgElement(null);
+            setUploading(false);
+            setProgress(0);
+            setZoom(1);
+            setPosition({ x: 0, y: 0 });
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
-    const handleDrag = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.type === "dragenter" || e.type === "dragover") {
-            setDragActive(true);
-        } else if (e.type === "dragleave") {
-            setDragActive(false);
-        }
-    };
-
-    const validateFile = (file) => {
-        // 1. Check type
-        const validTypes = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
-        if (!validTypes.includes(file.type)) {
+    const validateFile = (f) => {
+        const validTypes = ["image/jpeg", "image/png", "image/webp"];
+        if (!validTypes.includes(f.type)) {
             showToast.error("Invalid file type. Use JPG, PNG, or WEBP.");
             return false;
         }
-        // 2. Check size (2MB)
-        if (file.size > 2 * 1024 * 1024) {
+        if (f.size > 2 * 1024 * 1024) {
             showToast.error("File is too large. Max 2MB.");
             return false;
         }
         return true;
     };
 
+    const loadImage = (f) => {
+        if (!validateFile(f)) return;
+        const img = new window.Image();
+        img.onload = () => {
+            if (img.width < 256 || img.height < 256) {
+                showToast.error("Image must be at least 256×256 pixels.");
+                return;
+            }
+            if (img.width > 4096 || img.height > 4096) {
+                showToast.error("Image must be at most 4096×4096 pixels.");
+                return;
+            }
+            setFile(f);
+            setImgElement(img);
+            setZoom(1);
+            setPosition({ x: 0, y: 0 });
+        };
+        img.onerror = () => showToast.error("Failed to load image.");
+        img.src = URL.createObjectURL(f);
+    };
+
+    const handleDragEvent = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === "dragenter" || e.type === "dragover") setDragActive(true);
+        else if (e.type === "dragleave") setDragActive(false);
+    };
+
     const handleDrop = (e) => {
         e.preventDefault();
         e.stopPropagation();
         setDragActive(false);
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            const selectedFile = e.dataTransfer.files[0];
-            if (validateFile(selectedFile)) {
-                setFile(selectedFile);
-                setPreviewUrl(URL.createObjectURL(selectedFile));
-            }
-        }
+        if (e.dataTransfer.files?.[0]) loadImage(e.dataTransfer.files[0]);
     };
 
-    const handleChange = (e) => {
-        if (e.target.files && e.target.files[0]) {
-            const selectedFile = e.target.files[0];
-            if (validateFile(selectedFile)) {
-                setFile(selectedFile);
-                setPreviewUrl(URL.createObjectURL(selectedFile));
-            }
-        }
+    const handleFileChange = (e) => {
+        if (e.target.files?.[0]) loadImage(e.target.files[0]);
     };
 
+    // ── Crop drag handlers ──
+    const handlePointerDown = (e) => {
+        if (!imgElement) return;
+        e.preventDefault();
+        setDragging(true);
+        setDragStart({ x: e.clientX, y: e.clientY });
+        setPosStart({ ...position });
+        if (cropAreaRef.current) cropAreaRef.current.setPointerCapture(e.pointerId);
+    };
+
+    const handlePointerMove = (e) => {
+        if (!dragging || !imgElement) return;
+        const dx = (e.clientX - dragStart.x) / 150;
+        const dy = (e.clientY - dragStart.y) / 150;
+        const maxOffset = (zoom - 1) / zoom;
+        setPosition({
+            x: Math.max(-maxOffset, Math.min(maxOffset, posStart.x + dx)),
+            y: Math.max(-maxOffset, Math.min(maxOffset, posStart.y + dy)),
+        });
+    };
+
+    const handlePointerUp = (e) => {
+        setDragging(false);
+        if (cropAreaRef.current) cropAreaRef.current.releasePointerCapture(e.pointerId);
+    };
+
+    const handleWheel = (e) => {
+        if (!imgElement) return;
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        setZoom(prev => {
+            const next = Math.max(1, Math.min(3, prev + delta));
+            // Clamp position on zoom change
+            const maxOffset = (next - 1) / next;
+            setPosition(p => ({
+                x: Math.max(-maxOffset, Math.min(maxOffset, p.x)),
+                y: Math.max(-maxOffset, Math.min(maxOffset, p.y)),
+            }));
+            return next;
+        });
+    };
+
+    const handleReset = () => {
+        setZoom(1);
+        setPosition({ x: 0, y: 0 });
+    };
+
+    // ── Get preview style ──
+    const getPreviewStyle = () => {
+        if (!imgElement) return {};
+        const scale = zoom;
+        const translateX = position.x * 50 * zoom;
+        const translateY = position.y * 50 * zoom;
+        return {
+            backgroundImage: `url(${imgElement.src})`,
+            backgroundSize: `${scale * 100}%`,
+            backgroundPosition: `${50 - translateX}% ${50 - translateY}%`,
+            backgroundRepeat: "no-repeat",
+        };
+    };
+
+    // ── Upload ──
     const handleUpload = async () => {
-        if (!file || !userId) return;
+        if (!file || !imgElement || !userId) return;
         setUploading(true);
         setProgress(0);
 
         let compressed;
         try {
-            compressed = await compressImage(file);
+            const canvas = renderCroppedCanvas(imgElement, position, zoom);
+            compressed = await compressCanvas(canvas);
         } catch (error) {
             showToast.error(error.message || "Failed to process photo.");
             setUploading(false);
@@ -144,7 +224,8 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                 uploadTask.cancel();
                 showToast.error("Upload timed out. Please try again.");
                 setUploading(false);
-            }, 120000);
+                setProgress(0);
+            }, 60000);
 
             uploadTask.on(
                 "state_changed",
@@ -155,8 +236,8 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                 (error) => {
                     clearTimeout(timeout);
                     if (error.code === "storage/canceled") {
-                        showToast.error("Upload cancelled.");
                         setUploading(false);
+                        setProgress(0);
                         return;
                     }
                     if (attempt < 3) {
@@ -164,8 +245,9 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                         setTimeout(() => attemptUpload(attempt + 1), 1000 * attempt);
                     } else {
                         console.error("Upload failed after retries:", error);
-                        showToast.error("Failed to upload photo after 3 attempts.");
+                        showToast.error("Failed to upload after 3 attempts.");
                         setUploading(false);
+                        setProgress(0);
                     }
                 },
                 async () => {
@@ -179,12 +261,14 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                         });
                         showToast.success("Profile photo updated!");
                         if (onUploadSuccess) onUploadSuccess(downloadUrl);
+                        eventBus.emit("PROFILE_UPDATED", { type: "avatar", url: downloadUrl });
                         onClose();
                     } catch (err) {
                         console.error("Post-upload failed:", err);
                         showToast.error("Photo uploaded but profile update failed.");
                     } finally {
                         setUploading(false);
+                        setProgress(0);
                     }
                 }
             );
@@ -195,67 +279,101 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={!uploading ? onClose : undefined} />
             <div className="relative bg-[#1A1D24] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
 
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/5">
                     <h2 className="text-lg font-bold text-white">Update Profile Photo</h2>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                    <button onClick={onClose} disabled={uploading} className="p-2 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50">
                         <X size={20} className="text-textSecondary" />
                     </button>
                 </div>
 
                 {/* Body */}
                 <div className="p-6 flex flex-col items-center">
+                    {!imgElement ? (
+                        /* Drop zone */
+                        <div
+                            className={`relative w-64 h-64 rounded-full border-4 border-dashed flex items-center justify-center overflow-hidden transition-all cursor-pointer ${dragActive ? "border-accent bg-accent/10" : "border-white/10 bg-black/20"}`}
+                            onDragEnter={handleDragEvent}
+                            onDragLeave={handleDragEvent}
+                            onDragOver={handleDragEvent}
+                            onDrop={handleDrop}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            {currentAvatar ? (
+                                <img src={currentAvatar} alt="Current" className="w-full h-full object-cover opacity-40 grayscale" />
+                            ) : (
+                                <div className="flex flex-col items-center text-textSecondary gap-2">
+                                    <Upload size={48} />
+                                    <span className="text-sm font-medium">Drag & Drop</span>
+                                </div>
+                            )}
+                            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp"
+                                className="hidden" onChange={handleFileChange} />
+                        </div>
+                    ) : (
+                        /* Crop area */
+                        <div className="flex flex-col items-center gap-4 w-full">
+                            <div
+                                ref={cropAreaRef}
+                                className="w-64 h-64 rounded-full overflow-hidden border-4 border-white/20 cursor-grab active:cursor-grabbing touch-none select-none"
+                                style={getPreviewStyle()}
+                                onPointerDown={handlePointerDown}
+                                onPointerMove={handlePointerMove}
+                                onPointerUp={handlePointerUp}
+                                onWheel={handleWheel}
+                            />
 
-                    {/* Preview / Upload Area */}
-                    <div
-                        className={`
-                            relative w-64 h-64 rounded-full border-4 border-dashed flex items-center justify-center overflow-hidden transition-all
-                            ${dragActive ? "border-accent bg-accent/10" : "border-white/10 bg-black/20"}
-                            ${previewUrl ? "border-solid border-white/20" : ""}
-                        `}
-                        onDragEnter={handleDrag}
-                        onDragLeave={handleDrag}
-                        onDragOver={handleDrag}
-                        onDrop={handleDrop}
-                    >
-                        {previewUrl ? (
-                            <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
-                        ) : currentAvatar ? (
-                            <img src={currentAvatar} alt="Current" className="w-full h-full object-cover opacity-50 grayscale" />
-                        ) : (
-                            <div className="flex flex-col items-center text-textSecondary gap-2">
-                                <ImageIcon size={48} />
-                                <span className="text-sm font-medium">Drag & Drop</span>
+                            {/* Zoom controls */}
+                            <div className="flex items-center gap-3 w-full max-w-[280px]">
+                                <button onClick={() => setZoom(prev => Math.max(1, prev - 0.1))} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+                                    <ZoomOut size={16} className="text-textSecondary" />
+                                </button>
+                                <input
+                                    type="range"
+                                    min="1"
+                                    max="3"
+                                    step="0.05"
+                                    value={zoom}
+                                    onChange={e => {
+                                        const val = parseFloat(e.target.value);
+                                        setZoom(val);
+                                        const maxOffset = (val - 1) / val;
+                                        setPosition(p => ({
+                                            x: Math.max(-maxOffset, Math.min(maxOffset, p.x)),
+                                            y: Math.max(-maxOffset, Math.min(maxOffset, p.y)),
+                                        }));
+                                    }}
+                                    className="flex-1 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-accent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
+                                />
+                                <button onClick={() => setZoom(prev => Math.min(3, prev + 0.1))} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+                                    <ZoomIn size={16} className="text-textSecondary" />
+                                </button>
+                                <button onClick={handleReset} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Reset">
+                                    <RotateCcw size={14} className="text-textSecondary" />
+                                </button>
                             </div>
-                        )}
-
-                        {/* Overlay Input */}
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp"
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            onChange={handleChange}
-                            disabled={uploading}
-                        />
-                    </div>
+                        </div>
+                    )}
 
                     <div className="mt-4 text-center">
-                        <p className="text-sm text-textSecondary">
-                            Supported: JPG, PNG, WEBP (Max 2MB)
+                        <p className="text-xs text-textSecondary/60">
+                            JPG, PNG, WEBP · Max 2MB · Min 256×256 · Recommended 512×512+
                         </p>
-                        <p className="text-xs text-textSecondary/60 mt-1">
-                            Min 200×200 · Max 4096×4096 · Auto-cropped to 512×512
-                        </p>
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="mt-2 text-accent text-sm font-semibold hover:underline"
-                        >
-                            Choose from computer
-                        </button>
+                        {imgElement && (
+                            <button onClick={() => { setFile(null); setImgElement(null); setZoom(1); setPosition({ x: 0, y: 0 }); }}
+                                className="mt-2 text-accent text-sm font-semibold hover:underline">
+                                Choose different photo
+                            </button>
+                        )}
+                        {!imgElement && (
+                            <button onClick={() => fileInputRef.current?.click()}
+                                className="mt-2 text-accent text-sm font-semibold hover:underline">
+                                Choose from computer
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -268,35 +386,23 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                                 <span>{progress}%</span>
                             </div>
                             <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                <div
-                                    className="h-full bg-accent rounded-full transition-all duration-300"
-                                    style={{ width: `${progress}%` }}
-                                />
+                                <div className="h-full bg-accent rounded-full transition-all duration-300"
+                                    style={{ width: `${progress}%` }} />
                             </div>
                         </div>
                     )}
                     <div className="flex justify-end gap-3">
-                    <button
-                        onClick={onClose}
-                        disabled={uploading}
-                        className="px-4 py-2 text-sm font-medium text-textSecondary hover:text-white transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleUpload}
-                        disabled={!file || uploading}
-                        className={`
-                            px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all
-                            ${!file || uploading ? "bg-white/5 text-white/20 cursor-not-allowed" : "bg-accent text-white hover:bg-accent/90 shadow-lg shadow-accent/20"}
-                        `}
-                    >
-                        {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                        {uploading ? "Uploading..." : "Save Photo"}
-                    </button>
+                        <button onClick={onClose} disabled={uploading}
+                            className="px-4 py-2 text-sm font-medium text-textSecondary hover:text-white transition-colors disabled:opacity-50">
+                            Cancel
+                        </button>
+                        <button onClick={handleUpload} disabled={!imgElement || uploading}
+                            className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${!imgElement || uploading ? "bg-white/5 text-white/20 cursor-not-allowed" : "bg-accent text-white hover:bg-accent/90 shadow-lg shadow-accent/20"}`}>
+                            {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                            {uploading ? "Uploading..." : "Save Photo"}
+                        </button>
                     </div>
                 </div>
-
             </div>
         </div>
     );

@@ -111,7 +111,7 @@ export default function ShowSlugPage() {
                     <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/50 to-transparent" />
                 </div>
 
-                <div className="relative container mx-auto px-4 pt-24 md:pt-32 pb-12">
+                <div className="relative container pt-24 md:pt-32 pb-12">
                     <div className="flex flex-col md:flex-row gap-8 items-start">
                         <div className="w-full md:w-80 flex-shrink-0">
                             <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-2xl">
@@ -180,13 +180,14 @@ export default function ShowSlugPage() {
                                 title={tv.name}
                                 posterPath={tv.poster_path}
                                 currentRating={userRating}
+                                releaseYear={tv.first_air_date ? tv.first_air_date.slice(0, 4) : ""}
                             />
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="container mx-auto px-4 py-12 space-y-16">
+            <div className="container py-12 space-y-16">
                 {tv.credits?.cast && tv.credits.cast.length > 0 && (
                     <section>
                         <h2 className="text-3xl font-bold mb-6">Cast</h2>

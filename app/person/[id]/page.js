@@ -199,7 +199,7 @@ export default function PersonPage() {
 
     return (
         <main className="min-h-screen bg-background">
-            <div className="container mx-auto px-4 py-12">
+            <div className="container py-12">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Left Column - Person Info */}
                     <div className="lg:col-span-1">

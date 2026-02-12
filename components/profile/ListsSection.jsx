@@ -1,19 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { List, Plus } from "lucide-react";
+import { List, Plus, Edit2 } from "lucide-react";
+import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { detectListType, getListTypeInfo } from "@/lib/listUtils";
 import CreateListModal from "./CreateListModal";
-import ViewListModal from "./ViewListModal";
 
 export default function ListsSection({ ownerId, isOwnProfile }) {
     const [lists, setLists] = useState([]);
     const [loading, setLoading] = useState(true);
     const [createOpen, setCreateOpen] = useState(false);
     const [editList, setEditList] = useState(null);
-    const [viewList, setViewList] = useState(null);
 
     const fetchLists = useCallback(async () => {
         if (!ownerId) return;
@@ -119,73 +118,75 @@ export default function ListsSection({ ownerId, isOwnProfile }) {
                 {lists.map((list) => {
                     const listType = detectListType(list.items);
                     const { Icon: TypeIcon, label: typeLabel, color: typeColor } = getListTypeInfo(listType);
+                    const previewItems = (list.items || []).slice(0, 4);
                     return (
-                    <button
+                    <Link
                         key={list.id}
-                        onClick={() => setViewList(list)}
-                        className="bg-secondary rounded-xl p-5 border border-white/5 text-left hover:border-white/15 hover:bg-secondary/80 transition-all group"
+                        href={`/list/${list.id}`}
+                        className="bg-secondary rounded-xl border border-white/5 hover:border-white/15 hover:bg-secondary/80 transition-all group block overflow-hidden"
                     >
-                        <div className="flex items-center gap-2 mb-1">
-                            <TypeIcon size={14} className={typeColor} />
-                            <h3 className="text-lg font-bold text-white group-hover:text-accent transition-colors truncate">
-                                {list.name}
-                            </h3>
-                        </div>
-                        {list.description && (
-                            <p className="text-sm text-textSecondary mb-3 line-clamp-2">{list.description}</p>
-                        )}
-                        <div className="flex items-center gap-3 text-xs text-textSecondary">
-                            <span className={typeColor}>{typeLabel}</span>
-                            <span>·</span>
-                            <span>{(list.items || []).length} items</span>
-                            {list.ranked && (
-                                <>
-                                    <span>·</span>
-                                    <span>Ranked</span>
-                                </>
-                            )}
-                        </div>
-                        {(list.items || []).length > 0 && (
-                            <div className="flex gap-2 mt-3 overflow-hidden">
-                                {list.items.slice(0, 5).map((item, idx) => (
-                                    <div key={item.id || idx} className="relative flex-shrink-0">
+                        {/* Poster grid preview */}
+                        {previewItems.length > 0 && (
+                            <div className="grid grid-cols-4 gap-0.5 h-32">
+                                {previewItems.map((item, idx) => (
+                                    <div key={item.id || idx} className="relative overflow-hidden">
                                         {item.poster_path ? (
                                             <img
-                                                src={`https://image.tmdb.org/t/p/w92${item.poster_path}`}
+                                                src={`https://image.tmdb.org/t/p/w185${item.poster_path}`}
                                                 alt={item.title}
-                                                className="w-10 h-14 rounded object-cover"
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                             />
                                         ) : (
-                                            <div className="w-10 h-14 rounded bg-white/10" />
+                                            <div className="w-full h-full bg-white/5" />
                                         )}
                                         {list.ranked && (
-                                            <span className="absolute -top-1 -left-1 bg-accent text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                                            <span className="absolute top-1 left-1 bg-accent text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center shadow">
                                                 {idx + 1}
                                             </span>
                                         )}
                                     </div>
                                 ))}
-                                {list.items.length > 5 && (
-                                    <div className="w-10 h-14 rounded bg-white/5 flex items-center justify-center text-xs text-textSecondary flex-shrink-0">
-                                        +{list.items.length - 5}
-                                    </div>
-                                )}
+                                {previewItems.length < 4 && Array.from({ length: 4 - previewItems.length }).map((_, i) => (
+                                    <div key={`empty_${i}`} className="bg-white/5" />
+                                ))}
                             </div>
                         )}
-                    </button>
+
+                        <div className="p-4">
+                            <div className="flex items-center gap-2 mb-1">
+                                <TypeIcon size={14} className={typeColor} />
+                                <h3 className="text-lg font-bold text-white group-hover:text-accent transition-colors truncate flex-1">
+                                    {list.name}
+                                </h3>
+                                {isOwnProfile && (
+                                    <button
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleEdit(list); }}
+                                        className="p-1.5 hover:bg-white/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                                        title="Edit list"
+                                    >
+                                        <Edit2 size={14} className="text-textSecondary" />
+                                    </button>
+                                )}
+                            </div>
+                            {list.description && (
+                                <p className="text-sm text-textSecondary mb-2 line-clamp-2">{list.description}</p>
+                            )}
+                            <div className="flex items-center gap-3 text-xs text-textSecondary">
+                                <span className={typeColor}>{typeLabel}</span>
+                                <span>·</span>
+                                <span>{(list.items || []).length} items</span>
+                                {list.ranked && (
+                                    <>
+                                        <span>·</span>
+                                        <span>Ranked</span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </Link>
                     );
                 })}
             </div>
-
-            {/* View detail modal */}
-            <ViewListModal
-                isOpen={!!viewList}
-                onClose={() => setViewList(null)}
-                list={viewList}
-                isOwnProfile={isOwnProfile}
-                onEdit={handleEdit}
-                onDeleted={fetchLists}
-            />
 
             {/* Create / Edit modal */}
             <CreateListModal

@@ -114,7 +114,7 @@ export default function MovieSlugPage() {
                     <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/50 to-transparent" />
                 </div>
 
-                <div className="relative container mx-auto px-4 pt-24 md:pt-32 pb-12">
+                <div className="relative container pt-24 md:pt-32 pb-12">
                     <div className="flex flex-col md:flex-row gap-8 items-start">
                         <div className="w-full md:w-80 flex-shrink-0">
                             <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-2xl">
@@ -183,6 +183,7 @@ export default function MovieSlugPage() {
                                 title={movie.title}
                                 posterPath={movie.poster_path}
                                 currentRating={userRating}
+                                releaseYear={movie.release_date ? movie.release_date.slice(0, 4) : ""}
                             />
                         </div>
                     </div>
@@ -190,7 +191,7 @@ export default function MovieSlugPage() {
             </div>
 
             {/* Content Sections */}
-            <div className="container mx-auto px-4 py-12 space-y-16">
+            <div className="container py-12 space-y-16">
                 {movie.credits?.cast && movie.credits.cast.length > 0 && (
                     <section>
                         <h2 className="text-3xl font-bold mb-6">Cast</h2>

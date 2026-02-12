@@ -106,7 +106,7 @@ function NavbarContent() {
                     WebkitBackdropFilter: scrolled ? "blur(10px)" : "none",
                 }}
             >
-                <div className="container mx-auto px-6">
+                <div className="container">
                     <div className="flex items-center justify-between h-16">
                         <Link
                             href="/"

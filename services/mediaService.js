@@ -198,9 +198,36 @@ export const mediaService = {
         return success;
     },
 
-    async rateMedia(user, mediaId, mediaType, rating, mediaData) {
+    async rateMedia(user, mediaId, mediaType, rating, mediaData, reviewText = "", extra = {}) {
         if (!user) return false;
         const uniqueId = getUniqueId(user.uid, mediaType, mediaId);
+
+        const ratingDoc = {
+            userId: user.uid,
+            mediaId: Number(mediaId),
+            mediaType,
+            rating: rating || 0,
+            title: mediaData.title || mediaData.name || "",
+            poster_path: mediaData.poster_path || "",
+            review: reviewText || "",
+            ratedAt: serverTimestamp(),
+            username: user.username || "",
+        };
+
+        // Merge extra fields: watchedDate, liked, viewCount, tags
+        if (extra.watchedDate) ratingDoc.watchedDate = extra.watchedDate;
+        if (typeof extra.liked === "boolean") ratingDoc.liked = extra.liked;
+        if (typeof extra.viewCount === "number" && extra.viewCount > 0) ratingDoc.viewCount = extra.viewCount;
+        if (Array.isArray(extra.tags)) ratingDoc.tags = extra.tags;
+
+        const watchedDoc = {
+            userId: user.uid,
+            mediaId: Number(mediaId),
+            mediaType,
+            title: mediaData.title || mediaData.name || "",
+            poster_path: mediaData.poster_path || "",
+            addedAt: serverTimestamp(),
+        };
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -209,20 +236,8 @@ export const mediaService = {
                     await transaction.get(doc(db, STATUS_COLLECTIONS[status], uniqueId));
                 }
 
-                transaction.set(doc(db, "user_ratings", uniqueId), {
-                    userId: user.uid, mediaId: Number(mediaId), mediaType, rating,
-                    title: mediaData.title || mediaData.name || "",
-                    poster_path: mediaData.poster_path || "",
-                    ratedAt: serverTimestamp(),
-                }, { merge: true });
-
-                transaction.set(doc(db, "user_watched", uniqueId), {
-                    userId: user.uid, mediaId: Number(mediaId), mediaType,
-                    title: mediaData.title || mediaData.name || "",
-                    poster_path: mediaData.poster_path || "",
-                    addedAt: serverTimestamp(),
-                }, { merge: true });
-
+                transaction.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
+                transaction.set(doc(db, "user_watched", uniqueId), watchedDoc, { merge: true });
                 transaction.delete(doc(db, "user_watchlist", uniqueId));
                 transaction.delete(doc(db, "user_paused", uniqueId));
                 transaction.delete(doc(db, "user_dropped", uniqueId));
@@ -236,18 +251,8 @@ export const mediaService = {
             console.error("Error rating media:", error);
             try {
                 const batch = writeBatch(db);
-                batch.set(doc(db, "user_ratings", uniqueId), {
-                    userId: user.uid, mediaId: Number(mediaId), mediaType, rating,
-                    title: mediaData.title || mediaData.name || "",
-                    poster_path: mediaData.poster_path || "",
-                    ratedAt: serverTimestamp(),
-                }, { merge: true });
-                batch.set(doc(db, "user_watched", uniqueId), {
-                    userId: user.uid, mediaId: Number(mediaId), mediaType,
-                    title: mediaData.title || mediaData.name || "",
-                    poster_path: mediaData.poster_path || "",
-                    addedAt: serverTimestamp(),
-                }, { merge: true });
+                batch.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
+                batch.set(doc(db, "user_watched", uniqueId), watchedDoc, { merge: true });
                 batch.delete(doc(db, "user_watchlist", uniqueId));
                 batch.delete(doc(db, "user_paused", uniqueId));
                 batch.delete(doc(db, "user_dropped", uniqueId));
@@ -277,6 +282,28 @@ export const mediaService = {
             console.error("Error removing rating:", error);
             showToast.error("Failed to remove rating");
             return false;
+        }
+    },
+
+    async getReview(user, mediaId, mediaType) {
+        if (!user) return null;
+        const uniqueId = getUniqueId(user.uid, mediaType, mediaId);
+        try {
+            const snap = await getDoc(doc(db, "user_ratings", uniqueId));
+            if (snap.exists()) {
+                const data = snap.data();
+                return {
+                    rating: data.rating || 0,
+                    review: data.review || "",
+                    watchedDate: data.watchedDate || "",
+                    liked: data.liked || false,
+                    viewCount: data.viewCount || 1,
+                    tags: data.tags || [],
+                };
+            }
+            return null;
+        } catch {
+            return null;
         }
     },
 

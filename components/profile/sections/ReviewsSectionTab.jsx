@@ -2,10 +2,10 @@
 
 import ReviewsSection from "../ReviewsSection";
 
-export default function ReviewsSectionTab() {
+export default function ReviewsSectionTab({ userId, username }) {
     return (
         <div className="space-y-8">
-            <ReviewsSection />
+            <ReviewsSection userId={userId} username={username} />
         </div>
     );
 }

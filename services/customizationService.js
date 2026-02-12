@@ -74,7 +74,7 @@ export const customizationService = {
             });
 
             store.completeOptimisticUpdate(key);
-            showToast.success("Changed your poster · View Profile");
+            showToast.linked("Changed your poster", `/${user.username || user.uid}`);
 
             return { success: true };
         } catch (error) {
@@ -127,7 +127,7 @@ export const customizationService = {
             });
 
             store.completeOptimisticUpdate(key);
-            showToast.success("Changed your banner · View Profile");
+            showToast.linked("Changed your banner", `/${user.username || user.uid}`);
 
             return { success: true };
         } catch (error) {

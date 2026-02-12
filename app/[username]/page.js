@@ -156,7 +156,7 @@ function UsernameProfileContent() {
             case "diary":
                 return <DiarySection />;
             case "reviews":
-                return <ReviewsSectionTab />;
+                return <ReviewsSectionTab userId={profileUserId} username={profileData?.username || usernameParam} />;
             case "watchlist":
                 return <WatchlistSection />;
             case "lists":
@@ -238,7 +238,7 @@ function UsernameProfileContent() {
                     <div className="absolute inset-0 bg-black/20" />
                 </div>
 
-                <div className="container mx-auto px-4 relative z-10" style={{ minHeight: "70vh", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                <div className="container relative z-10" style={{ minHeight: "70vh", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
                     <div className="pb-8 pt-24">
                         <div className="flex items-center">
                             <div className="flex items-center gap-5">
@@ -277,7 +277,7 @@ function UsernameProfileContent() {
                 </div>
             </div>
 
-            <div className="container mx-auto px-4 pt-2 pb-8">
+            <div className="container pt-2 pb-8">
                 <ProfileTabs activeSection={activeSection} onSectionChange={handleSectionChange} />
                 <ErrorBoundary>
                     {renderSection()}

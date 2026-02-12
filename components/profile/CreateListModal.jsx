@@ -1,16 +1,15 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { X, Search, Loader2, GripVertical, ChevronRight, ChevronDown, Plus, Film, Tv } from "lucide-react";
+import { X, Search, Loader2, GripVertical, ChevronRight, ChevronDown, Plus, Film, Tv, Clapperboard, Layers } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import showToast from "@/lib/toast";
 
-const MEDIA_FILTERS = [
-    { value: "multi", label: "All" },
-    { value: "movie", label: "Movies" },
-    { value: "tv", label: "Series" },
-    { value: "short", label: "Short Films" },
+const LIST_TYPES = [
+    { value: "movie", label: "Movie", icon: "🎬" },
+    { value: "tv", label: "Series", icon: "📺" },
+    { value: "hybrid", label: "Hybrid", icon: "📦" },
 ];
 
 const TMDB_IMG = "https://image.tmdb.org/t/p";
@@ -25,6 +24,7 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
     const [ranked, setRanked] = useState(false);
     const [items, setItems] = useState([]);
     const [searchQuery, setSearchQuery] = useState("");
+    const [listType, setListType] = useState("hybrid");
     const [searchFilter, setSearchFilter] = useState("multi");
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
@@ -51,12 +51,13 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
     useEffect(() => {
         if (!isOpen) {
             setName(""); setDescription(""); setRanked(false); setItems([]);
-            setSearchQuery(""); setSearchResults([]); setSearchFilter("multi");
+            setSearchQuery(""); setSearchResults([]); setSearchFilter("multi"); setListType("hybrid");
             setExpandedSeries(null); setSeasons([]); setExpandedSeason(null); setEpisodes({});
         } else if (editList) {
             setName(editList.name || "");
             setDescription(editList.description || "");
             setRanked(editList.ranked || false);
+            setListType(editList.listType || "hybrid");
             setItems((editList.items || []).map((item) => ({
                 id: item.id,
                 title: item.title || "",
@@ -119,6 +120,14 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
     useEffect(() => {
         setExpandedSeries(null); setSeasons([]); setExpandedSeason(null); setEpisodes({});
     }, [searchFilter]);
+
+    // Sync search filter when listType changes
+    useEffect(() => {
+        if (listType === "movie") setSearchFilter("movie");
+        else if (listType === "tv") setSearchFilter("tv");
+        else setSearchFilter("multi"); // hybrid
+        setSearchQuery(""); setSearchResults([]);
+    }, [listType]);
 
     // ── Series → Season → Episode fetching ──
     const fetchSeasons = async (seriesId) => {
@@ -256,6 +265,7 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
                 userId,
                 name: name.trim(),
                 description: description.trim(),
+                listType,
                 ranked,
                 items: items.map((item, idx) => ({
                     id: item.id,
@@ -274,8 +284,8 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
                 showToast.success("List updated!");
             } else {
                 payload.createdAt = serverTimestamp();
-                await addDoc(collection(db, "user_lists"), payload);
-                showToast.success("List created!");
+                const docRef = await addDoc(collection(db, "user_lists"), payload);
+                showToast.linked("List created!", `/list/${docRef.id}`);
             }
             if (onCreated) onCreated();
             onClose();
@@ -325,6 +335,20 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
                             <span className="text-sm text-white">Ranked list</span>
                         </label>
 
+                        {/* Type selector */}
+                        <div>
+                            <label className="block text-sm font-medium text-textSecondary mb-2">Type</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {LIST_TYPES.map(t => (
+                                    <button key={t.value} onClick={() => setListType(t.value)}
+                                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 ${listType === t.value ? "bg-accent text-white ring-1 ring-accent" : "bg-white/5 text-textSecondary hover:bg-white/10"}`}>
+                                        <span>{t.icon}</span>
+                                        <span>{t.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         {/* Items list */}
                         {items.length > 0 && (
                             <div>
@@ -364,17 +388,19 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
 
                     {/* Right: search + results */}
                     <div className="flex-1 flex flex-col overflow-hidden p-6">
-                        {/* Filter tabs */}
-                        <div className="flex gap-2 mb-3 shrink-0">
-                            {MEDIA_FILTERS.map(f => (
-                                <button key={f.value} onClick={() => { setSearchFilter(f.value); setSearchQuery(""); setSearchResults([]); }}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                                        searchFilter === f.value ? "bg-accent text-white" : "bg-white/5 text-textSecondary hover:bg-white/10"
-                                    }`}>
-                                    {f.label}
-                                </button>
-                            ))}
-                        </div>
+                        {/* Filter tabs — only for hybrid type */}
+                        {listType === "hybrid" && (
+                            <div className="flex gap-2 mb-3 shrink-0">
+                                {[{ value: "multi", label: "All" }, { value: "movie", label: "Movies" }, { value: "tv", label: "Series" }].map(f => (
+                                    <button key={f.value} onClick={() => { setSearchFilter(f.value); setSearchQuery(""); setSearchResults([]); }}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                            searchFilter === f.value ? "bg-accent text-white" : "bg-white/5 text-textSecondary hover:bg-white/10"
+                                        }`}>
+                                        {f.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
 
                         {/* Search input */}
                         <div className="relative shrink-0 mb-3">

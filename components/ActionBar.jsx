@@ -45,6 +45,7 @@ export default function ActionBar({
     title,
     posterPath,
     currentRating = 0,
+    releaseYear = "",
 }) {
     const { user } = useAuth();
 
@@ -208,22 +209,15 @@ export default function ActionBar({
                             <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
                             <div className="absolute top-full mt-2 right-0 bg-secondary border border-white/10 rounded-lg shadow-xl z-50 min-w-[200px]">
                                 <button
-                                    onClick={handlePause}
+                                    onClick={() => { if (!user) { showToast.info("Please sign in"); return; } setShowAddToList(true); setShowMoreMenu(false); }}
                                     className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
                                 >
-                                    <Pause size={16} />
-                                    {status.isPaused ? "Paused" : "Pause"}
-                                </button>
-                                <button
-                                    onClick={handleDrop}
-                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
-                                >
-                                    <X size={16} />
-                                    {status.isDropped ? "Dropped" : "Drop"}
+                                    <ListPlus size={16} />
+                                    Add to List
                                 </button>
                                 <button
                                     onClick={() => { setShowPosterSelector(true); setShowMoreMenu(false); }}
-                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
+                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
                                 >
                                     <ImageIcon size={16} className={isPosterCustomized ? "text-accent" : ""} />
                                     <div className="flex flex-col items-start">
@@ -233,7 +227,7 @@ export default function ActionBar({
                                 </button>
                                 <button
                                     onClick={() => { setShowBannerSelector(true); setShowMoreMenu(false); }}
-                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
+                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
                                 >
                                     <ImageIcon size={16} className={isBannerCustomized ? "text-accent" : ""} />
                                     <div className="flex flex-col items-start">
@@ -242,18 +236,25 @@ export default function ActionBar({
                                     </div>
                                 </button>
                                 <button
+                                    onClick={handlePause}
+                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
+                                >
+                                    <Pause size={16} />
+                                    {status.isPaused ? "Paused" : "Pause"}
+                                </button>
+                                <button
+                                    onClick={handleDrop}
+                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
+                                >
+                                    <X size={16} />
+                                    {status.isDropped ? "Dropped" : "Drop"}
+                                </button>
+                                <button
                                     onClick={handleShare}
                                     className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
                                 >
                                     <Share2 size={16} />
                                     Share
-                                </button>
-                                <button
-                                    onClick={() => { if (!user) { showToast.info("Please sign in"); return; } setShowAddToList(true); setShowMoreMenu(false); }}
-                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
-                                >
-                                    <ListPlus size={16} />
-                                    Add to List
                                 </button>
                             </div>
                         </>
@@ -310,18 +311,11 @@ export default function ActionBar({
                         <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowMoreMenu(false)} />
                         <div className="fixed bottom-20 left-4 right-4 bg-secondary border border-white/10 rounded-lg shadow-xl z-50">
                             <button
-                                onClick={handlePause}
+                                onClick={() => { if (!user) { showToast.info("Please sign in"); return; } setShowAddToList(true); setShowMoreMenu(false); }}
                                 className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3"
                             >
-                                <Pause size={18} />
-                                {status.isPaused ? "Paused" : "Pause"}
-                            </button>
-                            <button
-                                onClick={handleDrop}
-                                className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
-                            >
-                                <X size={18} />
-                                {status.isDropped ? "Dropped" : "Drop"}
+                                <ListPlus size={18} />
+                                Add to List
                             </button>
                             <button
                                 onClick={() => { setShowPosterSelector(true); setShowMoreMenu(false); }}
@@ -344,18 +338,25 @@ export default function ActionBar({
                                 </div>
                             </button>
                             <button
+                                onClick={handlePause}
+                                className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
+                            >
+                                <Pause size={18} />
+                                {status.isPaused ? "Paused" : "Pause"}
+                            </button>
+                            <button
+                                onClick={handleDrop}
+                                className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
+                            >
+                                <X size={18} />
+                                {status.isDropped ? "Dropped" : "Drop"}
+                            </button>
+                            <button
                                 onClick={handleShare}
                                 className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
                             >
                                 <Share2 size={18} />
                                 Share
-                            </button>
-                            <button
-                                onClick={() => { if (!user) { showToast.info("Please sign in"); return; } setShowAddToList(true); setShowMoreMenu(false); }}
-                                className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
-                            >
-                                <ListPlus size={18} />
-                                Add to List
                             </button>
                         </div>
                     </>
@@ -371,6 +372,7 @@ export default function ActionBar({
                     title={title}
                     poster_path={posterPath}
                     currentRating={status.rating}
+                    releaseYear={releaseYear}
                 />
             )}
 

@@ -243,7 +243,7 @@ export default function HomePage() {
                         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
                     </div>
 
-                    <div className="container mx-auto px-4 h-full flex flex-col justify-end pb-20 relative z-10">
+                    <div className="container h-full flex flex-col justify-end pb-20 relative z-10">
                         <div className="max-w-2xl">
                             <h1 className="text-4xl md:text-6xl font-bold mb-4">
                                 {featuredMovie.title || featuredMovie.name}
@@ -266,7 +266,7 @@ export default function HomePage() {
 
             {/* Trending Movies */}
             {trendingMovies.length > 0 && (
-                <section className="container mx-auto px-4 py-16">
+                <section className="container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <TrendingUp className="text-accent" size={32} />
                         <h2 className="text-3xl md:text-4xl font-bold">Trending Movies</h2>
@@ -281,7 +281,7 @@ export default function HomePage() {
 
             {/* Discover Movies */}
             {discoverMovies.length > 0 && (
-                <section className="container mx-auto px-4 py-16">
+                <section className="container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <Sparkles className="text-accent" size={32} />
                         <h2 className="text-3xl md:text-4xl font-bold">Discover Movies</h2>
@@ -296,7 +296,7 @@ export default function HomePage() {
 
             {/* Trending TV */}
             {trendingTV.length > 0 && (
-                <section className="container mx-auto px-4 py-16">
+                <section className="container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <TrendingUp className="text-accent" size={32} />
                         <h2 className="text-3xl md:text-4xl font-bold">Trending Shows</h2>
@@ -311,7 +311,7 @@ export default function HomePage() {
 
             {/* Discover TV Shows */}
             {discoverTV.length > 0 && (
-                <section className="container mx-auto px-4 py-16">
+                <section className="container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <Tv className="text-accent" size={32} />
                         <h2 className="text-3xl md:text-4xl font-bold">Discover Shows</h2>
@@ -326,7 +326,7 @@ export default function HomePage() {
 
             {/* CTA Section - Only for non-logged-in users */}
             {!user && (
-                <section className="container mx-auto px-4 py-16">
+                <section className="container py-16">
                     <div className="bg-secondary rounded-2xl p-8 md:p-12 text-center border border-white/5">
                         <h2 className="text-3xl md:text-4xl font-bold mb-4">
                             Watch blind. Rate honestly.

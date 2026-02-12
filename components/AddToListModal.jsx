@@ -72,7 +72,7 @@ export default function AddToListModal({ isOpen, onClose, userId, mediaId, media
             setLists(prev => prev.map(l =>
                 l.id === list.id ? { ...l, items: updatedItems } : l
             ));
-            showToast.success(`Added to "${list.name}"`);
+            showToast.linked(`Added to "${list.name}"`, `/list/${list.id}`);
         } catch (error) {
             console.error("Error adding to list:", error);
             showToast.error("Failed to add to list");
@@ -101,7 +101,7 @@ export default function AddToListModal({ isOpen, onClose, userId, mediaId, media
             };
             const docRef = await addDoc(collection(db, "user_lists"), payload);
             setLists(prev => [{ id: docRef.id, ...payload, items: [newItem] }, ...prev]);
-            showToast.success(`Created "${newListName.trim()}" and added`);
+            showToast.linked(`Created "${newListName.trim()}" and added`, `/list/${docRef.id}`);
             setShowCreate(false);
             setNewListName("");
         } catch (error) {

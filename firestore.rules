@@ -20,47 +20,47 @@ service cloud.firestore {
 
     // ─── Watched ───
     match /user_watched/{docId} {
-      allow read: if isOwner();
+      allow read: if request.auth != null;
       allow create, update: if isOwnerCreate();
       allow delete: if isOwner();
     }
 
     // ─── Watchlist ───
     match /user_watchlist/{docId} {
-      allow read: if isOwner();
+      allow read: if request.auth != null;
       allow create, update: if isOwnerCreate();
       allow delete: if isOwner();
     }
 
     // ─── Paused ───
     match /user_paused/{docId} {
-      allow read: if isOwner();
+      allow read: if request.auth != null;
       allow create, update: if isOwnerCreate();
       allow delete: if isOwner();
     }
 
     // ─── Dropped ───
     match /user_dropped/{docId} {
-      allow read: if isOwner();
+      allow read: if request.auth != null;
       allow create, update: if isOwnerCreate();
       allow delete: if isOwner();
     }
 
     // ─── Ratings ───
     match /user_ratings/{docId} {
-      allow read: if isOwner();
+      allow read: if request.auth != null;
       allow create, update: if isOwnerCreate();
       allow delete: if isOwner();
     }
 
     // ─── Favorites ───
     match /favorites_movies/{docId} {
-      allow read: if isOwner();
+      allow read: if request.auth != null;
       allow create, update: if isOwnerCreate();
       allow delete: if isOwner();
     }
     match /favorites_shows/{docId} {
-      allow read: if isOwner();
+      allow read: if request.auth != null;
       allow create, update: if isOwnerCreate();
       allow delete: if isOwner();
     }

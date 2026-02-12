@@ -28,6 +28,7 @@ import {
     writeBatch,
 } from "firebase/firestore";
 import showToast from "@/lib/toast";
+import eventBus from "@/lib/eventBus";
 
 const AuthContext = createContext({});
 
@@ -123,6 +124,24 @@ export const AuthProvider = ({ children }) => {
             setLoading(false);
         });
         return () => unsubscribe();
+    }, [attachProfileData]);
+
+    // ──── Listen for profile updates (avatar, etc.) ────
+    useEffect(() => {
+        const handleProfileUpdate = (data) => {
+            if (!auth.currentUser) return;
+            if (data?.type === "avatar" && data?.url) {
+                // Immediately update user state with new photo
+                setUser(prev => prev ? { ...prev, photoURL: data.url } : prev);
+            } else {
+                // Refetch profile from Firestore for other updates
+                attachProfileData(auth.currentUser).then(u => {
+                    if (u) setUser({ ...u });
+                });
+            }
+        };
+        eventBus.on("PROFILE_UPDATED", handleProfileUpdate);
+        return () => eventBus.off("PROFILE_UPDATED", handleProfileUpdate);
     }, [attachProfileData]);
 
     // ──── Email Sign Up ────

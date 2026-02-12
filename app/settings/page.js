@@ -201,7 +201,7 @@ export default function SettingsPage() {
 
     return (
         <main className="min-h-screen bg-background">
-            <div className="container mx-auto px-4 py-12 max-w-4xl">
+            <div className="container py-12 max-w-4xl">
                 <h1 className="text-4xl font-bold mb-8">Settings</h1>
 
                 {/* Profile Picture */}
