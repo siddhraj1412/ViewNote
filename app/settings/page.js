@@ -5,15 +5,16 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, deleteDoc, writeBatch } from "firebase/firestore";
-import { User, FileText, Film, Tv, Play, Palette, AtSign, Check, X, Loader2 } from "lucide-react";
+import { User, FileText, Film, Tv, Play, Palette, AtSign, Check, X, Loader2, Trash2, AlertTriangle } from "lucide-react";
 import showToast from "@/lib/toast";
 import FavoritesEditDialog from "@/components/settings/FavoritesEditDialog";
 import BannerSelectionModal from "@/components/settings/BannerSelectionModal";
+import DeleteAccountModal from "@/components/settings/DeleteAccountModal";
 import eventBus from "@/lib/eventBus";
 import { validateUsername } from "@/lib/slugify";
 
 export default function SettingsPage() {
-    const { user, loading: authLoading, logout } = useAuth();
+    const { user, loading: authLoading, logout, deleteAccount, getFirebaseErrorMessage } = useAuth();
     const router = useRouter();
     const [profile, setProfile] = useState({
         profile_picture_url: "",
@@ -35,6 +36,9 @@ export default function SettingsPage() {
     const [usernameStatus, setUsernameStatus] = useState(null); // null | 'checking' | 'available' | 'taken' | 'invalid' | 'same'
     const [savingUsername, setSavingUsername] = useState(false);
     const usernameTimerRef = useRef(null);
+
+    // Delete account state
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
     useEffect(() => {
         if (!authLoading && !user) {
@@ -236,6 +240,16 @@ export default function SettingsPage() {
         router.push("/login");
     };
 
+    const handleDeleteAccount = async (password) => {
+        try {
+            await deleteAccount(password);
+            showToast.success("Account deleted successfully.");
+            router.replace("/login");
+        } catch (err) {
+            throw err; // Let the modal display the error
+        }
+    };
+
     if (authLoading || loading) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
@@ -416,6 +430,24 @@ export default function SettingsPage() {
                         Logout
                     </button>
                 </section>
+
+                {/* Danger Zone — Delete Account */}
+                <section className="mb-8 p-6 bg-secondary rounded-xl border border-red-500/20">
+                    <div className="flex items-center gap-4 mb-4">
+                        <AlertTriangle className="text-red-500" size={24} />
+                        <h2 className="text-2xl font-bold text-red-400">Danger Zone</h2>
+                    </div>
+                    <p className="text-textSecondary text-sm mb-4">
+                        Permanently delete your account and all associated data. This action cannot be undone.
+                    </p>
+                    <button
+                        onClick={() => setDeleteModalOpen(true)}
+                        className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium flex items-center gap-2"
+                    >
+                        <Trash2 size={16} />
+                        Delete Account
+                    </button>
+                </section>
             </div>
 
             {/* Favorites Edit Dialogs */}
@@ -440,6 +472,15 @@ export default function SettingsPage() {
                 isOpen={bannerModalOpen}
                 onClose={() => setBannerModalOpen(false)}
                 onSelect={handleBannerSelect}
+            />
+
+            {/* Delete Account Modal */}
+            <DeleteAccountModal
+                isOpen={deleteModalOpen}
+                onClose={() => setDeleteModalOpen(false)}
+                onConfirm={handleDeleteAccount}
+                username={user?.username || user?.email || ""}
+                isGoogleUser={user?.providerData?.some((p) => p.providerId === "google.com") || false}
             />
         </main>
     );

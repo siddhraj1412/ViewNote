@@ -20,7 +20,7 @@ export default function SignupPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
-    const { signUp, signInWithGoogle } = useAuth();
+    const { signUp, signInWithGoogle, getFirebaseErrorMessage } = useAuth();
     const router = useRouter();
     const usernameCheckTimeout = useRef(null);
 
@@ -94,10 +94,11 @@ export default function SignupPage() {
         setLoading(true);
         setError("");
         try {
-            await signUp(email, password, undefined, username.trim() || undefined);
-            router.push("/profile");
+            const result = await signUp(email, password, undefined, username.trim() || undefined);
+            const uname = result?.user?.username;
+            router.push(uname ? `/${uname}` : "/profile");
         } catch (err) {
-            setError("Failed to create account. Email may be already in use.");
+            setError(getFirebaseErrorMessage(err));
         } finally {
             setLoading(false);
         }
@@ -107,10 +108,15 @@ export default function SignupPage() {
         setGoogleLoading(true);
         setError("");
         try {
-            await signInWithGoogle();
-            router.push("/profile");
+            const result = await signInWithGoogle();
+            if (result?.isNewUser || result?.user?.needsUsername) {
+                router.push("/onboarding/username");
+            } else {
+                const uname = result?.user?.username;
+                router.push(uname ? `/${uname}` : "/profile");
+            }
         } catch (err) {
-            setError("Google sign up failed. Please try again.");
+            setError(getFirebaseErrorMessage(err));
         } finally {
             setGoogleLoading(false);
         }

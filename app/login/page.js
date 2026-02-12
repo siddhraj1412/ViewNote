@@ -14,7 +14,7 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
-    const { signIn, signInWithGoogle } = useAuth();
+    const { signIn, signInWithGoogle, getFirebaseErrorMessage } = useAuth();
     const router = useRouter();
 
     const handleEmailLogin = async (e) => {
@@ -22,10 +22,11 @@ export default function LoginPage() {
         setLoading(true);
         setError("");
         try {
-            await signIn(email, password);
-            router.push("/profile");
+            const result = await signIn(email, password);
+            const uname = result?.user?.username;
+            router.push(uname ? `/${uname}` : "/profile");
         } catch (err) {
-            setError("Invalid email or password");
+            setError(getFirebaseErrorMessage(err));
         } finally {
             setLoading(false);
         }
@@ -35,10 +36,15 @@ export default function LoginPage() {
         setGoogleLoading(true);
         setError("");
         try {
-            await signInWithGoogle();
-            router.push("/profile");
+            const result = await signInWithGoogle();
+            if (result?.isNewUser || result?.user?.needsUsername) {
+                router.push("/onboarding/username");
+            } else {
+                const uname = result?.user?.username;
+                router.push(uname ? `/${uname}` : "/profile");
+            }
         } catch (err) {
-            setError("Google sign in failed. Please try again.");
+            setError(getFirebaseErrorMessage(err));
         } finally {
             setGoogleLoading(false);
         }
