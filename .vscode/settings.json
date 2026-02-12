@@ -1,3 +1,11 @@
 {
+  // Ensure VS Code uses the system Git and enable helpful defaults
+  "git.path": "C:\\Program Files\\Git\\cmd\\git.exe",
+  "git.enabled": true,
+  "git.enableSmartCommit": true,
+  "git.autofetch": true,
+  "git.confirmSync": false
+}
+{
     "terminal.integrated.gpuAcceleration": "off"
 }
