@@ -47,6 +47,17 @@ export default function WatchedSection({ userId }) {
         };
     }, [fetchWatched]);
 
+    // Attach realtime listener
+    useEffect(() => {
+        if (!ownerId) return;
+        const cleanup = mediaService.attachProfileListeners(ownerId, (key, items) => {
+            if (key === "watched") {
+                setWatchedItems(items);
+            }
+        });
+        return cleanup;
+    }, [ownerId]);
+
     if (loading) {
         return <div className="text-center py-12 text-textSecondary">Loading history...</div>;
     }

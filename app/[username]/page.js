@@ -11,7 +11,6 @@ import { RESERVED_ROUTES, getProfileUrl } from "@/lib/slugify";
 import ProfileBio from "@/components/profile/ProfileBio";
 import ProfileTabs from "@/components/profile/ProfileTabs";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import AvatarUploadModal from "@/components/AvatarUploadModal";
 import ProfileSection from "@/components/profile/sections/ProfileSection";
 import WatchingSection from "@/components/profile/sections/WatchingSection";
 import WatchedSectionTab from "@/components/profile/sections/WatchedSectionTab";
@@ -45,7 +44,6 @@ function UsernameProfileContent() {
     const [bannerUrl, setBannerUrl] = useState(null);
     const [bannerAspectRatio, setBannerAspectRatio] = useState(2.5);
     const [profileData, setProfileData] = useState(null);
-    const [showAvatarModal, setShowAvatarModal] = useState(false);
 
     // Sync tab state when URL changes
     useEffect(() => {
@@ -162,7 +160,7 @@ function UsernameProfileContent() {
             case "watchlist":
                 return <WatchlistSection />;
             case "lists":
-                return <ListsSectionTab />;
+                return <ListsSectionTab userId={profileUserId} isOwnProfile={user?.uid === profileUserId} />;
             case "likes":
                 return <LikesSection />;
             case "paused":
@@ -212,7 +210,7 @@ function UsernameProfileContent() {
         );
     }
 
-    const displayName = profileData?.displayName || user.displayName || user.email?.split("@")[0];
+    const displayName = profileData?.username || profileData?.displayName || user.username || user.displayName || user.email?.split("@")[0];
     const isOwnProfile = user?.uid === profileUserId;
 
     return (
@@ -242,25 +240,20 @@ function UsernameProfileContent() {
 
                 <div className="container mx-auto px-4 relative z-10" style={{ minHeight: "70vh", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
                     <div className="pb-8 pt-24">
-                        <div className="flex items-center mb-4">
-                            <div className="flex items-center gap-6">
+                        <div className="flex items-center">
+                            <div className="flex items-center gap-5">
                                 <div
-                                    className={`w-24 h-24 rounded-full bg-secondary flex items-center justify-center text-4xl font-bold border-4 border-background shadow-xl overflow-hidden relative group ${isOwnProfile ? "cursor-pointer" : ""}`}
-                                    onClick={() => isOwnProfile && setShowAvatarModal(true)}
+                                    className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center text-4xl font-bold border-4 border-background shadow-xl overflow-hidden relative"
                                 >
                                     {profileData?.profile_picture_url ? (
-                                        <img src={profileData.profile_picture_url} alt="Profile" className="w-full h-full object-cover" />
+                                        <img src={profileData.profile_picture_url} alt="Profile" className="w-full h-full object-cover"
+                                            onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; e.target.parentElement.textContent = (profileData?.username?.[0] || 'U').toUpperCase(); }} />
                                     ) : (
-                                        user.email?.[0].toUpperCase()
-                                    )}
-                                    {isOwnProfile && (
-                                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <span className="text-xs text-white font-medium">Edit</span>
-                                        </div>
+                                        (profileData?.username?.[0] || user.username?.[0] || user.email?.[0] || "U").toUpperCase()
                                     )}
                                 </div>
-                                <div className="flex flex-col gap-2">
-                                    <div className="flex items-center gap-4">
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-3">
                                         <h1 className="text-4xl font-bold text-white drop-shadow-lg leading-none">
                                             {displayName}
                                         </h1>
@@ -273,10 +266,8 @@ function UsernameProfileContent() {
                                             </button>
                                         )}
                                     </div>
-                                    {profileData?.username && (
-                                        <p className="text-white/50 text-sm">@{profileData.username}</p>
-                                    )}
-                                    <div className="text-white/80 max-w-2xl">
+
+                                    <div className="text-white/80 max-w-2xl mt-1">
                                         <ProfileBio userId={profileUserId} />
                                     </div>
                                 </div>
@@ -292,18 +283,6 @@ function UsernameProfileContent() {
                     {renderSection()}
                 </ErrorBoundary>
             </div>
-
-            {showAvatarModal && (
-                <AvatarUploadModal
-                    isOpen={showAvatarModal}
-                    onClose={() => setShowAvatarModal(false)}
-                    userId={user.uid}
-                    currentAvatar={profileData?.profile_picture_url}
-                    onUploadSuccess={(url) => {
-                        setProfileData(prev => ({ ...prev, profile_picture_url: url }));
-                    }}
-                />
-            )}
         </main>
     );
 }

@@ -22,9 +22,8 @@ export default function LoginPage() {
         setLoading(true);
         setError("");
         try {
-            const result = await signIn(email, password);
-            const uname = result?.user?.username;
-            router.push(uname ? `/${uname}` : "/profile");
+            await signIn(email, password);
+            router.replace("/");
         } catch (err) {
             setError(getFirebaseErrorMessage(err));
         } finally {
@@ -38,10 +37,9 @@ export default function LoginPage() {
         try {
             const result = await signInWithGoogle();
             if (result?.isNewUser || result?.user?.needsUsername) {
-                router.push("/onboarding/username");
+                router.replace("/onboarding/username");
             } else {
-                const uname = result?.user?.username;
-                router.push(uname ? `/${uname}` : "/profile");
+                router.replace("/");
             }
         } catch (err) {
             setError(getFirebaseErrorMessage(err));

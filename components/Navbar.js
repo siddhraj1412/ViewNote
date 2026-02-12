@@ -143,7 +143,7 @@ function NavbarContent() {
                                                     className="w-full h-full object-cover aspect-square"
                                                     onError={(e) => {
                                                         e.target.onerror = null;
-                                                        e.target.src = "https://ui-avatars.com/api/?name=" + (user.displayName || "User") + "&background=random";
+                                                        e.target.src = "https://ui-avatars.com/api/?name=" + encodeURIComponent(user.username || user.displayName || user.email?.split("@")[0] || "U") + "&background=random";
                                                     }}
                                                 />
                                             </div>
@@ -153,7 +153,7 @@ function NavbarContent() {
                                             </div>
                                         )}
                                         <span className="text-sm font-medium">
-                                            {user.displayName || "User"}
+                                            {user.username || user.displayName || user.email?.split("@")[0]}
                                         </span>
                                         <svg
                                             className={`w-3.5 h-3.5 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`}
@@ -177,7 +177,7 @@ function NavbarContent() {
                                         >
                                             <div className="px-4 py-3 border-b border-white/10">
                                                 <p className="text-sm font-semibold text-white truncate">
-                                                    {user.displayName || "User"}
+                                                    {user.username || user.displayName || user.email?.split("@")[0]}
                                                 </p>
                                             </div>
 

@@ -16,7 +16,8 @@ import {
     X,
     Image as ImageIcon,
     Share2,
-    Check
+    Check,
+    ListPlus
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 
@@ -30,6 +31,10 @@ const PosterSelector = dynamic(() => import("@/components/PosterSelector"), {
     loading: () => null
 });
 const BannerSelector = dynamic(() => import("@/components/BannerSelector"), {
+    ssr: false,
+    loading: () => null
+});
+const AddToListModal = dynamic(() => import("@/components/AddToListModal"), {
     ssr: false,
     loading: () => null
 });
@@ -57,6 +62,7 @@ export default function ActionBar({
     const [showMoreMenu, setShowMoreMenu] = useState(false);
     const [showPosterSelector, setShowPosterSelector] = useState(false);
     const [showBannerSelector, setShowBannerSelector] = useState(false);
+    const [showAddToList, setShowAddToList] = useState(false);
 
     // Initial load of status
     useEffect(() => {
@@ -242,6 +248,13 @@ export default function ActionBar({
                                     <Share2 size={16} />
                                     Share
                                 </button>
+                                <button
+                                    onClick={() => { if (!user) { showToast.info("Please sign in"); return; } setShowAddToList(true); setShowMoreMenu(false); }}
+                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
+                                >
+                                    <ListPlus size={16} />
+                                    Add to List
+                                </button>
                             </div>
                         </>
                     )}
@@ -337,6 +350,13 @@ export default function ActionBar({
                                 <Share2 size={18} />
                                 Share
                             </button>
+                            <button
+                                onClick={() => { if (!user) { showToast.info("Please sign in"); return; } setShowAddToList(true); setShowMoreMenu(false); }}
+                                className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
+                            >
+                                <ListPlus size={18} />
+                                Add to List
+                            </button>
                         </div>
                     </>
                 )}
@@ -369,6 +389,18 @@ export default function ActionBar({
                 mediaType={mediaType}
                 defaultBanner={posterPath}
             />
+
+            {showAddToList && (
+                <AddToListModal
+                    isOpen={showAddToList}
+                    onClose={() => setShowAddToList(false)}
+                    userId={user?.uid}
+                    mediaId={mediaId}
+                    mediaType={mediaType}
+                    title={title}
+                    posterPath={posterPath}
+                />
+            )}
         </>
     );
 }

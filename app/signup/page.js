@@ -94,9 +94,8 @@ export default function SignupPage() {
         setLoading(true);
         setError("");
         try {
-            const result = await signUp(email, password, undefined, username.trim() || undefined);
-            const uname = result?.user?.username;
-            router.push(uname ? `/${uname}` : "/profile");
+            await signUp(email, password, undefined, username.trim() || undefined);
+            router.replace("/");
         } catch (err) {
             setError(getFirebaseErrorMessage(err));
         } finally {
@@ -110,10 +109,9 @@ export default function SignupPage() {
         try {
             const result = await signInWithGoogle();
             if (result?.isNewUser || result?.user?.needsUsername) {
-                router.push("/onboarding/username");
+                router.replace("/onboarding/username");
             } else {
-                const uname = result?.user?.username;
-                router.push(uname ? `/${uname}` : "/profile");
+                router.replace("/");
             }
         } catch (err) {
             setError(getFirebaseErrorMessage(err));

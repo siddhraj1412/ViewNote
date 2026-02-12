@@ -2,10 +2,10 @@
 
 import ListsSection from "../ListsSection";
 
-export default function ListsSectionTab() {
+export default function ListsSectionTab({ userId, isOwnProfile }) {
     return (
         <div className="space-y-8">
-            <ListsSection />
+            <ListsSection ownerId={userId} isOwnProfile={isOwnProfile} />
         </div>
     );
 }

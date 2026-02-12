@@ -156,7 +156,10 @@ export const mediaService = {
 
     async markAsWatched(user, mediaId, mediaType, mediaData) {
         const success = await transitionStatus(user, mediaId, mediaType, mediaData, "watched");
-        if (success) showToast.success("Marked as watched");
+        if (success) {
+            const uname = user.username || user.uid;
+            showToast.linked(`"${mediaData.title || mediaData.name || 'Item'}" saved to your profile`, `/${uname}`);
+        }
         return success;
     },
 
@@ -168,21 +171,30 @@ export const mediaService = {
             if (existing.exists()) { showToast.info("Already in watchlist"); return false; }
         } catch (_) {}
         const success = await transitionStatus(user, mediaId, mediaType, mediaData, "watchlist");
-        if (success) showToast.success("Added to watchlist");
+        if (success) {
+            const uname = user.username || user.uid;
+            showToast.linked(`"${mediaData.title || mediaData.name || 'Item'}" added to watchlist`, `/${uname}?tab=watchlist`);
+        }
         return success;
     },
 
     async pauseMedia(user, mediaId, mediaType, mediaData) {
         if (!user) return false;
         const success = await transitionStatus(user, mediaId, mediaType, mediaData, "paused");
-        if (success) showToast.success("Paused");
+        if (success) {
+            const uname = user.username || user.uid;
+            showToast.linked(`"${mediaData.title || mediaData.name || 'Item'}" paused`, `/${uname}?tab=paused`);
+        }
         return success;
     },
 
     async dropMedia(user, mediaId, mediaType, mediaData) {
         if (!user) return false;
         const success = await transitionStatus(user, mediaId, mediaType, mediaData, "dropped");
-        if (success) showToast.success("Dropped");
+        if (success) {
+            const uname = user.username || user.uid;
+            showToast.linked(`"${mediaData.title || mediaData.name || 'Item'}" dropped`, `/${uname}?tab=dropped`);
+        }
         return success;
     },
 
@@ -218,7 +230,7 @@ export const mediaService = {
 
             eventBus.emit("MEDIA_UPDATED", { mediaId, mediaType, action: "RATED", userId: user.uid });
             eventBus.emit("PROFILE_DATA_INVALIDATED", { userId: user.uid });
-            showToast.success("Rating saved");
+            showToast.linked(`"${mediaData.title || mediaData.name || 'Item'}" rated — saved to your profile`, `/${user.username || user.uid}`);
             return true;
         } catch (error) {
             console.error("Error rating media:", error);
@@ -242,7 +254,7 @@ export const mediaService = {
                 await batch.commit();
                 eventBus.emit("MEDIA_UPDATED", { mediaId, mediaType, action: "RATED", userId: user.uid });
                 eventBus.emit("PROFILE_DATA_INVALIDATED", { userId: user.uid });
-                showToast.success("Rating saved");
+                showToast.linked(`"${mediaData.title || mediaData.name || 'Item'}" rated — saved to your profile`, `/${user.username || user.uid}`);
                 return true;
             } catch (retryError) {
                 console.error("Batch rating fallback failed:", retryError);
@@ -294,46 +306,69 @@ export const mediaService = {
 
     attachProfileListeners(userId, onUpdate) {
         if (!userId) return () => {};
-        if (activeListeners[userId]) {
-            activeListeners[userId].forEach((unsub) => unsub());
-        }
-        activeListeners[userId] = [];
 
-        const collections = [
-            { name: "user_watched", key: "watched" },
-            { name: "user_paused", key: "paused" },
-            { name: "user_dropped", key: "dropped" },
-            { name: "user_watchlist", key: "watchlist" },
-            { name: "user_ratings", key: "ratings" },
-        ];
+        // Ref-count: reuse existing listeners for the same userId
+        if (!activeListeners[userId]) {
+            activeListeners[userId] = { unsubs: [], refCount: 0 };
 
-        for (const col of collections) {
-            try {
-                const q = query(collection(db, col.name), where("userId", "==", userId));
-                const unsub = onSnapshot(q, (snapshot) => {
-                    const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-                    if (onUpdate) onUpdate(col.key, items);
-                    eventBus.emit(`${col.key.toUpperCase()}_SNAPSHOT`, { items, userId });
-                }, (error) => {
-                    console.error(`[MediaService] Snapshot error for ${col.name}:`, error);
-                });
-                activeListeners[userId].push(unsub);
-            } catch (error) {
-                console.error(`[MediaService] Failed to attach listener for ${col.name}:`, error);
+            const collections = [
+                { name: "user_watched", key: "watched" },
+                { name: "user_paused", key: "paused" },
+                { name: "user_dropped", key: "dropped" },
+                { name: "user_watchlist", key: "watchlist" },
+                { name: "user_ratings", key: "ratings" },
+            ];
+
+            for (const col of collections) {
+                try {
+                    const q = query(collection(db, col.name), where("userId", "==", userId));
+                    const unsub = onSnapshot(q, (snapshot) => {
+                        const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+                        eventBus.emit(`${col.key.toUpperCase()}_SNAPSHOT`, { items, userId });
+                    }, (error) => {
+                        console.error(`[MediaService] Snapshot error for ${col.name}:`, error);
+                    });
+                    activeListeners[userId].unsubs.push(unsub);
+                } catch (error) {
+                    console.error(`[MediaService] Failed to attach listener for ${col.name}:`, error);
+                }
             }
         }
 
+        activeListeners[userId].refCount++;
+
+        // Wire up the onUpdate callback via eventBus
+        const handlers = {};
+        const keys = ["watched", "paused", "dropped", "watchlist", "ratings"];
+        for (const key of keys) {
+            const handler = (data) => {
+                if (data.userId === userId && onUpdate) {
+                    onUpdate(key, data.items);
+                }
+            };
+            eventBus.on(`${key.toUpperCase()}_SNAPSHOT`, handler);
+            handlers[key] = handler;
+        }
+
         return () => {
+            // Remove eventBus handlers
+            for (const key of keys) {
+                eventBus.off(`${key.toUpperCase()}_SNAPSHOT`, handlers[key]);
+            }
+            // Dec ref-count; tear down Firestore listeners when nobody is listening
             if (activeListeners[userId]) {
-                activeListeners[userId].forEach((unsub) => unsub());
-                delete activeListeners[userId];
+                activeListeners[userId].refCount--;
+                if (activeListeners[userId].refCount <= 0) {
+                    activeListeners[userId].unsubs.forEach((unsub) => unsub());
+                    delete activeListeners[userId];
+                }
             }
         };
     },
 
     detachProfileListeners(userId) {
         if (activeListeners[userId]) {
-            activeListeners[userId].forEach((unsub) => unsub());
+            activeListeners[userId].unsubs.forEach((unsub) => unsub());
             delete activeListeners[userId];
         }
     },

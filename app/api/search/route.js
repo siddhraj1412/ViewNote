@@ -13,6 +13,30 @@ export async function GET(request) {
         const { searchParams } = new URL(request.url);
         const query = searchParams.get('query');
         const type = searchParams.get('type') || 'multi';
+        const tvId = searchParams.get('tvId');
+        const detail = searchParams.get('detail');
+        const season = searchParams.get('season');
+
+        // ── TV detail endpoints (seasons / episodes) ──
+        if (tvId && detail === 'seasons') {
+            const url = `${TMDB_BASE_URL}/tv/${tvId}?api_key=${TMDB_API_KEY}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('TMDB API error');
+            const data = await res.json();
+            return NextResponse.json({ seasons: data.seasons || [] }, {
+                headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' },
+            });
+        }
+
+        if (tvId && detail === 'episodes' && season) {
+            const url = `${TMDB_BASE_URL}/tv/${tvId}/season/${season}?api_key=${TMDB_API_KEY}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('TMDB API error');
+            const data = await res.json();
+            return NextResponse.json({ episodes: data.episodes || [] }, {
+                headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' },
+            });
+        }
 
         if (!query) {
             return NextResponse.json(

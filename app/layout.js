@@ -36,9 +36,9 @@ export default function RootLayout({ children }) {
                 <ErrorBoundary>
                     <AuthProvider>
                         <Toaster
-                            position="bottom-right"
+                            position="top-center"
                             toastOptions={{
-                                duration: 3000,
+                                duration: 5000,
                                 style: {
                                     background: "rgba(26, 29, 36, 0.95)",
                                     color: "#fff",
