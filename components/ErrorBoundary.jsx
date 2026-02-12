@@ -1,68 +1,50 @@
 "use client";
 
-import { Component } from "react";
+import React from "react";
+import { AlertTriangle, RefreshCcw } from "lucide-react";
 
-export default class ErrorBoundary extends Component {
+class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false, error: null, errorInfo: null };
+        this.state = { hasError: false, error: null };
     }
 
     static getDerivedStateFromError(error) {
-        return { hasError: true };
+        return { hasError: true, error };
     }
 
     componentDidCatch(error, errorInfo) {
-        console.error("ErrorBoundary caught:", error, errorInfo);
-        this.setState({ error, errorInfo });
-
-        // Log to monitoring service in production
-        if (process.env.NODE_ENV === "production") {
-            // Send to error tracking service (Sentry, LogRocket, etc.)
-            console.error("Production error:", { error, errorInfo });
-        }
+        // You could log the error to an error reporting service here
+        console.error("ErrorBoundary captured error:", error, errorInfo);
     }
 
-    handleReset = () => {
-        this.setState({ hasError: false, error: null, errorInfo: null });
+    handleRetry = () => {
+        this.setState({ hasError: false, error: null });
+        if (this.props.onRetry) {
+            this.props.onRetry();
+        }
     };
 
     render() {
         if (this.state.hasError) {
+            if (this.props.fallback) {
+                return this.props.fallback;
+            }
+
             return (
-                <div className="min-h-screen bg-background flex items-center justify-center p-4">
-                    <div className="max-w-md w-full bg-secondary border border-white/10 rounded-2xl p-8 text-center">
-                        <div className="text-6xl mb-4">⚠️</div>
-                        <h1 className="text-2xl font-bold mb-2">Something went wrong</h1>
-                        <p className="text-textSecondary mb-6">
-                            We encountered an unexpected error. Please try refreshing the page.
-                        </p>
-                        {process.env.NODE_ENV === "development" && this.state.error && (
-                            <details className="mb-6 text-left">
-                                <summary className="cursor-pointer text-sm text-textSecondary mb-2">
-                                    Error Details
-                                </summary>
-                                <pre className="text-xs bg-background p-4 rounded-lg overflow-auto max-h-40">
-                                    {this.state.error.toString()}
-                                    {this.state.errorInfo?.componentStack}
-                                </pre>
-                            </details>
-                        )}
-                        <div className="flex gap-3 justify-center">
-                            <button
-                                onClick={this.handleReset}
-                                className="px-6 py-3 bg-white/5 hover:bg-white/10 rounded-lg transition font-medium"
-                            >
-                                Try Again
-                            </button>
-                            <button
-                                onClick={() => window.location.reload()}
-                                className="px-6 py-3 bg-accent hover:bg-accent/90 rounded-lg transition font-medium"
-                            >
-                                Refresh Page
-                            </button>
-                        </div>
-                    </div>
+                <div className="flex flex-col items-center justify-center p-8 text-center bg-white/5 rounded-xl border border-white/10 m-4">
+                    <AlertTriangle size={32} className="text-warning mb-3" />
+                    <h3 className="text-lg font-bold text-white mb-2">Something went wrong</h3>
+                    <p className="text-textSecondary text-sm mb-4">
+                        {this.state.error?.message || "An unexpected error occurred in this section."}
+                    </p>
+                    <button
+                        onClick={this.handleRetry}
+                        className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors"
+                    >
+                        <RefreshCcw size={14} />
+                        Try Again
+                    </button>
                 </div>
             );
         }
@@ -70,3 +52,5 @@ export default class ErrorBoundary extends Component {
         return this.props.children;
     }
 }
+
+export default ErrorBoundary;

@@ -1,200 +1,155 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { useAuth } from "@/context/AuthContext";
 import showToast from "@/lib/toast";
-import { db } from "@/lib/firebase";
-import { doc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { mediaService } from "@/services/mediaService";
+import eventBus from "@/lib/eventBus";
+import { useMediaCustomization } from "@/hooks/useMediaCustomization";
 import {
     Eye,
     Star,
     Bookmark,
-    List,
     MoreHorizontal,
     Pause,
     X,
     Image as ImageIcon,
-    Share2
+    Share2,
+    Check
 } from "lucide-react";
 import Button from "@/components/ui/Button";
-import RatingModal from "@/components/RatingModal";
-import PosterSelector from "@/components/PosterSelector";
-import BannerSelector from "@/components/BannerSelector";
+
+// Lazy load heavy interaction components
+const RatingModal = dynamic(() => import("@/components/RatingModal"), {
+    ssr: false,
+    loading: () => null
+});
+const PosterSelector = dynamic(() => import("@/components/PosterSelector"), {
+    ssr: false,
+    loading: () => null
+});
+const BannerSelector = dynamic(() => import("@/components/BannerSelector"), {
+    ssr: false,
+    loading: () => null
+});
 
 export default function ActionBar({
     mediaId,
     mediaType,
     title,
     posterPath,
-    isWatched: initialWatched = false,
-    isSaved: initialSaved = false,
     currentRating = 0,
 }) {
     const { user } = useAuth();
 
-    const [isWatched, setIsWatched] = useState(initialWatched);
-    const [isSaved, setIsSaved] = useState(initialSaved);
+    // Consolidated State
+    const [status, setStatus] = useState({
+        isWatched: false,
+        isWatchlist: false,
+        isPaused: false,
+        isDropped: false,
+        rating: currentRating,
+    });
+    const [loading, setLoading] = useState(true);
+
     const [showRatingModal, setShowRatingModal] = useState(false);
     const [showMoreMenu, setShowMoreMenu] = useState(false);
     const [showPosterSelector, setShowPosterSelector] = useState(false);
     const [showBannerSelector, setShowBannerSelector] = useState(false);
-    const [loading, setLoading] = useState(false);
+
+    // Initial load of status
+    useEffect(() => {
+        const loadStatus = async () => {
+            if (!user) {
+                setLoading(false);
+                return;
+            }
+            const s = await mediaService.getMediaStatus(user, mediaId, mediaType);
+            setStatus(prev => ({ ...prev, ...s }));
+            setLoading(false);
+        };
+        loadStatus();
+    }, [user, mediaId, mediaType]);
+
+    const { customPoster, customBanner } = useMediaCustomization(mediaId, mediaType, posterPath, null);
+
+    // Determine if customized
+    const isPosterCustomized = customPoster && customPoster !== posterPath;
+    const isBannerCustomized = !!customBanner;
+
+    // Listen for global updates
+    useEffect(() => {
+        const handleUpdate = (data) => {
+            if (String(data.mediaId) === String(mediaId) && data.mediaType === mediaType) {
+                if (user) {
+                    mediaService.getMediaStatus(user, mediaId, mediaType).then(s => setStatus(prev => ({ ...prev, ...s })));
+                }
+            }
+        };
+        eventBus.on("MEDIA_UPDATED", handleUpdate);
+        return () => eventBus.off("MEDIA_UPDATED", handleUpdate);
+    }, [user, mediaId, mediaType]);
+
 
     const handleWatchedToggle = async () => {
-        if (!user) {
-            showToast.info("Please sign in to mark as watched");
+        if (!user) { showToast.info("Please sign in"); return; }
+        setLoading(true);
+
+        if (status.isWatched) {
+            showToast.info("Already watched");
+            setLoading(false);
             return;
         }
 
-        setLoading(true);
-        try {
-            const actionRef = doc(db, "user_actions", `${user.uid}_${mediaId}`);
-
-            if (isWatched) {
-                // Remove watched status
-                await deleteDoc(actionRef);
-                setIsWatched(false);
-                showToast.success("Removed from watched");
-            } else {
-                // Mark as watched
-                await setDoc(actionRef, {
-                    userId: user.uid,
-                    mediaId,
-                    mediaType,
-                    title,
-                    posterPath,
-                    watched: true,
-                    watchedAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                }, { merge: true });
-                setIsWatched(true);
-                showToast.success("Marked as watched");
-            }
-        } catch (error) {
-            console.error("Error toggling watched:", error);
-            showToast.error("Failed to update watched status");
-        } finally {
-            setLoading(false);
+        const success = await mediaService.markAsWatched(user, mediaId, mediaType, { title, poster_path: posterPath });
+        if (success) {
+            setStatus(prev => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
         }
+        setLoading(false);
     };
 
-    const handleSaveToggle = async () => {
-        if (!user) {
-            showToast.info("Please sign in to save");
+    const handleWatchlistToggle = async () => {
+        if (!user) { showToast.info("Please sign in"); return; }
+        setLoading(true);
+
+        if (status.isWatchlist) {
+            showToast.info("Already in Watchlist");
+            setLoading(false);
             return;
         }
 
-        setLoading(true);
-        try {
-            const actionRef = doc(db, "user_actions", `${user.uid}_${mediaId}`);
-
-            if (isSaved) {
-                // Remove from saved
-                await setDoc(actionRef, {
-                    saved: false,
-                    updatedAt: serverTimestamp(),
-                }, { merge: true });
-                setIsSaved(false);
-                showToast.success("Removed from saved");
-            } else {
-                // Save
-                await setDoc(actionRef, {
-                    userId: user.uid,
-                    mediaId,
-                    mediaType,
-                    title,
-                    posterPath,
-                    saved: true,
-                    savedAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                }, { merge: true });
-                setIsSaved(true);
-                showToast.success("Saved successfully");
-            }
-        } catch (error) {
-            console.error("Error toggling saved:", error);
-            showToast.error("Failed to update saved status");
-        } finally {
-            setLoading(false);
+        const success = await mediaService.addToWatchlist(user, mediaId, mediaType, { title, poster_path: posterPath });
+        if (success) {
+            setStatus(prev => ({ ...prev, isWatched: false, isWatchlist: true, isPaused: false, isDropped: false }));
         }
+        setLoading(false);
     };
 
     const handlePause = async () => {
-        if (!user) {
-            showToast.info("Please sign in");
-            return;
-        }
-
-        try {
-            const actionRef = doc(db, "user_actions", `${user.uid}_${mediaId}`);
-            await setDoc(actionRef, {
-                userId: user.uid,
-                mediaId,
-                mediaType,
-                title,
-                posterPath,
-                paused: true,
-                pausedAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-            }, { merge: true });
-            showToast.success("Marked as paused");
+        if (!user) { showToast.info("Please sign in"); return; }
+        const success = await mediaService.pauseMedia(user, mediaId, mediaType, { title, poster_path: posterPath });
+        if (success) {
+            setStatus(prev => ({ ...prev, isWatched: false, isWatchlist: false, isPaused: true, isDropped: false }));
             setShowMoreMenu(false);
-        } catch (error) {
-            console.error("Error pausing:", error);
-            showToast.error("Failed to pause");
         }
     };
 
     const handleDrop = async () => {
-        if (!user) {
-            showToast("Please sign in", "warning");
-            return;
-        }
-
-        try {
-            const actionRef = doc(db, "user_actions", `${user.uid}_${mediaId}`);
-            await setDoc(actionRef, {
-                userId: user.uid,
-                mediaId,
-                mediaType,
-                title,
-                posterPath,
-                dropped: true,
-                droppedAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-            }, { merge: true });
-            showToast.success("Marked as dropped");
+        if (!user) { showToast.info("Please sign in"); return; }
+        const success = await mediaService.dropMedia(user, mediaId, mediaType, { title, poster_path: posterPath });
+        if (success) {
+            setStatus(prev => ({ ...prev, isWatched: false, isWatchlist: false, isPaused: false, isDropped: true }));
             setShowMoreMenu(false);
-        } catch (error) {
-            console.error("Error dropping:", error);
-            showToast.error("Failed to drop");
         }
     };
 
     const handleShare = async () => {
         const url = `${window.location.origin}/${mediaType}/${mediaId}`;
-
         if (navigator.share) {
-            try {
-                await navigator.share({
-                    title: title,
-                    url: url,
-                });
-                showToast.success("Shared successfully");
-            } catch (error) {
-                if (error.name !== "AbortError") {
-                    console.error("Error sharing:", error);
-                }
-            }
+            try { await navigator.share({ title, url }); } catch (e) { /* ignore */ }
         } else {
-            // Fallback: Copy to clipboard
-            try {
-                await navigator.clipboard.writeText(url);
-                showToast.success("Link copied to clipboard");
-            } catch (error) {
-                console.error("Error copying:", error);
-                showToast.error("Failed to copy link");
-            }
+            try { await navigator.clipboard.writeText(url); showToast.success("Link copied"); } catch (e) { showToast.error("Failed to copy"); }
         }
         setShowMoreMenu(false);
     };
@@ -204,13 +159,13 @@ export default function ActionBar({
             {/* Desktop Action Bar */}
             <div className="hidden md:flex items-center gap-4 py-6">
                 <Button
-                    variant={isWatched ? "primary" : "secondary"}
+                    variant={status.isWatched ? "glass" : "secondary"}
                     onClick={handleWatchedToggle}
-                    disabled={loading}
-                    className="flex items-center gap-2"
+                    disabled={loading || status.isWatched}
+                    className={`flex items-center gap-2 ${status.isWatched ? "btn-primary-glass" : ""}`}
                 >
-                    <Eye size={18} />
-                    {isWatched ? "Watched" : "Mark Watched"}
+                    {status.isWatched ? <Check size={18} /> : <Eye size={18} />}
+                    {status.isWatched ? "Watched" : "Mark Watched"}
                 </Button>
 
                 <Button
@@ -218,79 +173,67 @@ export default function ActionBar({
                     onClick={() => setShowRatingModal(true)}
                     className="flex items-center gap-2"
                 >
-                    <Star size={18} />
-                    {currentRating > 0 ? `Rated ${currentRating}` : "Rate"}
+                    <Star size={18} fill={status.rating > 0 ? "currentColor" : "none"} className={status.rating > 0 ? "text-accent" : ""} />
+                    {status.rating > 0 ? `Rated ${status.rating}` : "Rate"}
                 </Button>
 
                 <Button
-                    variant={isSaved ? "primary" : "secondary"}
-                    onClick={handleSaveToggle}
-                    disabled={loading}
-                    className="flex items-center gap-2"
+                    variant={status.isWatchlist ? "glass" : "secondary"}
+                    onClick={handleWatchlistToggle}
+                    disabled={loading || status.isWatchlist}
+                    className={`flex items-center gap-2 ${status.isWatchlist ? "btn-primary-glass" : ""}`}
                 >
-                    <Bookmark size={18} fill={isSaved ? "currentColor" : "none"} />
-                    {isSaved ? "Saved" : "Save"}
-                </Button>
-
-                <Button
-                    variant="secondary"
-                    className="flex items-center gap-2"
-                    disabled
-                >
-                    <List size={18} />
-                    Lists
+                    <Bookmark size={18} fill={status.isWatchlist ? "currentColor" : "none"} />
+                    {status.isWatchlist ? "In Watchlist" : "Add to Watchlist"}
                 </Button>
 
                 <div className="relative">
                     <Button
-                        variant="secondary"
+                        variant={status.isPaused || status.isDropped ? "glass" : "secondary"}
                         onClick={() => setShowMoreMenu(!showMoreMenu)}
-                        className="flex items-center gap-2"
+                        className={`flex items-center gap-2 ${status.isPaused || status.isDropped ? "btn-primary-glass" : ""}`}
                     >
                         <MoreHorizontal size={18} />
-                        More
+                        {(status.isPaused && "Paused") || (status.isDropped && "Dropped") || "More"}
                     </Button>
 
                     {showMoreMenu && (
                         <>
-                            <div
-                                className="fixed inset-0 z-40"
-                                onClick={() => setShowMoreMenu(false)}
-                            />
-                            <div className="absolute top-full mt-2 right-0 bg-secondary border border-white/10 rounded-lg shadow-xl z-50 min-w-[180px]">
+                            <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
+                            <div className="absolute top-full mt-2 right-0 bg-secondary border border-white/10 rounded-lg shadow-xl z-50 min-w-[200px]">
                                 <button
                                     onClick={handlePause}
                                     className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
                                 >
                                     <Pause size={16} />
-                                    Pause
+                                    {status.isPaused ? "Paused" : "Pause"}
                                 </button>
                                 <button
                                     onClick={handleDrop}
                                     className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
                                 >
                                     <X size={16} />
-                                    Drop
+                                    {status.isDropped ? "Dropped" : "Drop"}
                                 </button>
                                 <button
-                                    onClick={() => {
-                                        setShowPosterSelector(true);
-                                        setShowMoreMenu(false);
-                                    }}
+                                    onClick={() => { setShowPosterSelector(true); setShowMoreMenu(false); }}
                                     className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
                                 >
-                                    <ImageIcon size={16} />
-                                    Change Poster
+                                    <ImageIcon size={16} className={isPosterCustomized ? "text-accent" : ""} />
+                                    <div className="flex flex-col items-start">
+                                        <span>Change Poster</span>
+                                        {isPosterCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
+                                    </div>
                                 </button>
                                 <button
-                                    onClick={() => {
-                                        setShowBannerSelector(true);
-                                        setShowMoreMenu(false);
-                                    }}
+                                    onClick={() => { setShowBannerSelector(true); setShowMoreMenu(false); }}
                                     className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
                                 >
-                                    <ImageIcon size={16} />
-                                    Change Banner
+                                    <ImageIcon size={16} className={isBannerCustomized ? "text-accent" : ""} />
+                                    <div className="flex flex-col items-start">
+                                        <span>Change Banner</span>
+                                        {isBannerCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
+                                    </div>
                                 </button>
                                 <button
                                     onClick={handleShare}
@@ -310,90 +253,82 @@ export default function ActionBar({
                 <div className="flex items-center justify-around max-w-md mx-auto">
                     <button
                         onClick={handleWatchedToggle}
-                        disabled={loading}
-                        className={`flex flex-col items-center gap-1 ${isWatched ? "text-accent" : "text-textSecondary"
-                            }`}
+                        disabled={loading || status.isWatched}
+                        className={`flex flex-col items-center gap-1 ${status.isWatched ? "text-white" : "text-textSecondary"}`}
                     >
-                        <Eye size={20} />
-                        <span className="text-xs">Watched</span>
+                        <div className={`p-2 rounded-full transition-all ${status.isWatched ? "btn-primary-glass" : "bg-transparent"}`}>
+                            {status.isWatched ? <Check size={20} /> : <Eye size={20} />}
+                        </div>
+                        <span className="text-xs">{status.isWatched ? "Watched" : "Watch"}</span>
                     </button>
 
                     <button
                         onClick={() => setShowRatingModal(true)}
-                        className="flex flex-col items-center gap-1 text-textSecondary hover:text-accent transition"
+                        className={`flex flex-col items-center gap-1 ${status.rating > 0 ? "text-accent" : "text-textSecondary"}`}
                     >
-                        <Star size={20} fill={currentRating > 0 ? "currentColor" : "none"} />
-                        <span className="text-xs">Rate</span>
+                        <Star size={20} fill={status.rating > 0 ? "currentColor" : "none"} />
+                        <span className="text-xs">{status.rating > 0 ? status.rating : "Rate"}</span>
                     </button>
 
                     <button
-                        onClick={handleSaveToggle}
-                        disabled={loading}
-                        className={`flex flex-col items-center gap-1 ${isSaved ? "text-accent" : "text-textSecondary"
-                            }`}
+                        onClick={handleWatchlistToggle}
+                        disabled={loading || status.isWatchlist}
+                        className={`flex flex-col items-center gap-1 ${status.isWatchlist ? "text-white" : "text-textSecondary"}`}
                     >
-                        <Bookmark size={20} fill={isSaved ? "currentColor" : "none"} />
-                        <span className="text-xs">Save</span>
-                    </button>
-
-                    <button
-                        disabled
-                        className="flex flex-col items-center gap-1 text-textSecondary opacity-50"
-                    >
-                        <List size={20} />
-                        <span className="text-xs">Lists</span>
+                        <div className={`p-2 rounded-full transition-all ${status.isWatchlist ? "btn-primary-glass" : "bg-transparent"}`}>
+                            <Bookmark size={20} fill={status.isWatchlist ? "currentColor" : "none"} />
+                        </div>
+                        <span className="text-xs">Watchlist</span>
                     </button>
 
                     <button
                         onClick={() => setShowMoreMenu(!showMoreMenu)}
-                        className="flex flex-col items-center gap-1 text-textSecondary hover:text-accent transition"
+                        className={`flex flex-col items-center gap-1 ${status.isPaused || status.isDropped ? "text-white" : "text-textSecondary"}`}
                     >
-                        <MoreHorizontal size={20} />
-                        <span className="text-xs">More</span>
+                        <div className={`p-2 rounded-full transition-all ${status.isPaused || status.isDropped ? "btn-primary-glass" : "bg-transparent"}`}>
+                            <MoreHorizontal size={20} />
+                        </div>
+                        <span className="text-xs">{(status.isPaused && "Paused") || (status.isDropped && "Dropped") || "More"}</span>
                     </button>
                 </div>
 
-                {/* Mobile More Menu */}
                 {showMoreMenu && (
                     <>
-                        <div
-                            className="fixed inset-0 bg-black/50 z-40"
-                            onClick={() => setShowMoreMenu(false)}
-                        />
+                        <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowMoreMenu(false)} />
                         <div className="fixed bottom-20 left-4 right-4 bg-secondary border border-white/10 rounded-lg shadow-xl z-50">
                             <button
                                 onClick={handlePause}
                                 className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3"
                             >
                                 <Pause size={18} />
-                                Pause
+                                {status.isPaused ? "Paused" : "Pause"}
                             </button>
                             <button
                                 onClick={handleDrop}
                                 className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
                             >
                                 <X size={18} />
-                                Drop
+                                {status.isDropped ? "Dropped" : "Drop"}
                             </button>
                             <button
-                                onClick={() => {
-                                    setShowPosterSelector(true);
-                                    setShowMoreMenu(false);
-                                }}
+                                onClick={() => { setShowPosterSelector(true); setShowMoreMenu(false); }}
                                 className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
                             >
-                                <ImageIcon size={18} />
-                                Change Poster
+                                <ImageIcon size={18} className={isPosterCustomized ? "text-accent" : ""} />
+                                <div className="flex flex-col items-start">
+                                    <span>Change Poster</span>
+                                    {isPosterCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
+                                </div>
                             </button>
                             <button
-                                onClick={() => {
-                                    setShowBannerSelector(true);
-                                    setShowMoreMenu(false);
-                                }}
+                                onClick={() => { setShowBannerSelector(true); setShowMoreMenu(false); }}
                                 className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
                             >
-                                <ImageIcon size={18} />
-                                Change Banner
+                                <ImageIcon size={18} className={isBannerCustomized ? "text-accent" : ""} />
+                                <div className="flex flex-col items-start">
+                                    <span>Change Banner</span>
+                                    {isBannerCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
+                                </div>
                             </button>
                             <button
                                 onClick={handleShare}
@@ -407,7 +342,6 @@ export default function ActionBar({
                 )}
             </div>
 
-            {/* Rating Modal */}
             {showRatingModal && (
                 <RatingModal
                     isOpen={showRatingModal}
@@ -416,11 +350,10 @@ export default function ActionBar({
                     mediaType={mediaType}
                     title={title}
                     poster_path={posterPath}
-                    currentRating={currentRating}
+                    currentRating={status.rating}
                 />
             )}
 
-            {/* Poster Selector */}
             <PosterSelector
                 isOpen={showPosterSelector}
                 onClose={() => setShowPosterSelector(false)}
@@ -429,7 +362,6 @@ export default function ActionBar({
                 defaultPoster={posterPath}
             />
 
-            {/* Banner Selector */}
             <BannerSelector
                 isOpen={showBannerSelector}
                 onClose={() => setShowBannerSelector(false)}

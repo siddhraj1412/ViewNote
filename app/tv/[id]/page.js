@@ -128,7 +128,7 @@ export default function TVDetailsPage() {
                                 )}
                                 {tv.number_of_seasons && (
                                     <div className="flex items-center gap-2">
-                                        <TvIcon size={20} className="text-accent" />
+                                        <Tv size={20} className="text-accent" />
                                         <span className="font-medium">
                                             {tv.number_of_seasons} Season{tv.number_of_seasons > 1 ? "s" : ""}
                                         </span>

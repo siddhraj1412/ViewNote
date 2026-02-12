@@ -14,6 +14,18 @@ export const useStore = create(
             // Watchlist state
             watchlist: {},
 
+            // Media status state (watched, paused, dropped, watchlist, ratings)
+            mediaData: {
+                watched: [],
+                paused: [],
+                dropped: [],
+                watchlist: [],
+                ratings: [],
+            },
+
+            // Favorites state
+            favorites: { movies: [], shows: [] },
+
             // Pending optimistic updates
             pendingUpdates: {},
 
@@ -96,6 +108,49 @@ export const useStore = create(
                 return !!get().watchlist[`${mediaType}_${mediaId}`];
             },
 
+            // Media data methods
+            setMediaData: (key, items) => {
+                set((state) => ({
+                    mediaData: {
+                        ...state.mediaData,
+                        [key]: items,
+                    },
+                }));
+            },
+
+            getMediaData: (key) => {
+                return get().mediaData[key] || [];
+            },
+
+            invalidateMediaData: () => {
+                set({
+                    mediaData: {
+                        watched: [],
+                        paused: [],
+                        dropped: [],
+                        watchlist: [],
+                        ratings: [],
+                    },
+                });
+            },
+
+            // Set favorites
+            setFavorites: (type, items) => {
+                set((state) => ({
+                    favorites: {
+                        ...state.favorites,
+                        [type]: items,
+                    },
+                }));
+
+                eventBus.emit("FAVORITES_UPDATED", { type });
+            },
+
+            // Get favorites
+            getFavorites: (type) => {
+                return get().favorites[type] || [];
+            },
+
             // Optimistic update tracking
             startOptimisticUpdate: (key, data) => {
                 set((state) => ({
@@ -132,6 +187,8 @@ export const useStore = create(
                 customizations: state.customizations,
                 ratings: state.ratings,
                 watchlist: state.watchlist,
+                favorites: state.favorites,
+                mediaData: state.mediaData,
             }),
         }
     )

@@ -4,8 +4,9 @@ import { useState } from "react";
 import Modal from "@/components/ui/Modal";
 import StarRating from "@/components/StarRating";
 import Button from "@/components/ui/Button";
-import { useRatings } from "@/hooks/useRatings";
+import { mediaService } from "@/services/mediaService";
 import { useAuth } from "@/context/AuthContext";
+import showToast from "@/lib/toast";
 
 const RATING_LABELS = {
     0.5: "Didn't work",
@@ -31,33 +32,42 @@ export default function RatingModal({
 }) {
     const [rating, setRating] = useState(currentRating);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-    const { setRating: saveRating } = useRatings();
     const { user } = useAuth();
 
     const handleSubmit = async () => {
         if (!user) {
-            setError("You must be logged in to rate");
+            showToast.error("You must be logged in to rate");
             return;
         }
 
         if (rating === 0) {
-            setError("Please select a rating");
+            showToast.error("Please select a rating");
             return;
         }
 
         setLoading(true);
-        setError("");
-
         try {
-            await saveRating(mediaId, mediaType, rating, title, poster_path);
+            await mediaService.rateMedia(user, mediaId, mediaType, rating, { title, poster_path });
             onClose();
         } catch (err) {
-            setError(err.message || "Failed to save rating");
+            // Error handling in service
         } finally {
             setLoading(false);
         }
     };
+
+    const handleRemove = async () => {
+        if (!user) return;
+        setLoading(true);
+        try {
+            await mediaService.removeRating(user, mediaId, mediaType);
+            onClose();
+        } catch (err) {
+            // Error handled in service
+        } finally {
+            setLoading(false);
+        }
+    }
 
     const getRatingLabel = (value) => {
         if (value === 0) return "Select a rating";
@@ -93,12 +103,6 @@ export default function RatingModal({
                     </div>
                 </div>
 
-                {error && (
-                    <div className="bg-warning bg-opacity-10 border border-warning text-warning px-4 py-3 rounded-lg">
-                        {error}
-                    </div>
-                )}
-
                 <div className="flex gap-4">
                     <Button
                         variant="secondary"
@@ -116,6 +120,11 @@ export default function RatingModal({
                         {loading ? "Saving..." : "Save Rating"}
                     </Button>
                 </div>
+                {currentRating > 0 && (
+                    <button onClick={handleRemove} disabled={loading} className="w-full text-center text-sm text-red-400 hover:text-red-300 transition-colors">
+                        Remove Rating
+                    </button>
+                )}
             </div>
         </Modal>
     );

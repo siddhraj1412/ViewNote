@@ -1,20 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Search, User, Film, Settings } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+    Search, User, Film, Settings, LogOut,
+    BookOpen, List, Star, Clock
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import SearchOverlay from "./SearchOverlay";
 import useScrollDirection from "@/hooks/useScrollDirection";
 
-export default function Navbar() {
+function NavbarContent() {
     const [showSearch, setShowSearch] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const [isFixed, setIsFixed] = useState(false);
-    const { user } = useAuth();
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const { user, logout } = useAuth();
     const pathname = usePathname();
+    const searchParams = useSearchParams();
+    const router = useRouter();
     const scrollDirection = useScrollDirection();
+    const dropdownRef = useRef(null);
 
     useEffect(() => {
         const handleScroll = () => {
@@ -26,9 +33,69 @@ export default function Navbar() {
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+                setDropdownOpen(false);
+            }
+        };
+        if (dropdownOpen) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [dropdownOpen]);
+
+    // Close dropdown on route change
+    useEffect(() => {
+        setDropdownOpen(false);
+    }, [pathname, searchParams]);
+
+    const handleLogout = async () => {
+        setDropdownOpen(false);
+        await logout();
+        router.push("/login");
+    };
+
+    const getDropdownItems = () => {
+        if (!user) return [];
+        const uid = user.uid;
+        return [
+            { label: "Profile", icon: User, href: `/profile/${uid}` },
+            { label: "Watchlist", icon: Clock, href: `/profile/${uid}?tab=watchlist` },
+            { label: "Reviews", icon: Star, href: `/profile/${uid}?tab=reviews` },
+            { label: "Diary", icon: BookOpen, href: `/profile/${uid}?tab=diary` },
+            { label: "Lists", icon: List, href: `/profile/${uid}?tab=lists` },
+            { label: "Settings", icon: Settings, href: "/settings" },
+        ];
+    };
+
+    const dropdownItems = getDropdownItems();
+
+    const handleDropdownNav = (e, item) => {
+        e.preventDefault();
+        setDropdownOpen(false);
+        router.push(item.href);
+    };
+
+    const isDropdownItemActive = (item) => {
+        if (item.href === "/settings") return pathname === "/settings";
+        const [path, qs] = item.href.split("?");
+        const isProfilePage = pathname === path || pathname.startsWith("/profile/");
+        if (!isProfilePage) return false;
+        if (!qs) return !searchParams.get("tab");
+        const tabParam = new URLSearchParams(qs).get("tab");
+        return searchParams.get("tab") === tabParam;
+    };
+
+    const handleDropdownKeyDown = (e) => {
+        if (e.key === "Escape") {
+            setDropdownOpen(false);
+        }
+    };
+
     return (
         <>
-            {/* True Overlay Header */}
             <nav
                 className={`${isFixed ? 'fixed' : 'absolute'} top-0 left-0 right-0 z-[9999] transition-all duration-300 ${scrollDirection === "down" ? "-translate-y-full" : "translate-y-0"
                     }`}
@@ -40,7 +107,6 @@ export default function Navbar() {
             >
                 <div className="container mx-auto px-6">
                     <div className="flex items-center justify-between h-16">
-                        {/* Logo */}
                         <Link
                             href="/"
                             className="flex items-center gap-2 text-2xl font-bold hover:text-accent transition-all group"
@@ -49,29 +115,9 @@ export default function Navbar() {
                             <span className="drop-shadow-lg">ViewNote</span>
                         </Link>
 
-                        {/* Navigation Links - Centered */}
-                        <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
-                            <Link
-                                href="/"
-                                className={`hover:text-accent transition-all drop-shadow-lg ${pathname === "/" ? "text-accent font-semibold" : ""
-                                    }`}
-                            >
-                                Home
-                            </Link>
-                            {user && (
-                                <Link
-                                    href="/profile"
-                                    className={`hover:text-accent transition-all drop-shadow-lg ${pathname === "/profile" ? "text-accent font-semibold" : ""
-                                        }`}
-                                >
-                                    Profile
-                                </Link>
-                            )}
-                        </div>
 
-                        {/* Right Side Actions */}
+
                         <div className="flex items-center gap-3">
-                            {/* Search Button */}
                             <button
                                 onClick={() => setShowSearch(true)}
                                 className="p-2.5 hover:bg-white/10 rounded-xl transition-all backdrop-blur-sm"
@@ -80,25 +126,94 @@ export default function Navbar() {
                                 <Search size={20} />
                             </button>
 
-                            {/* User Menu */}
                             {user ? (
-                                <div className="flex items-center gap-2">
-                                    <Link
-                                        href="/profile"
+                                <div className="relative" ref={dropdownRef}>
+                                    <button
+                                        onClick={() => setDropdownOpen(!dropdownOpen)}
                                         className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all backdrop-blur-sm"
+                                        aria-haspopup="true"
+                                        aria-expanded={dropdownOpen}
                                     >
-                                        <User size={16} />
+                                        {user.photoURL ? (
+                                            <div className="w-8 h-8 rounded-full overflow-hidden border border-white/20 relative">
+                                                <img
+                                                    src={user.photoURL}
+                                                    alt="Avatar"
+                                                    className="w-full h-full object-cover aspect-square"
+                                                    onError={(e) => {
+                                                        e.target.onerror = null;
+                                                        e.target.src = "https://ui-avatars.com/api/?name=" + (user.displayName || "User") + "&background=random";
+                                                    }}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="p-1 bg-white/10 rounded-full">
+                                                <User size={20} className="text-white/70" />
+                                            </div>
+                                        )}
                                         <span className="text-sm font-medium">
-                                            {user.displayName || user.email?.split("@")[0]}
+                                            {user.displayName || "User"}
                                         </span>
-                                    </Link>
-                                    <Link
-                                        href="/settings"
-                                        className="p-2.5 hover:bg-white/10 rounded-xl transition-all backdrop-blur-sm"
-                                        aria-label="Settings"
-                                    >
-                                        <Settings size={18} />
-                                    </Link>
+                                        <svg
+                                            className={`w-3.5 h-3.5 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`}
+                                            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                                        >
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
+
+                                    {dropdownOpen && (
+                                        <div
+                                            className="absolute right-0 top-full mt-2 w-56 rounded-xl overflow-hidden shadow-2xl border border-white/10 animate-in fade-in slide-in-from-top-2 duration-200"
+                                            style={{
+                                                backgroundColor: "rgba(20, 20, 30, 0.95)",
+                                                backdropFilter: "blur(20px)",
+                                                WebkitBackdropFilter: "blur(20px)",
+                                                zIndex: 10000,
+                                            }}
+                                            role="menu"
+                                            onKeyDown={handleDropdownKeyDown}
+                                        >
+                                            <div className="px-4 py-3 border-b border-white/10">
+                                                <p className="text-sm font-semibold text-white truncate">
+                                                    {user.displayName || "User"}
+                                                </p>
+                                            </div>
+
+                                            <div className="py-1">
+                                                {dropdownItems.map((item) => {
+                                                    const Icon = item.icon;
+                                                    const isActive = isDropdownItemActive(item);
+                                                    return (
+                                                        <a
+                                                            key={item.label}
+                                                            href={item.href}
+                                                            className={`flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${isActive
+                                                                ? "bg-accent/15 text-accent"
+                                                                : "text-white/80 hover:bg-white/10 hover:text-white"
+                                                                }`}
+                                                            role="menuitem"
+                                                            onClick={(e) => handleDropdownNav(e, item)}
+                                                        >
+                                                            <Icon size={16} className="flex-shrink-0" />
+                                                            <span>{item.label}</span>
+                                                        </a>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            <div className="border-t border-white/10 py-1">
+                                                <button
+                                                    onClick={handleLogout}
+                                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                                                    role="menuitem"
+                                                >
+                                                    <LogOut size={16} className="flex-shrink-0" />
+                                                    <span>Logout</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-2">
@@ -121,10 +236,15 @@ export default function Navbar() {
                 </div>
             </nav>
 
-            {/* No spacer — header is overlay, sits ON banner */}
-
-            {/* Search Overlay */}
             <SearchOverlay isOpen={showSearch} onClose={() => setShowSearch(false)} />
         </>
+    );
+}
+
+export default function Navbar() {
+    return (
+        <Suspense fallback={null}>
+            <NavbarContent />
+        </Suspense>
     );
 }

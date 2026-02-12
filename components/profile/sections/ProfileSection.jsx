@@ -1,9 +1,11 @@
 "use client";
 
+import ProfileFavoritesGrid from "@/components/profile/ProfileFavoritesGrid";
+
 export default function ProfileSection({ userId }) {
     return (
-        <div className="text-center py-12">
-            <p className="text-textSecondary text-lg">Coming Soon</p>
+        <div className="py-6">
+            <ProfileFavoritesGrid userId={userId} />
         </div>
     );
 }

@@ -1,103 +1,105 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { tmdb } from "@/lib/tmdb";
+import { profileService } from "@/services/profileService";
 import { useAuth } from "@/context/AuthContext";
-import PausedSection from "../PausedSection";
+import { useParams } from "next/navigation";
+import eventBus from "@/lib/eventBus";
+import { mediaService } from "@/services/mediaService";
 
-export default function PausedSectionTab() {
-    const [filter, setFilter] = useState("all");
-    const [counts, setCounts] = useState({
-        all: 0,
-        movies: 0,
-        series: 0,
-        short: 0,
-    });
-    const [loading, setLoading] = useState(true);
+export default function PausedSectionTab({ userId }) {
     const { user } = useAuth();
+    const params = useParams();
+    const ownerId = userId || params?.id || user?.uid;
+
+    const [pausedItems, setPausedItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchPaused = useCallback(async () => {
+        if (!ownerId) return;
+        setLoading(true);
+        try {
+            const data = await profileService.getPaused(ownerId);
+            setPausedItems(data || []);
+        } catch (e) {
+            console.error("Error fetching paused:", e);
+        } finally {
+            setLoading(false);
+        }
+    }, [ownerId]);
 
     useEffect(() => {
-        const fetchPausedCounts = async () => {
-            if (!user?.uid) {
-                setLoading(false);
-                return;
-            }
+        fetchPaused();
+    }, [fetchPaused]);
 
-            try {
-                // TODO: Replace with actual API call
-                setCounts({
-                    all: 0,
-                    movies: 0,
-                    series: 0,
-                    short: 0,
-                });
-            } catch (error) {
-                console.error("Error fetching paused counts:", error);
-                setCounts({
-                    all: 0,
-                    movies: 0,
-                    series: 0,
-                    short: 0,
-                });
-            } finally {
-                setLoading(false);
-            }
+    useEffect(() => {
+        const handler = () => fetchPaused();
+        eventBus.on("MEDIA_UPDATED", handler);
+        eventBus.on("PAUSED_SNAPSHOT", handler);
+        eventBus.on("PROFILE_DATA_INVALIDATED", handler);
+        return () => {
+            eventBus.off("MEDIA_UPDATED", handler);
+            eventBus.off("PAUSED_SNAPSHOT", handler);
+            eventBus.off("PROFILE_DATA_INVALIDATED", handler);
         };
+    }, [fetchPaused]);
 
-        fetchPausedCounts();
-    }, [user]);
+    // Attach realtime listener
+    useEffect(() => {
+        if (!ownerId) return;
+        const cleanup = mediaService.attachProfileListeners(ownerId, (key, items) => {
+            if (key === "paused") {
+                setPausedItems(items);
+            }
+        });
+        return cleanup;
+    }, [ownerId]);
 
     if (loading) {
-        return (
-            <div className="text-center py-12">
-                <p className="text-textSecondary">Loading...</p>
-            </div>
-        );
+        return <div className="text-center py-12 text-textSecondary">Loading paused items...</div>;
+    }
+
+    if (pausedItems.length === 0) {
+        return <div className="text-center py-12 text-textSecondary">No paused items</div>;
     }
 
     return (
-        <div className="space-y-6">
-            {/* Filter Buttons */}
-            <div className="flex gap-3">
-                <button
-                    onClick={() => setFilter("all")}
-                    className={`px-6 py-2 rounded-lg font-medium transition-all ${filter === "all"
-                            ? "bg-accent text-background"
-                            : "bg-secondary text-textSecondary hover:bg-white/10"
-                        }`}
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+            {pausedItems.map((item) => (
+                <Link
+                    key={item.id}
+                    href={`/${item.mediaType}/${item.mediaId}`}
+                    className="group"
                 >
-                    All ({counts.all})
-                </button>
-                <button
-                    onClick={() => setFilter("movies")}
-                    className={`px-6 py-2 rounded-lg font-medium transition-all ${filter === "movies"
-                            ? "bg-accent text-background"
-                            : "bg-secondary text-textSecondary hover:bg-white/10"
-                        }`}
-                >
-                    Movies ({counts.movies})
-                </button>
-                <button
-                    onClick={() => setFilter("series")}
-                    className={`px-6 py-2 rounded-lg font-medium transition-all ${filter === "series"
-                            ? "bg-accent text-background"
-                            : "bg-secondary text-textSecondary hover:bg-white/10"
-                        }`}
-                >
-                    Series ({counts.series})
-                </button>
-                <button
-                    onClick={() => setFilter("short")}
-                    className={`px-6 py-2 rounded-lg font-medium transition-all ${filter === "short"
-                            ? "bg-accent text-background"
-                            : "bg-secondary text-textSecondary hover:bg-white/10"
-                        }`}
-                >
-                    Short Films ({counts.short})
-                </button>
-            </div>
-
-            {/* Content */}
-            <PausedSection pausedMovies={[]} pausedTV={[]} filter={filter} />
+                    <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-all bg-secondary">
+                        <Image
+                            src={tmdb.getImageUrl(item.poster_path)}
+                            alt={item.title || item.name || "Media"}
+                            fill
+                            className="object-cover"
+                            sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
+                            loading="lazy"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                        <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold text-white/90 border border-white/10">
+                            PAUSED
+                        </div>
+                    </div>
+                    <div className="mt-2">
+                        <h3 className="text-sm font-semibold line-clamp-1 group-hover:text-accent transition-colors">
+                            {item.title || item.name}
+                        </h3>
+                        <p className="text-xs text-textSecondary">
+                            {item.pausedAt?.seconds
+                                ? new Date(item.pausedAt.seconds * 1000).toLocaleDateString()
+                                : "Paused"}
+                        </p>
+                    </div>
+                </Link>
+            ))}
         </div>
     );
 }
