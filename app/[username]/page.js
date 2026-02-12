@@ -154,19 +154,19 @@ function UsernameProfileContent() {
             case "watched":
                 return <WatchedSectionTab />;
             case "diary":
-                return <DiarySection />;
+                return <DiarySection userId={profileUserId} />;
             case "reviews":
                 return <ReviewsSectionTab userId={profileUserId} username={profileData?.username || usernameParam} />;
             case "watchlist":
-                return <WatchlistSection />;
+                return <WatchlistSection userId={profileUserId} />;
             case "lists":
                 return <ListsSectionTab userId={profileUserId} isOwnProfile={user?.uid === profileUserId} />;
             case "likes":
-                return <LikesSection />;
+                return <LikesSection userId={profileUserId} />;
             case "paused":
-                return <PausedSectionTab />;
+                return <PausedSectionTab userId={profileUserId} />;
             case "dropped":
-                return <DroppedSection />;
+                return <DroppedSection userId={profileUserId} />;
             default:
                 return <ProfileSection userId={profileUserId} />;
         }

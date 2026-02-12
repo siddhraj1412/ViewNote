@@ -8,21 +8,23 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { getMediaUrl } from "@/lib/slugify";
 import StarRating from "@/components/StarRating";
+import eventBus from "@/lib/eventBus";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w154";
 
-export default function DiarySection() {
+export default function DiarySection({ userId }) {
     const { user } = useAuth();
+    const ownerId = userId || user?.uid;
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const fetchDiary = useCallback(async () => {
-        if (!user) { setLoading(false); return; }
+        if (!ownerId) { setLoading(false); return; }
         setLoading(true);
         try {
             const q = query(
                 collection(db, "user_ratings"),
-                where("userId", "==", user.uid)
+                where("userId", "==", ownerId)
             );
             const snap = await getDocs(q);
             const items = snap.docs
@@ -39,10 +41,21 @@ export default function DiarySection() {
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [ownerId]);
 
     useEffect(() => {
         fetchDiary();
+    }, [fetchDiary]);
+
+    // Refresh on new ratings
+    useEffect(() => {
+        const handler = () => fetchDiary();
+        eventBus.on("MEDIA_UPDATED", handler);
+        eventBus.on("PROFILE_DATA_INVALIDATED", handler);
+        return () => {
+            eventBus.off("MEDIA_UPDATED", handler);
+            eventBus.off("PROFILE_DATA_INVALIDATED", handler);
+        };
     }, [fetchDiary]);
 
     const formatDate = (item) => {

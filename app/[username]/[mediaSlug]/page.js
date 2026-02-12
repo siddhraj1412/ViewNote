@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import StarRating from "@/components/StarRating";
-import { Heart, Calendar, Eye, ArrowLeft, Tag } from "lucide-react";
+import { Heart, Calendar, Eye, ArrowLeft, Tag, MessageCircle, Send, Trash2, ThumbsUp } from "lucide-react";
 import Link from "next/link";
 import { getMediaUrl } from "@/lib/slugify";
+import { reviewService } from "@/services/reviewService";
+import showToast from "@/lib/toast";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w300";
 const TMDB_IMG_LG = "https://image.tmdb.org/t/p/w500";
@@ -26,6 +28,17 @@ export default function ReviewDetailPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // Like state
+    const [liked, setLiked] = useState(false);
+    const [likeCount, setLikeCount] = useState(0);
+    const [likeLoading, setLikeLoading] = useState(false);
+
+    // Comment state
+    const [comments, setComments] = useState([]);
+    const [commentText, setCommentText] = useState("");
+    const [commentLoading, setCommentLoading] = useState(false);
+    const [deletingComment, setDeletingComment] = useState(null);
+
     useEffect(() => {
         if (!username || !mediaSlug) return;
 
@@ -33,7 +46,6 @@ export default function ReviewDetailPage() {
             setLoading(true);
             setError(null);
             try {
-                // 1. Resolve username to userId
                 const profilesRef = collection(db, "user_profiles");
                 const profileQuery = query(profilesRef, where("username", "==", username));
                 const profileSnap = await getDocs(profileQuery);
@@ -48,16 +60,13 @@ export default function ReviewDetailPage() {
                 const userId = profileDoc.data().userId || profileDoc.id;
                 setProfileData(profileDoc.data());
 
-                // 2. Find review by mediaSlug from user_ratings (check title match)
                 const ratingsRef = collection(db, "user_ratings");
                 const ratingsQuery = query(ratingsRef, where("userId", "==", userId));
                 const ratingsSnap = await getDocs(ratingsQuery);
 
-                // Find a review matching this slug
                 let matchedReview = null;
                 for (const doc of ratingsSnap.docs) {
                     const data = doc.data();
-                    // Generate slug from stored title for matching
                     const titleSlug = generateSlugFromTitle(data.title || "");
                     const slugWithId = `${titleSlug}-${data.mediaId}`;
                     if (slugWithId === mediaSlug || titleSlug === mediaSlug) {
@@ -67,7 +76,6 @@ export default function ReviewDetailPage() {
                 }
 
                 if (!matchedReview) {
-                    // Try matching by just mediaId at the end of slug
                     const idMatch = mediaSlug.match(/-(\d+)$/);
                     if (idMatch) {
                         const mediaId = parseInt(idMatch[1]);
@@ -98,6 +106,65 @@ export default function ReviewDetailPage() {
 
         fetchReview();
     }, [username, mediaSlug]);
+
+    // Load likes and comments once review is loaded
+    useEffect(() => {
+        if (!review?.id) return;
+        reviewService.getReviewLikeState(review.id, user?.uid).then(({ liked: l, count }) => {
+            setLiked(l);
+            setLikeCount(count);
+        });
+        reviewService.getComments(review.id).then(setComments);
+    }, [review?.id, user?.uid]);
+
+    const handleToggleLike = useCallback(async () => {
+        if (!user) { showToast.info("Please sign in to like"); return; }
+        if (!review?.id || likeLoading) return;
+        setLikeLoading(true);
+        try {
+            const result = await reviewService.toggleLike(review.id, user);
+            setLiked(result.liked);
+            setLikeCount(result.count);
+        } catch {
+            showToast.error("Failed to update like");
+        } finally {
+            setLikeLoading(false);
+        }
+    }, [user, review?.id, likeLoading]);
+
+    const handleAddComment = useCallback(async () => {
+        if (!user) { showToast.info("Please sign in to comment"); return; }
+        if (!commentText.trim() || !review?.id || commentLoading) return;
+        setCommentLoading(true);
+        try {
+            const newComment = await reviewService.addComment(review.id, user, commentText);
+            if (newComment) {
+                setComments(prev => [newComment, ...prev]);
+                setCommentText("");
+            }
+        } catch {
+            showToast.error("Failed to post comment");
+        } finally {
+            setCommentLoading(false);
+        }
+    }, [user, review?.id, commentText, commentLoading]);
+
+    const handleDeleteComment = useCallback(async (commentId) => {
+        if (!user || deletingComment) return;
+        setDeletingComment(commentId);
+        try {
+            const deleted = await reviewService.deleteComment(commentId, user.uid);
+            if (deleted) {
+                setComments(prev => prev.filter(c => c.id !== commentId));
+            } else {
+                showToast.error("Cannot delete this comment");
+            }
+        } catch {
+            showToast.error("Failed to delete comment");
+        } finally {
+            setDeletingComment(null);
+        }
+    }, [user, deletingComment]);
 
     if (loading) {
         return (
@@ -134,7 +201,6 @@ export default function ReviewDetailPage() {
     return (
         <div className="min-h-screen">
             <div className="container py-8 md:py-12 max-w-3xl mx-auto">
-                {/* Back button */}
                 <button
                     onClick={() => router.back()}
                     className="flex items-center gap-2 text-textSecondary hover:text-white transition mb-8"
@@ -144,7 +210,6 @@ export default function ReviewDetailPage() {
                 </button>
 
                 <div className="flex flex-col md:flex-row gap-8">
-                    {/* Poster */}
                     {review.poster_path && (
                         <div className="flex-shrink-0 mx-auto md:mx-0">
                             <Link href={mediaUrl}>
@@ -157,9 +222,7 @@ export default function ReviewDetailPage() {
                         </div>
                     )}
 
-                    {/* Review content */}
                     <div className="flex-1 space-y-5 min-w-0">
-                        {/* Title */}
                         <div>
                             <Link href={mediaUrl} className="hover:text-accent transition">
                                 <h1 className="text-2xl md:text-3xl font-bold text-white">{review.title}</h1>
@@ -167,11 +230,10 @@ export default function ReviewDetailPage() {
                             <p className="text-textSecondary text-sm mt-1 capitalize">{review.mediaType}</p>
                         </div>
 
-                        {/* Reviewer info */}
                         <div className="flex items-center gap-3">
-                            {profileData?.photoURL && (
+                            {(profileData?.profile_picture_url || profileData?.photoURL) && (
                                 <img
-                                    src={profileData.photoURL}
+                                    src={profileData.profile_picture_url || profileData.photoURL}
                                     alt={username}
                                     className="w-8 h-8 rounded-full object-cover"
                                 />
@@ -181,7 +243,6 @@ export default function ReviewDetailPage() {
                             </Link>
                         </div>
 
-                        {/* Rating + Like row */}
                         <div className="flex flex-wrap items-center gap-4">
                             {review.rating > 0 && (
                                 <div className="flex items-center gap-2">
@@ -200,7 +261,6 @@ export default function ReviewDetailPage() {
                             )}
                         </div>
 
-                        {/* Date */}
                         {watchedDate && (
                             <div className="flex items-center gap-2 text-sm text-textSecondary">
                                 <Calendar size={14} />
@@ -208,14 +268,12 @@ export default function ReviewDetailPage() {
                             </div>
                         )}
 
-                        {/* Review text */}
                         {review.review && (
                             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
                                 <p className="text-white leading-relaxed whitespace-pre-wrap">{review.review}</p>
                             </div>
                         )}
 
-                        {/* Tags */}
                         {review.tags && review.tags.length > 0 && (
                             <div className="flex flex-wrap gap-2">
                                 {review.tags.map((tag, i) => (
@@ -229,6 +287,97 @@ export default function ReviewDetailPage() {
                                 ))}
                             </div>
                         )}
+
+                        {/* Like button */}
+                        <div className="flex items-center gap-4 pt-2 border-t border-white/10">
+                            <button
+                                onClick={handleToggleLike}
+                                disabled={likeLoading}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${liked
+                                    ? "bg-accent/20 text-accent border border-accent/30"
+                                    : "bg-white/5 text-textSecondary hover:text-white border border-white/10 hover:border-white/20"
+                                    }`}
+                            >
+                                <ThumbsUp size={16} fill={liked ? "currentColor" : "none"} />
+                                <span>{likeCount > 0 ? likeCount : ""} {liked ? "Liked" : "Like"}</span>
+                            </button>
+                            <div className="flex items-center gap-1.5 text-sm text-textSecondary">
+                                <MessageCircle size={16} />
+                                <span>{comments.length} comment{comments.length !== 1 ? "s" : ""}</span>
+                            </div>
+                        </div>
+
+                        {/* Comments section */}
+                        <div className="space-y-4 pt-2">
+                            {/* Comment input */}
+                            {user && (
+                                <div className="flex gap-3">
+                                    <img
+                                        src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username || "U")}&background=random`}
+                                        alt="You"
+                                        className="w-8 h-8 rounded-full object-cover shrink-0 mt-1"
+                                    />
+                                    <div className="flex-1 flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={commentText}
+                                            onChange={(e) => setCommentText(e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAddComment(); } }}
+                                            placeholder="Add a comment..."
+                                            maxLength={1000}
+                                            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-textSecondary/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
+                                        />
+                                        <button
+                                            onClick={handleAddComment}
+                                            disabled={commentLoading || !commentText.trim()}
+                                            className="p-2 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                                        >
+                                            <Send size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Comment list */}
+                            {comments.length > 0 && (
+                                <div className="space-y-3">
+                                    {comments.map((comment) => (
+                                        <div key={comment.id} className="flex gap-3 group">
+                                            <Link href={`/${comment.username || comment.userId}`}>
+                                                <img
+                                                    src={comment.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.username || "U")}&background=random`}
+                                                    alt={comment.username || "User"}
+                                                    className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5"
+                                                />
+                                            </Link>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-baseline gap-2">
+                                                    <Link href={`/${comment.username || comment.userId}`} className="text-sm font-medium text-white hover:text-accent transition">
+                                                        @{comment.username || "user"}
+                                                    </Link>
+                                                    <span className="text-[10px] text-textSecondary">
+                                                        {comment.createdAt instanceof Date
+                                                            ? comment.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                                                            : ""}
+                                                    </span>
+                                                    {user?.uid === comment.userId && (
+                                                        <button
+                                                            onClick={() => handleDeleteComment(comment.id)}
+                                                            disabled={deletingComment === comment.id}
+                                                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition p-0.5"
+                                                            title="Delete comment"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <p className="text-sm text-textSecondary mt-0.5">{comment.text}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

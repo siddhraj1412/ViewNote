@@ -10,18 +10,19 @@ import { getMediaUrl } from "@/lib/slugify";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w300";
 
-export default function LikesSection() {
+export default function LikesSection({ userId }) {
     const { user } = useAuth();
+    const ownerId = userId || user?.uid;
     const [likes, setLikes] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const fetchLikes = useCallback(async () => {
-        if (!user) { setLoading(false); return; }
+        if (!ownerId) { setLoading(false); return; }
         setLoading(true);
         try {
             const q = query(
                 collection(db, "user_ratings"),
-                where("userId", "==", user.uid),
+                where("userId", "==", ownerId),
                 where("liked", "==", true)
             );
             const snap = await getDocs(q);
@@ -34,7 +35,7 @@ export default function LikesSection() {
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [ownerId]);
 
     useEffect(() => {
         fetchLikes();

@@ -4,13 +4,16 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { Search, X, Film, Tv, User } from "lucide-react";
+import { Search, X, Film, Tv, User, Users } from "lucide-react";
 import { tmdb } from "@/lib/tmdb";
 import { getMovieUrl, getShowUrl, getPersonUrl } from "@/lib/slugify";
+import { db } from "@/lib/firebase";
+import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
 
 export default function SearchOverlay({ isOpen, onClose }) {
-    const [query, setQuery] = useState("");
+    const [searchQuery, setSearchQuery] = useState("");
     const [results, setResults] = useState([]);
+    const [userResults, setUserResults] = useState([]);
     const [loading, setLoading] = useState(false);
     const [popularResults, setPopularResults] = useState([]);
     const inputRef = useRef(null);
@@ -38,23 +41,28 @@ export default function SearchOverlay({ isOpen, onClose }) {
     // Focus input when opened and clear previous query
     useEffect(() => {
         if (isOpen && inputRef.current) {
-            setQuery(""); // Clear input when reopening
+            setSearchQuery("");
             inputRef.current.focus();
         }
     }, [isOpen]);
 
     // Debounced search
     useEffect(() => {
-        if (!query.trim()) {
+        if (!searchQuery.trim()) {
             setResults([]);
+            setUserResults([]);
             return;
         }
 
         const timer = setTimeout(async () => {
             setLoading(true);
             try {
-                const data = await tmdb.searchMulti(query);
-                setResults(data.results.slice(0, 10));
+                const [tmdbData, users] = await Promise.all([
+                    tmdb.searchMulti(searchQuery),
+                    searchUsers(searchQuery.trim().toLowerCase()),
+                ]);
+                setResults(tmdbData.results.slice(0, 10));
+                setUserResults(users);
             } catch (error) {
                 console.error("Search error:", error);
             } finally {
@@ -63,7 +71,7 @@ export default function SearchOverlay({ isOpen, onClose }) {
         }, 300);
 
         return () => clearTimeout(timer);
-    }, [query]);
+    }, [searchQuery]);
 
     // Handle keyboard navigation
     useEffect(() => {
@@ -95,6 +103,11 @@ export default function SearchOverlay({ isOpen, onClose }) {
         onClose();
     };
 
+    const handleUserClick = (userProfile) => {
+        router.push(`/${userProfile.username}`);
+        onClose();
+    };
+
     const getResultTitle = (result) => {
         return result.title || result.name;
     };
@@ -114,7 +127,7 @@ export default function SearchOverlay({ isOpen, onClose }) {
 
     if (!isOpen) return null;
 
-    const displayResults = query.trim() ? results : popularResults;
+    const displayResults = searchQuery.trim() ? results : popularResults;
 
     return (
         <>
@@ -133,9 +146,9 @@ export default function SearchOverlay({ isOpen, onClose }) {
                         <input
                             ref={inputRef}
                             type="text"
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Search movies, TV shows, people..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search movies, TV shows, people, or users..."
                             className="flex-1 bg-transparent outline-none text-lg"
                         />
                         <button
@@ -154,13 +167,13 @@ export default function SearchOverlay({ isOpen, onClose }) {
                             </div>
                         )}
 
-                        {!loading && displayResults.length === 0 && query.trim() && (
+                        {!loading && displayResults.length === 0 && userResults.length === 0 && searchQuery.trim() && (
                             <div className="p-8 text-center text-textSecondary">
                                 No results found
                             </div>
                         )}
 
-                        {!loading && displayResults.length === 0 && !query.trim() && (
+                        {!loading && displayResults.length === 0 && !searchQuery.trim() && (
                             <div className="p-4">
                                 <p className="text-sm text-textSecondary mb-3 px-2">
                                     Popular Now
@@ -168,12 +181,54 @@ export default function SearchOverlay({ isOpen, onClose }) {
                             </div>
                         )}
 
-                        {!loading && displayResults.length > 0 && (
+                        {!loading && (displayResults.length > 0 || userResults.length > 0) && (
                             <div className="p-2">
-                                {!query.trim() && (
+                                {!searchQuery.trim() && (
                                     <p className="text-sm text-textSecondary mb-2 px-2">
                                         Popular Now
                                     </p>
+                                )}
+
+                                {/* User results */}
+                                {userResults.length > 0 && (
+                                    <>
+                                        <p className="text-xs font-semibold text-textSecondary uppercase tracking-wider mb-1 px-2 mt-1">Users</p>
+                                        {userResults.map((u) => (
+                                            <button
+                                                key={u.id}
+                                                onClick={() => handleUserClick(u)}
+                                                className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-lg transition text-left"
+                                            >
+                                                <div className="relative w-10 h-10 flex-shrink-0 rounded-full overflow-hidden bg-background">
+                                                    {(u.profile_picture_url || u.photoURL) ? (
+                                                        <img
+                                                            src={u.profile_picture_url || u.photoURL}
+                                                            alt={u.username}
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center bg-accent/20 text-accent text-sm font-bold">
+                                                            {(u.username || "U")[0].toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-0.5">
+                                                        <Users size={14} className="text-accent shrink-0" />
+                                                        <h3 className="font-medium truncate">@{u.username}</h3>
+                                                    </div>
+                                                    {u.displayName && (
+                                                        <p className="text-sm text-textSecondary truncate">{u.displayName}</p>
+                                                    )}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </>
+                                )}
+
+                                {/* Media results */}
+                                {displayResults.length > 0 && userResults.length > 0 && searchQuery.trim() && (
+                                    <p className="text-xs font-semibold text-textSecondary uppercase tracking-wider mb-1 px-2 mt-3">Media & People</p>
                                 )}
                                 {displayResults.map((result) => (
                                     <button
@@ -222,4 +277,23 @@ export default function SearchOverlay({ isOpen, onClose }) {
             </div>
         </>
     );
+}
+
+async function searchUsers(term) {
+    if (!term || term.length < 2) return [];
+    try {
+        const profilesRef = collection(db, "user_profiles");
+        const endTerm = term + "\uf8ff";
+        const q = query(
+            profilesRef,
+            where("username", ">=", term),
+            where("username", "<=", endTerm),
+            limit(5)
+        );
+        const snap = await getDocs(q);
+        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (err) {
+        console.error("User search error:", err);
+        return [];
+    }
 }

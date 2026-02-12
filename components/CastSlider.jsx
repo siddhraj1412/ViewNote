@@ -46,6 +46,7 @@ export default function CastSlider({ cast = [] }) {
                         key={person.id}
                         href={getPersonUrl(person)}
                         className="flex-shrink-0 w-32 group/card"
+                        title={person.character ? `${person.name} as ${person.character}` : person.name}
                     >
                         {/* Circular Profile Image - NO SCALE EFFECT */}
                         <div className="relative w-32 h-32 rounded-full overflow-hidden mb-3 bg-secondary ring-2 ring-white/10 transition-shadow duration-300 group-hover/card:shadow-lg group-hover/card:shadow-accent/20">
