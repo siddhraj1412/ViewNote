@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { tmdb } from "@/lib/tmdb";
+import { getPersonUrl } from "@/lib/slugify";
 
 export default function CastSlider({ cast = [] }) {
     const scrollRef = useRef(null);
@@ -43,7 +44,7 @@ export default function CastSlider({ cast = [] }) {
                 {cast.map((person) => (
                     <Link
                         key={person.id}
-                        href={`/person/${person.id}`}
+                        href={getPersonUrl(person)}
                         className="flex-shrink-0 w-32 group/card"
                     >
                         {/* Circular Profile Image - NO SCALE EFFECT */}

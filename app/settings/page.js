@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, deleteDoc, writeBatch } from "firebase/firestore";
-import { User, FileText, Film, Tv, Play, Palette } from "lucide-react";
+import { User, FileText, Film, Tv, Play, Palette, AtSign, Check, X, Loader2 } from "lucide-react";
 import showToast from "@/lib/toast";
 import FavoritesEditDialog from "@/components/settings/FavoritesEditDialog";
 import BannerSelectionModal from "@/components/settings/BannerSelectionModal";
 import eventBus from "@/lib/eventBus";
+import { validateUsername } from "@/lib/slugify";
 
 export default function SettingsPage() {
     const { user, loading: authLoading, logout } = useAuth();
@@ -29,6 +30,12 @@ export default function SettingsPage() {
     const [favMoviesDialogOpen, setFavMoviesDialogOpen] = useState(false);
     const [favShowsDialogOpen, setFavShowsDialogOpen] = useState(false);
 
+    // Username state
+    const [usernameInput, setUsernameInput] = useState("");
+    const [usernameStatus, setUsernameStatus] = useState(null); // null | 'checking' | 'available' | 'taken' | 'invalid' | 'same'
+    const [savingUsername, setSavingUsername] = useState(false);
+    const usernameTimerRef = useRef(null);
+
     useEffect(() => {
         if (!authLoading && !user) {
             router.push("/login");
@@ -39,8 +46,70 @@ export default function SettingsPage() {
         if (user) {
             loadProfile();
             loadFavorites();
+            setUsernameInput(user.username || "");
         }
     }, [user]);
+
+    // Debounced username availability check
+    useEffect(() => {
+        if (usernameTimerRef.current) clearTimeout(usernameTimerRef.current);
+
+        if (!usernameInput.trim()) {
+            setUsernameStatus(null);
+            return;
+        }
+
+        // If same as current username
+        if (usernameInput.trim().toLowerCase() === (user?.username || "").toLowerCase()) {
+            setUsernameStatus("same");
+            return;
+        }
+
+        const validation = validateUsername(usernameInput.trim());
+        if (!validation.valid) {
+            setUsernameStatus("invalid");
+            return;
+        }
+
+        setUsernameStatus("checking");
+        usernameTimerRef.current = setTimeout(async () => {
+            try {
+                const res = await fetch("/api/auth/check-username", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username: usernameInput.trim() }),
+                });
+                const data = await res.json();
+                setUsernameStatus(data.available ? "available" : "taken");
+            } catch {
+                setUsernameStatus(null);
+            }
+        }, 500);
+
+        return () => {
+            if (usernameTimerRef.current) clearTimeout(usernameTimerRef.current);
+        };
+    }, [usernameInput, user]);
+
+    const handleUsernameSave = async () => {
+        if (usernameStatus !== "available") return;
+        setSavingUsername(true);
+        try {
+            const { doc: firestoreDoc, setDoc } = await import("firebase/firestore");
+            const profileRef = firestoreDoc(db, "user_profiles", user.uid);
+            await setDoc(profileRef, {
+                username: usernameInput.trim(),
+                username_lowercase: usernameInput.trim().toLowerCase(),
+            }, { merge: true });
+            showToast.success("Username updated!");
+            setUsernameStatus("same");
+        } catch (error) {
+            console.error("Error updating username:", error);
+            showToast.error("Failed to update username");
+        } finally {
+            setSavingUsername(false);
+        }
+    };
 
     const loadProfile = async () => {
         setLoading(true);
@@ -205,6 +274,49 @@ export default function SettingsPage() {
                             Upload Picture
                         </button>
                     </div>
+                </section>
+
+                {/* Username */}
+                <section className="mb-8 p-6 bg-secondary rounded-xl">
+                    <div className="flex items-center gap-4 mb-4">
+                        <AtSign className="text-accent" size={24} />
+                        <h2 className="text-2xl font-bold">Username</h2>
+                    </div>
+                    <p className="text-sm text-textSecondary mb-4">
+                        Your profile URL: <span className="text-accent font-medium">viewnote.app/{usernameInput || "your-username"}</span>
+                    </p>
+                    <div className="flex gap-3">
+                        <div className="relative flex-1">
+                            <input
+                                type="text"
+                                value={usernameInput}
+                                onChange={(e) => setUsernameInput(e.target.value.replace(/\s/g, ""))}
+                                placeholder="Choose a username"
+                                className="w-full p-3 bg-background border border-white/10 rounded-lg focus:outline-none focus:border-accent transition pr-10"
+                                maxLength={20}
+                            />
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                {usernameStatus === "checking" && <Loader2 size={18} className="animate-spin text-textSecondary" />}
+                                {usernameStatus === "available" && <Check size={18} className="text-green-500" />}
+                                {usernameStatus === "taken" && <X size={18} className="text-red-500" />}
+                                {usernameStatus === "invalid" && <X size={18} className="text-red-500" />}
+                                {usernameStatus === "same" && <Check size={18} className="text-textSecondary" />}
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleUsernameSave}
+                            disabled={usernameStatus !== "available" || savingUsername}
+                            className="px-4 py-2 bg-accent text-background rounded-lg hover:bg-accent/90 transition disabled:opacity-50 font-medium"
+                        >
+                            {savingUsername ? "Saving..." : "Save"}
+                        </button>
+                    </div>
+                    {usernameStatus === "taken" && (
+                        <p className="text-red-400 text-sm mt-2">This username is already taken</p>
+                    )}
+                    {usernameStatus === "invalid" && (
+                        <p className="text-red-400 text-sm mt-2">{validateUsername(usernameInput.trim()).error}</p>
+                    )}
                 </section>
 
                 {/* Bio */}

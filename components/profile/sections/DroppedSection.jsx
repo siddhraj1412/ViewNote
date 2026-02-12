@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
+import { getMediaUrl } from "@/lib/slugify";
 import { profileService } from "@/services/profileService";
 import { useAuth } from "@/context/AuthContext";
 import { useParams } from "next/navigation";
@@ -71,7 +72,7 @@ export default function DroppedSection({ userId }) {
             {droppedItems.map((item) => (
                 <Link
                     key={item.id}
-                    href={`/${item.mediaType}/${item.mediaId}`}
+                    href={getMediaUrl(item, item.mediaType)}
                     className="group"
                 >
                     <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-all bg-secondary">

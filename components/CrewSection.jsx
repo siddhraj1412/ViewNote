@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { tmdb } from "@/lib/tmdb";
+import { getPersonUrl } from "@/lib/slugify";
 
 export default function CrewSection({ crew = [] }) {
     const [showAllCrew, setShowAllCrew] = useState(false);
@@ -60,7 +61,7 @@ export default function CrewSection({ crew = [] }) {
                         {directors.map((director, index) => (
                             <Link
                                 key={`${director.id}-${index}`}
-                                href={`/person/${director.id}`}
+                                href={getPersonUrl(director)}
                                 className="flex flex-col items-center gap-3 group w-32"
                             >
                                 <div className="relative w-32 h-32 rounded-full overflow-hidden bg-secondary ring-2 ring-white/10">
@@ -119,7 +120,7 @@ export default function CrewSection({ crew = [] }) {
                                         {otherCrew[dept].map((person, index) => (
                                             <Link
                                                 key={`${person.id}-${index}`}
-                                                href={`/person/${person.id}`}
+                                                href={getPersonUrl(person)}
                                                 className="flex items-center gap-3 p-3 rounded-lg bg-secondary hover:bg-white/5 transition"
                                             >
                                                 <div className="flex-1 min-w-0">

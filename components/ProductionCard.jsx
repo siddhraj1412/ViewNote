@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
+import { getProductionUrl } from "@/lib/slugify";
 
 /**
  * Production house card component
@@ -13,7 +14,7 @@ export default function ProductionCard({ production }) {
 
     return (
         <Link
-            href={`/production/${production.id}`}
+            href={getProductionUrl(production)}
             className="flex items-center gap-4 p-4 bg-secondary/50 rounded-lg border border-white/10 hover:border-accent/50 transition-all group"
         >
             {/* Logo */}

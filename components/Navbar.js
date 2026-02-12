@@ -10,6 +10,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import SearchOverlay from "./SearchOverlay";
 import useScrollDirection from "@/hooks/useScrollDirection";
+import { getProfileUrl } from "@/lib/slugify";
 
 function NavbarContent() {
     const [showSearch, setShowSearch] = useState(false);
@@ -59,13 +60,13 @@ function NavbarContent() {
 
     const getDropdownItems = () => {
         if (!user) return [];
-        const uid = user.uid;
+        const profileIdentifier = user.username || user.uid;
         return [
-            { label: "Profile", icon: User, href: `/profile/${uid}` },
-            { label: "Watchlist", icon: Clock, href: `/profile/${uid}?tab=watchlist` },
-            { label: "Reviews", icon: Star, href: `/profile/${uid}?tab=reviews` },
-            { label: "Diary", icon: BookOpen, href: `/profile/${uid}?tab=diary` },
-            { label: "Lists", icon: List, href: `/profile/${uid}?tab=lists` },
+            { label: "Profile", icon: User, href: getProfileUrl(profileIdentifier) },
+            { label: "Watchlist", icon: Clock, href: getProfileUrl(profileIdentifier, 'watchlist') },
+            { label: "Reviews", icon: Star, href: getProfileUrl(profileIdentifier, 'reviews') },
+            { label: "Diary", icon: BookOpen, href: getProfileUrl(profileIdentifier, 'diary') },
+            { label: "Lists", icon: List, href: getProfileUrl(profileIdentifier, 'lists') },
             { label: "Settings", icon: Settings, href: "/settings" },
         ];
     };
@@ -81,7 +82,7 @@ function NavbarContent() {
     const isDropdownItemActive = (item) => {
         if (item.href === "/settings") return pathname === "/settings";
         const [path, qs] = item.href.split("?");
-        const isProfilePage = pathname === path || pathname.startsWith("/profile/");
+        const isProfilePage = pathname === path || pathname.startsWith("/profile/") || pathname === `/${user?.username}`;
         if (!isProfilePage) return false;
         if (!qs) return !searchParams.get("tab");
         const tabParam = new URLSearchParams(qs).get("tab");

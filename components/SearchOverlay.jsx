@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Search, X, Film, Tv, User } from "lucide-react";
 import { tmdb } from "@/lib/tmdb";
+import { getMovieUrl, getShowUrl, getPersonUrl } from "@/lib/slugify";
 
 export default function SearchOverlay({ isOpen, onClose }) {
     const [query, setQuery] = useState("");
@@ -86,10 +87,10 @@ export default function SearchOverlay({ isOpen, onClose }) {
     const handleResultClick = (result) => {
         const path =
             result.media_type === "movie"
-                ? `/movie/${result.id}`
+                ? getMovieUrl(result)
                 : result.media_type === "tv"
-                    ? `/tv/${result.id}`
-                    : `/person/${result.id}`;
+                    ? getShowUrl(result)
+                    : getPersonUrl(result);
         router.push(path);
         onClose();
     };

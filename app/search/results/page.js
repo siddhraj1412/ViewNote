@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { tmdb } from "@/lib/tmdb";
 import { MovieCardSkeleton } from "@/components/SkeletonLoader";
+import { getMediaUrl } from "@/lib/slugify";
 
 function ResultsContent() {
     const searchParams = useSearchParams();
@@ -68,7 +69,7 @@ function ResultsContent() {
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8">
                     {(activeTab === "movies" ? results.movies : results.tv).map((item) => (
-                        <Link key={item.id} href={`/${activeTab === "movies" ? "movie" : "tv"}/${item.id}`} className="group">
+                        <Link key={item.id} href={getMediaUrl(item, activeTab === "movies" ? "movie" : "tv")} className="group">
                             <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
                                 <Image
                                     src={tmdb.getImageUrl(item.poster_path)}

@@ -6,10 +6,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { tmdb } from "@/lib/tmdb";
 import { Building2, MapPin, Calendar } from "lucide-react";
+import { parseSlugId, getMediaUrl } from "@/lib/slugify";
 
 export default function ProductionPage() {
     const params = useParams();
-    const companyId = Number(params.id);
+    const { id: parsedId } = parseSlugId(params.id);
+    const companyId = parsedId || Number(params.id);
     const [company, setCompany] = useState(null);
     const [movies, setMovies] = useState([]);
     const [tvShows, setTvShows] = useState([]);
@@ -130,7 +132,7 @@ export default function ProductionPage() {
                     {displayMedia.map((item) => (
                         <Link
                             key={item.id}
-                            href={`/${activeTab === "movies" ? "movie" : "tv"}/${item.id}`}
+                            href={getMediaUrl(item, activeTab === "movies" ? "movie" : "tv")}
                             className="group"
                         >
                             <div className="relative aspect-[2/3] rounded-xl overflow-hidden mb-3 shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow">

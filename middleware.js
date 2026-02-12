@@ -1,16 +1,33 @@
 import { NextResponse } from 'next/server';
 
 /**
- * Rate limiting middleware for Next.js
+ * Middleware for URL redirects and security headers.
+ * 
+ * Old URL patterns are handled by their respective route pages
+ * (e.g. /movie/[id]/page.js fetches data and redirects client-side).
+ * 
+ * This middleware handles:
+ * - Security headers
+ * - Cache headers for API routes
+ * - Canonical URL enforcement (trailing slashes, etc.)
  */
 export function middleware(request) {
-    // Skip rate limiting for static assets
+    const { pathname } = request.nextUrl;
+
+    // Skip for static assets
     if (
-        request.nextUrl.pathname.startsWith('/_next') ||
-        request.nextUrl.pathname.startsWith('/static') ||
-        request.nextUrl.pathname.match(/\.(ico|png|jpg|jpeg|svg|webp|avif)$/)
+        pathname.startsWith('/_next') ||
+        pathname.startsWith('/static') ||
+        pathname.match(/\.(ico|png|jpg|jpeg|svg|webp|avif)$/)
     ) {
         return NextResponse.next();
+    }
+
+    // Remove trailing slashes (except root)
+    if (pathname !== '/' && pathname.endsWith('/')) {
+        const url = request.nextUrl.clone();
+        url.pathname = pathname.slice(0, -1);
+        return NextResponse.redirect(url, 301);
     }
 
     // Add security headers
@@ -26,8 +43,8 @@ export function middleware(request) {
         'camera=(), microphone=(), geolocation=()'
     );
 
-    // Cache headers for static content
-    if (request.nextUrl.pathname.startsWith('/api/')) {
+    // Cache headers for API routes
+    if (pathname.startsWith('/api/')) {
         response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
     }
 

@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import { Play, Sparkles, Tv, TrendingUp } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { mediaService } from "@/services/mediaService";
+import { getMediaUrl } from "@/lib/slugify";
 
 /**
  * Weighted shuffle — prefers recent, high-rated, popular items
@@ -62,7 +63,7 @@ function clearSessionCache() {
 }
 
 const MediaCard = memo(function MediaCard({ item, type }) {
-    const href = type === "movie" ? `/movie/${item.id}` : `/tv/${item.id}`;
+    const href = getMediaUrl(item, type);
     const title = item.title || item.name;
     const year = (item.release_date || item.first_air_date || "").split("-")[0];
     const rating = item.vote_average?.toFixed(1);
@@ -251,7 +252,7 @@ export default function HomePage() {
                                 {featuredMovie.overview}
                             </p>
                             <div className="flex flex-wrap gap-4">
-                                <Link href={featuredMovie.title ? `/movie/${featuredMovie.id}` : `/tv/${featuredMovie.id}`}>
+                                <Link href={getMediaUrl(featuredMovie, featuredMovie.title ? 'movie' : 'tv')}>
                                     <Button size="lg">
                                         <Play className="mr-2 fill-current" size={20} />
                                         View Details

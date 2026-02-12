@@ -6,9 +6,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { tmdb } from "@/lib/tmdb";
 import { Film, Tv, Calendar, MapPin, User } from "lucide-react";
+import { getMediaUrl, parseSlugId } from "@/lib/slugify";
 
 export default function PersonPage() {
     const params = useParams();
+    const { id: parsedId } = parseSlugId(params.id);
+    const personId = parsedId || params.id;
     const [person, setPerson] = useState(null);
     const [credits, setCredits] = useState({
         moviesActing: [],
@@ -23,8 +26,8 @@ export default function PersonPage() {
             try {
                 setLoading(true);
                 const [personData, creditsData] = await Promise.all([
-                    tmdb.getPersonDetails(params.id),
-                    tmdb.getPersonCredits(params.id),
+                    tmdb.getPersonDetails(personId),
+                    tmdb.getPersonCredits(personId),
                 ]);
 
                 setPerson(personData);
@@ -126,10 +129,10 @@ export default function PersonPage() {
             }
         };
 
-        if (params.id) {
+        if (personId) {
             fetchPersonData();
         }
-    }, [params.id]);
+    }, [personId]);
 
     if (loading) {
         return (
@@ -152,7 +155,7 @@ export default function PersonPage() {
             {items.map((item, index) => (
                 <Link
                     key={`${item.id}-${index}`}
-                    href={`/${mediaType}/${item.id}`}
+                    href={getMediaUrl(item, mediaType)}
                     className="group"
                 >
                     <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">

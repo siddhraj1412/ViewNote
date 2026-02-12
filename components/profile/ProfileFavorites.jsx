@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { tmdb } from "@/lib/tmdb";
+import { getMovieUrl, getShowUrl } from "@/lib/slugify";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -67,7 +68,7 @@ export default function ProfileFavorites({ userId }) {
                     <h3 className="text-sm font-semibold text-textSecondary mb-2">Favorite Movie</h3>
                     {favoriteMovie ? (
                         <Link
-                            href={`/movie/${favoriteMovie.id}`}
+                            href={getMovieUrl(favoriteMovie)}
                             className="relative aspect-[2/3] w-full rounded-xl overflow-hidden shadow-lg hover:shadow-xl hover:shadow-accent/10 transition block group"
                         >
                             <Image
@@ -92,7 +93,7 @@ export default function ProfileFavorites({ userId }) {
                     <h3 className="text-sm font-semibold text-textSecondary mb-2">Favorite Series</h3>
                     {favoriteSeries ? (
                         <Link
-                            href={`/tv/${favoriteSeries.id}`}
+                            href={getShowUrl(favoriteSeries)}
                             className="relative aspect-[2/3] w-full rounded-xl overflow-hidden shadow-lg hover:shadow-xl hover:shadow-accent/10 transition block group"
                         >
                             <Image
