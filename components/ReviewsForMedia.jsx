@@ -5,7 +5,7 @@ import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, limit, query, where } from "firebase/firestore";
 import StarRating from "@/components/StarRating";
-import { Heart, Eye, MessageSquare } from "lucide-react";
+import { Heart, MessageSquare } from "lucide-react";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p";
 
@@ -134,12 +134,6 @@ export default function ReviewsForMedia({ mediaId, mediaType, title }) {
                                             )}
                                             {r.liked && (
                                                 <Heart size={14} className="text-red-400" fill="currentColor" />
-                                            )}
-                                            {r.viewCount > 1 && (
-                                                <div className="flex items-center gap-1 text-xs text-textSecondary">
-                                                    <Eye size={12} />
-                                                    <span>{r.viewCount}x</span>
-                                                </div>
                                             )}
                                         </div>
 

@@ -212,7 +212,6 @@ export const mediaService = {
             poster_path: mediaData.poster_path || "",
             review: reviewText || "",
             ratedAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
             username: user.username || "",
         };
 
@@ -236,7 +235,6 @@ export const mediaService = {
                 // Rate Again: create a new doc with auto-generated ID
                 ratingDoc.watchNumber = extra.viewCount || 2;
                 ratingDoc.isRewatch = true;
-                ratingDoc.createdAt = serverTimestamp();
                 await runTransaction(db, async (transaction) => {
                     // ── ALL READS FIRST ──
                     const primaryStatuses = ["watched", "watchlist", "paused", "dropped"];
@@ -266,14 +264,8 @@ export const mediaService = {
                         await transaction.get(doc(db, STATUS_COLLECTIONS[status], uniqueId));
                     }
 
-                    const ratingRef = doc(db, "user_ratings", uniqueId);
-                    const ratingSnap = await transaction.get(ratingRef);
-                    const existingRating = ratingSnap.exists() ? ratingSnap.data() : null;
-
-                    const createdAt = existingRating?.createdAt || existingRating?.ratedAt || serverTimestamp();
-
                     // ── ALL WRITES AFTER ──
-                    transaction.set(ratingRef, { ...ratingDoc, createdAt }, { merge: true });
+                    transaction.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
                     transaction.set(doc(db, "user_watched", uniqueId), watchedDoc, { merge: true });
                     transaction.delete(doc(db, "user_watchlist", uniqueId));
                     transaction.delete(doc(db, "user_paused", uniqueId));
@@ -290,22 +282,10 @@ export const mediaService = {
             try {
                 const batch = writeBatch(db);
                 if (isRateAgain) {
-                    if (!ratingDoc.createdAt) {
-                        ratingDoc.createdAt = serverTimestamp();
-                    }
                     const newRatingRef = doc(collection(db, "user_ratings"));
                     batch.set(newRatingRef, ratingDoc);
                 } else {
-                    const ratingRef = doc(db, "user_ratings", uniqueId);
-                    let createdAt;
-                    try {
-                        const existing = await getDoc(ratingRef);
-                        const data = existing.exists() ? existing.data() : null;
-                        createdAt = data?.createdAt || data?.ratedAt;
-                    } catch (_) {
-                        createdAt = undefined;
-                    }
-                    batch.set(ratingRef, { ...ratingDoc, createdAt: createdAt || serverTimestamp() }, { merge: true });
+                    batch.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
                 }
                 batch.set(doc(db, "user_watched", uniqueId), watchedDoc, { merge: true });
                 batch.delete(doc(db, "user_watchlist", uniqueId));

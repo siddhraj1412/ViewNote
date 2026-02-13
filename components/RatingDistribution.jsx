@@ -5,14 +5,19 @@ import { db } from "@/lib/firebase";
 import { collection, getDocs, query, where, limit } from "firebase/firestore";
 
 function bucketFromRating(rating) {
-    if (!rating || rating <= 0) return null;
-    const rounded = Math.floor(rating + 0.5);
-    return Math.max(1, Math.min(5, rounded));
+    if (rating == null) return null;
+    const n = Number(rating);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const rounded = Math.round(n * 2) / 2;
+    const clamped = Math.max(0.5, Math.min(5, rounded));
+    return clamped;
 }
+
+const BUCKETS = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5];
 
 export default function RatingDistribution({ mediaId }) {
     const [loading, setLoading] = useState(true);
-    const [counts, setCounts] = useState({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+    const [counts, setCounts] = useState(() => Object.fromEntries(BUCKETS.map((b) => [String(b), 0])));
     const [total, setTotal] = useState(0);
 
     useEffect(() => {
@@ -20,7 +25,7 @@ export default function RatingDistribution({ mediaId }) {
 
         const run = async () => {
             if (!mediaId) {
-                setCounts({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+                setCounts(Object.fromEntries(BUCKETS.map((b) => [String(b), 0])));
                 setTotal(0);
                 setLoading(false);
                 return;
@@ -35,14 +40,15 @@ export default function RatingDistribution({ mediaId }) {
                 );
                 const snap = await getDocs(q);
 
-                const next = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+                const next = Object.fromEntries(BUCKETS.map((b) => [String(b), 0]));
                 let t = 0;
 
                 for (const d of snap.docs) {
                     const data = d.data();
                     const b = bucketFromRating(data.rating);
                     if (!b) continue;
-                    next[b] = (next[b] || 0) + 1;
+                    const key = String(b);
+                    next[key] = (next[key] || 0) + 1;
                     t += 1;
                 }
 
@@ -52,7 +58,7 @@ export default function RatingDistribution({ mediaId }) {
                 }
             } catch {
                 if (!cancelled) {
-                    setCounts({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+                    setCounts(Object.fromEntries(BUCKETS.map((b) => [String(b), 0])));
                     setTotal(0);
                 }
             } finally {
@@ -67,8 +73,8 @@ export default function RatingDistribution({ mediaId }) {
     }, [mediaId]);
 
     const rows = useMemo(() => {
-        return [5, 4, 3, 2, 1].map((star) => {
-            const c = counts[star] || 0;
+        return BUCKETS.map((star) => {
+            const c = counts[String(star)] || 0;
             const pct = total > 0 ? Math.round((c / total) * 100) : 0;
             return { star, count: c, pct };
         });
@@ -91,7 +97,7 @@ export default function RatingDistribution({ mediaId }) {
         return (
             <div className="bg-secondary rounded-xl border border-white/5 p-5">
                 <div className="text-lg font-bold text-white mb-2">Rating distribution</div>
-                <div className="text-sm text-textSecondary">No one has rated this movie yet. Be the first one.</div>
+                <div className="text-sm text-textSecondary">No one has rated this yet. Be the first.</div>
             </div>
         );
     }
@@ -106,7 +112,7 @@ export default function RatingDistribution({ mediaId }) {
             <div className="space-y-2">
                 {rows.map((r) => (
                     <div key={r.star} className="flex items-center gap-3">
-                        <div className="w-10 text-xs font-semibold text-white">{r.star}★</div>
+                        <div className="w-12 text-xs font-semibold text-white">{r.star}★</div>
                         <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
                             <div
                                 className="h-full bg-accent"

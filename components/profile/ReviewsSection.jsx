@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { MessageSquare, Heart, Eye, Calendar, ThumbsUp } from "lucide-react";
+import { MessageSquare, Heart, Calendar, ThumbsUp } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
@@ -156,12 +156,6 @@ export default function ReviewsSection({ userId, username }) {
                                         )}
                                         {item.liked && (
                                             <Heart size={14} className="text-red-400" fill="currentColor" />
-                                        )}
-                                        {item.viewCount > 1 && (
-                                            <div className="flex items-center gap-1 text-xs text-textSecondary">
-                                                <Eye size={12} />
-                                                <span>{item.viewCount}x</span>
-                                            </div>
                                         )}
                                         <span className="text-xs text-textSecondary capitalize">{item.mediaType}</span>
                                         {item.ratedAt && (

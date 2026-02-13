@@ -7,7 +7,7 @@ import Button from "@/components/ui/Button";
 import { mediaService } from "@/services/mediaService";
 import { useAuth } from "@/context/AuthContext";
 import showToast from "@/lib/toast";
-import { Heart, Minus, Plus, X as XIcon, Calendar } from "lucide-react";
+import { Heart, X as XIcon, Calendar } from "lucide-react";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w300";
 
@@ -292,27 +292,6 @@ export default function RatingModal({
                             >
                                 <Heart size={18} fill={liked ? "currentColor" : "none"} />
                             </button>
-
-                            {/* View Count stepper */}
-                            <div className="flex flex-col items-center gap-0.5">
-                                <span className="text-[10px] text-textSecondary font-medium uppercase tracking-wider">Views</span>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        onClick={() => setViewCount(Math.max(1, viewCount - 1))}
-                                        disabled={viewCount <= 1}
-                                        className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-textSecondary hover:text-white disabled:opacity-30 transition"
-                                    >
-                                        <Minus size={14} />
-                                    </button>
-                                    <span className="w-8 text-center text-sm font-medium text-white">{viewCount}</span>
-                                    <button
-                                        onClick={() => setViewCount(viewCount + 1)}
-                                        className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-textSecondary hover:text-white transition"
-                                    >
-                                        <Plus size={14} />
-                                    </button>
-                                </div>
-                            </div>
                         </div>
 
                         {/* Actions */}

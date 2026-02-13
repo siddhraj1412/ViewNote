@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Calendar, Heart, Eye } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Calendar, Heart } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { collection, query, where, orderBy, limit, onSnapshot, writeBatch, doc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { getMediaUrl } from "@/lib/slugify";
 import StarRating from "@/components/StarRating";
+import eventBus from "@/lib/eventBus";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w154";
 const PAGE_SIZE = 50;
@@ -18,59 +19,60 @@ export default function DiarySection({ userId }) {
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showAll, setShowAll] = useState(false);
-    const backfilledIdsRef = useRef(new Set());
+
+    const fetchDiary = useCallback(async () => {
+        if (!ownerId) { setLoading(false); return; }
+        setLoading(true);
+        try {
+            // Try with orderBy first (requires composite index)
+            let snap;
+            try {
+                const q = query(
+                    collection(db, "user_ratings"),
+                    where("userId", "==", ownerId),
+                    orderBy("ratedAt", "desc"),
+                    limit(200)
+                );
+                snap = await getDocs(q);
+            } catch (indexErr) {
+                // Fallback: query without orderBy if index isn't deployed yet
+                console.warn("Diary index not ready, falling back:", indexErr.message);
+                const fallbackQ = query(
+                    collection(db, "user_ratings"),
+                    where("userId", "==", ownerId),
+                    limit(200)
+                );
+                snap = await getDocs(fallbackQ);
+            }
+            const items = snap.docs
+                .map((d) => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => {
+                    const timeA = a.ratedAt?.seconds || 0;
+                    const timeB = b.ratedAt?.seconds || 0;
+                    return timeB - timeA;
+                });
+            setEntries(items);
+        } catch (error) {
+            console.error("Error loading diary:", error);
+        } finally {
+            setLoading(false);
+        }
+    }, [ownerId]);
 
     useEffect(() => {
-        if (!ownerId) {
-            setEntries([]);
-            setLoading(false);
-            return;
-        }
+        fetchDiary();
+    }, [fetchDiary]);
 
-        setLoading(true);
-
-        const q = query(
-            collection(db, "user_ratings"),
-            where("userId", "==", ownerId),
-            orderBy("createdAt", "desc"),
-            limit(200)
-        );
-
-        const unsub = onSnapshot(
-            q,
-            (snapshot) => {
-                const items = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-                setEntries(items);
-                setLoading(false);
-
-                const missing = snapshot.docs.filter((d) => {
-                    if (backfilledIdsRef.current.has(d.id)) return false;
-                    const data = d.data();
-                    return !data?.createdAt;
-                });
-
-                if (missing.length > 0) {
-                    const batch = writeBatch(db);
-                    for (const d of missing) {
-                        const data = d.data();
-                        const createdAt = data?.ratedAt || serverTimestamp();
-                        batch.set(doc(db, "user_ratings", d.id), { createdAt }, { merge: true });
-                        backfilledIdsRef.current.add(d.id);
-                    }
-                    batch.commit().catch((e) => {
-                        console.error("Error backfilling diary createdAt:", e);
-                    });
-                }
-            },
-            (error) => {
-                console.error("Error loading diary:", error);
-                setEntries([]);
-                setLoading(false);
-            }
-        );
-
-        return () => unsub();
-    }, [ownerId]);
+    // Refresh on new ratings
+    useEffect(() => {
+        const handler = () => fetchDiary();
+        eventBus.on("MEDIA_UPDATED", handler);
+        eventBus.on("PROFILE_DATA_INVALIDATED", handler);
+        return () => {
+            eventBus.off("MEDIA_UPDATED", handler);
+            eventBus.off("PROFILE_DATA_INVALIDATED", handler);
+        };
+    }, [fetchDiary]);
 
     const formatDate = (item) => {
         if (item.watchedDate) {
@@ -78,9 +80,8 @@ export default function DiarySection({ userId }) {
                 month: "short", day: "numeric", year: "numeric",
             });
         }
-        const ts = item.createdAt || item.ratedAt;
-        if (ts?.seconds) {
-            return new Date(ts.seconds * 1000).toLocaleDateString("en-US", {
+        if (item.ratedAt?.seconds) {
+            return new Date(item.ratedAt.seconds * 1000).toLocaleDateString("en-US", {
                 month: "short", day: "numeric", year: "numeric",
             });
         }
@@ -150,11 +151,6 @@ export default function DiarySection({ userId }) {
                                         )}
                                         {item.liked && (
                                             <Heart size={12} className="text-red-400" fill="currentColor" />
-                                        )}
-                                        {item.viewCount > 1 && (
-                                            <span className="text-[10px] text-textSecondary flex items-center gap-0.5">
-                                                <Eye size={10} />{item.viewCount}x
-                                            </span>
                                         )}
                                     </div>
                                 </div>

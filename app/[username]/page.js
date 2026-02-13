@@ -206,67 +206,58 @@ function UsernameProfileContent() {
         <main className="min-h-screen bg-background">
             {/* Adaptive Hero Banner */}
             <div className="relative">
-                <div className="relative w-full">
-                    {bannerUrl ? (
-                        <img
-                            src={bannerUrl}
-                            alt="Profile banner"
-                            className="w-full h-auto block"
-                            style={{ aspectRatio: `${bannerAspectRatio}` }}
-                        />
-                    ) : (
-                        <div className="w-full" style={{ aspectRatio: "5 / 2", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }} />
-                    )}
-
-                    <div
-                        className="absolute inset-0"
-                        style={{
-                            background: "radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.3) 100%)",
-                        }}
-                    />
+                <div
+                    className="absolute top-0 left-0 right-0"
+                    style={{
+                        minHeight: "70vh",
+                        maxHeight: "90vh",
+                        height: "auto",
+                        backgroundImage: bannerUrl
+                            ? `url(${bannerUrl})`
+                            : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                        backgroundSize: bannerAspectRatio > 2.1 ? "contain" : "cover",
+                        backgroundRepeat: "no-repeat",
+                        backgroundPosition: "center",
+                    }}
+                >
+                    <div className="absolute inset-0" style={{
+                        background: "radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.3) 100%)"
+                    }} />
                     <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/40 to-background" />
                     <div className="absolute inset-0 bg-black/20" />
+                </div>
 
-                    <div className="container absolute inset-x-0 bottom-0 z-10">
-                        <div className="pb-8 pt-24">
-                            <div className="flex items-center">
-                                <div className="flex items-center gap-5">
-                                    <div
-                                        className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center text-4xl font-bold border-4 border-background shadow-xl overflow-hidden relative"
-                                    >
-                                        {profileData?.profile_picture_url ? (
-                                            <img
-                                                src={profileData.profile_picture_url}
-                                                alt="Profile"
-                                                className="w-full h-full object-cover"
-                                                onError={(e) => {
-                                                    e.target.onerror = null;
-                                                    e.target.style.display = "none";
-                                                    e.target.parentElement.textContent = (profileData?.username?.[0] || "U").toUpperCase();
-                                                }}
-                                            />
-                                        ) : (
-                                            (profileData?.username?.[0] || user.username?.[0] || user.email?.[0] || "U").toUpperCase()
+                <div className="container relative z-10" style={{ minHeight: "70vh", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                    <div className="pb-8 pt-24">
+                        <div className="flex items-center">
+                            <div className="flex items-center gap-5">
+                                <div
+                                    className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center text-4xl font-bold border-4 border-background shadow-xl overflow-hidden relative"
+                                >
+                                    {profileData?.profile_picture_url ? (
+                                        <img src={profileData.profile_picture_url} alt="Profile" className="w-full h-full object-cover"
+                                            onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; e.target.parentElement.textContent = (profileData?.username?.[0] || 'U').toUpperCase(); }} />
+                                    ) : (
+                                        (profileData?.username?.[0] || user.username?.[0] || user.email?.[0] || "U").toUpperCase()
+                                    )}
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-3">
+                                        <h1 className="text-4xl font-bold text-white drop-shadow-lg leading-none">
+                                            {displayName}
+                                        </h1>
+                                        {isOwnProfile && (
+                                            <button
+                                                onClick={() => router.push("/settings")}
+                                                className="px-3 py-1.5 btn-edit-profile-glass text-xs font-medium flex items-center gap-1.5 h-fit"
+                                            >
+                                                <span>Edit Profile</span>
+                                            </button>
                                         )}
                                     </div>
-                                    <div className="flex flex-col gap-1">
-                                        <div className="flex items-center gap-3">
-                                            <h1 className="text-4xl font-bold text-white drop-shadow-lg leading-none">
-                                                {displayName}
-                                            </h1>
-                                            {isOwnProfile && (
-                                                <button
-                                                    onClick={() => router.push("/settings")}
-                                                    className="px-3 py-1.5 btn-edit-profile-glass text-xs font-medium flex items-center gap-1.5 h-fit"
-                                                >
-                                                    <span>Edit Profile</span>
-                                                </button>
-                                            )}
-                                        </div>
 
-                                        <div className="text-white/80 max-w-2xl mt-1">
-                                            <ProfileBio userId={profileUserId} />
-                                        </div>
+                                    <div className="text-white/80 max-w-2xl mt-1">
+                                        <ProfileBio userId={profileUserId} />
                                     </div>
                                 </div>
                             </div>

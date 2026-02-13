@@ -41,7 +41,7 @@ function getSessionCache() {
                 return parsed;
             }
         }
-    } catch (_) { }
+    } catch (_) {}
     return null;
 }
 
@@ -52,14 +52,14 @@ function setSessionCache(data) {
             SESSION_CACHE_KEY,
             JSON.stringify({ ...data, timestamp: Date.now() })
         );
-    } catch (_) { }
+    } catch (_) {}
 }
 
 function clearSessionCache() {
     if (typeof window === "undefined") return;
     try {
         sessionStorage.removeItem(SESSION_CACHE_KEY);
-    } catch (_) { }
+    } catch (_) {}
 }
 
 const MediaCard = memo(function MediaCard({ item, type }) {
@@ -117,25 +117,25 @@ export default function HomePage() {
             }
 
             try {
-                // Fetch trending (cached)
-                const trendingMoviesData = await tmdb.getTrendingMovies("week");
-                const trendingTVData = await tmdb.getTrendingTV("week");
-
-                // Fetch other categories lazily or in parallel with a limit
-                // We use our new cached 'get' method
+                // Fetch from multiple sources — use Promise.allSettled so partial failures don't block
                 const randomPage = Math.floor(Math.random() * 3) + 1;
+                const results = await Promise.allSettled([
+                    tmdb.getTrendingMovies("week"),
+                    tmdb.getTrendingTV("week"),
+                    fetchTMDBPage(`movie/popular?page=${randomPage}`),
+                    fetchTMDBPage(`tv/popular?page=${randomPage}`),
+                    fetchTMDBPage(`movie/top_rated?page=${randomPage}`),
+                    fetchTMDBPage(`tv/top_rated?page=${randomPage}`),
+                ]);
 
-                const [popularMovies, popularTV, topRatedMovies, topRatedTV] = await Promise.all([
-                    tmdb.searchMovies ? tmdb.get(`movie/popular?page=${randomPage}`) : fetchTMDBPage(`movie/popular?page=${randomPage}`),
-                    tmdb.searchTV ? tmdb.get(`tv/popular?page=${randomPage}`) : fetchTMDBPage(`tv/popular?page=${randomPage}`),
-                    tmdb.searchMovies ? tmdb.get(`movie/top_rated?page=${randomPage}`) : fetchTMDBPage(`movie/top_rated?page=${randomPage}`),
-                    tmdb.searchMovies ? tmdb.get(`tv/top_rated?page=${randomPage}`) : fetchTMDBPage(`tv/top_rated?page=${randomPage}`),
-                ].map(p => p.catch(() => ({ results: [] }))));
-
-                const popularMoviesResults = popularMovies.results || [];
-                const popularTVResults = popularTV.results || [];
-                const topRatedMoviesResults = topRatedMovies.results || [];
-                const topRatedTVResults = topRatedTV.results || [];
+                const [
+                    trendingMoviesData,
+                    trendingTVData,
+                    popularMovies,
+                    popularTV,
+                    topRatedMovies,
+                    topRatedTV,
+                ] = results.map(r => r.status === "fulfilled" ? r.value : []);
 
                 // Get user's seen media IDs for filtering
                 let seenIds = new Set();
@@ -150,15 +150,15 @@ export default function HomePage() {
                 // Merge and deduplicate movies
                 const allMovies = deduplicateById([
                     ...(trendingMoviesData || []),
-                    ...(popularMoviesResults || []),
-                    ...(topRatedMoviesResults || []),
+                    ...(popularMovies || []),
+                    ...(topRatedMovies || []),
                 ]);
 
                 // Merge and deduplicate TV
                 const allTV = deduplicateById([
                     ...(trendingTVData || []),
-                    ...(popularTVResults || []),
-                    ...(topRatedTVResults || []),
+                    ...(popularTV || []),
+                    ...(topRatedTV || []),
                 ]);
 
                 // Filter out seen content
@@ -371,8 +371,9 @@ export default function HomePage() {
 async function fetchTMDBPage(endpoint) {
     const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
     try {
-        const url = `https://api.themoviedb.org/3/${endpoint}${endpoint.includes("?") ? "&" : "?"
-            }api_key=${TMDB_API_KEY}`;
+        const url = `https://api.themoviedb.org/3/${endpoint}${
+            endpoint.includes("?") ? "&" : "?"
+        }api_key=${TMDB_API_KEY}`;
         const res = await fetch(url);
         if (!res.ok) return [];
         const data = await res.json();

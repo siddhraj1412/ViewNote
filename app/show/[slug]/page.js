@@ -28,6 +28,7 @@ export default function ShowSlugPage() {
     const [stronglyRelated, setStronglyRelated] = useState([]);
     const [mediaImages, setMediaImages] = useState({ posters: [], backdrops: [] });
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState("cast");
 
     const { user } = useAuth();
     const { getRating } = useRatings();
@@ -186,6 +187,15 @@ export default function ShowSlugPage() {
                                 </p>
                             )}
 
+                            <div>
+                                <Link
+                                    href={`/show/${encodeURIComponent(rawSlug)}/season`}
+                                    className="inline-flex px-4 py-2 text-sm font-semibold rounded-full border transition-colors bg-white/5 text-textSecondary border-white/10 hover:text-white"
+                                >
+                                    View all seasons
+                                </Link>
+                            </div>
+
                             <ActionBar
                                 mediaId={tvId}
                                 mediaType="tv"
@@ -205,54 +215,90 @@ export default function ShowSlugPage() {
                         <RatingDistribution mediaId={tvId} />
                     </div>
 
-                    <div className="lg:col-span-8 space-y-16">
-                        {tv.credits?.cast && tv.credits.cast.length > 0 && (
-                            <section>
-                                <h2 className="text-3xl font-bold mb-6">Cast</h2>
-                                <CastSlider cast={tv.credits.cast} />
-                            </section>
-                        )}
+                    <div className="lg:col-span-8">
+                        <div className="flex flex-wrap gap-2 mb-8">
+                            <button
+                                onClick={() => setActiveTab("cast")}
+                                className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "cast" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
+                            >
+                                Cast
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("crew")}
+                                className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "crew" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
+                            >
+                                Crew
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("reviews")}
+                                className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "reviews" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
+                            >
+                                Reviews
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("media")}
+                                className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "media" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
+                            >
+                                Media
+                            </button>
+                        </div>
 
-                        {tv.credits?.crew && tv.credits.crew.length > 0 && (
-                            <section>
-                                <h2 className="text-3xl font-bold mb-6">Crew</h2>
-                                <CrewSection crew={tv.credits.crew} />
-                            </section>
-                        )}
+                        <div className="space-y-16">
+                            {activeTab === "cast" && tv.credits?.cast && tv.credits.cast.length > 0 && (
+                                <section>
+                                    <h2 className="text-3xl font-bold mb-6">Cast</h2>
+                                    <CastSlider cast={tv.credits.cast} />
+                                </section>
+                            )}
 
-                        {tv.production_companies && tv.production_companies.length > 0 && (
-                            <ProductionSection productions={tv.production_companies} />
-                        )}
+                            {activeTab === "crew" && (
+                                <>
+                                    {tv.credits?.crew && tv.credits.crew.length > 0 && (
+                                        <section>
+                                            <h2 className="text-3xl font-bold mb-6">Crew</h2>
+                                            <CrewSection crew={tv.credits.crew} />
+                                        </section>
+                                    )}
+                                    {tv.production_companies && tv.production_companies.length > 0 && (
+                                        <ProductionSection productions={tv.production_companies} />
+                                    )}
+                                </>
+                            )}
 
-                        <ReviewsForMedia mediaId={tvId} mediaType="tv" title={tv.name} />
+                            {activeTab === "reviews" && (
+                                <ReviewsForMedia mediaId={tvId} mediaType="tv" title={tv.name} />
+                            )}
 
-                        <MediaSection title="Media" posters={mediaImages.posters} backdrops={mediaImages.backdrops} />
+                            {activeTab === "media" && (
+                                <MediaSection title="Media" posters={mediaImages.posters} backdrops={mediaImages.backdrops} />
+                            )}
 
-                        {stronglyRelated.length > 0 && (
-                            <section>
-                                <h2 className="text-3xl font-bold mb-6">Strongly Related</h2>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                    {stronglyRelated.map((related) => (
-                                        <Link key={related.id} href={getShowUrl(related)} className="group">
-                                            <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
-                                                <Image
-                                                    src={tmdb.getImageUrl(related.poster_path)}
-                                                    alt={related.name}
-                                                    fill
-                                                    className="object-cover"
-                                                />
-                                                {related.similarityScore && (
-                                                    <div className="absolute top-2 right-2 bg-accent text-background px-2 py-1 rounded text-xs font-bold">
-                                                        {related.similarityScore}%
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <h3 className="font-medium text-sm line-clamp-2">{related.name}</h3>
-                                        </Link>
-                                    ))}
-                                </div>
-                            </section>
-                        )}
+                            {stronglyRelated.length > 0 && (
+                                <section>
+                                    <h2 className="text-3xl font-bold mb-6">Strongly Related</h2>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                        {stronglyRelated.map((related) => (
+                                            <Link key={related.id} href={getShowUrl(related)} className="group">
+                                                <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
+                                                    <Image
+                                                        src={tmdb.getImageUrl(related.poster_path)}
+                                                        alt={related.name}
+                                                        fill
+                                                        className="object-cover"
+                                                    />
+                                                    {related.similarityScore && (
+                                                        <div className="absolute top-2 right-2 bg-accent text-background px-2 py-1 rounded text-xs font-bold">
+                                                            {related.similarityScore}%
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <h3 className="font-medium text-sm line-clamp-2">{related.name}</h3>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </section>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

@@ -102,7 +102,7 @@ export default function WatchlistSection({ userId }) {
                 {hasRewatch && (
                     <span className="inline-flex items-center gap-1">
                         <Repeat size={12} className="text-textSecondary" />
-                        <span>{viewCount}x</span>
+                        <span>{viewCount}</span>
                     </span>
                 )}
             </div>
