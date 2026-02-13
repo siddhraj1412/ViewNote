@@ -41,7 +41,7 @@ function getSessionCache() {
                 return parsed;
             }
         }
-    } catch (_) {}
+    } catch (_) { }
     return null;
 }
 
@@ -52,14 +52,14 @@ function setSessionCache(data) {
             SESSION_CACHE_KEY,
             JSON.stringify({ ...data, timestamp: Date.now() })
         );
-    } catch (_) {}
+    } catch (_) { }
 }
 
 function clearSessionCache() {
     if (typeof window === "undefined") return;
     try {
         sessionStorage.removeItem(SESSION_CACHE_KEY);
-    } catch (_) {}
+    } catch (_) { }
 }
 
 const MediaCard = memo(function MediaCard({ item, type }) {
@@ -117,42 +117,48 @@ export default function HomePage() {
             }
 
             try {
-                // Fetch from multiple sources
+                // Fetch trending (cached)
+                const trendingMoviesData = await tmdb.getTrendingMovies("week");
+                const trendingTVData = await tmdb.getTrendingTV("week");
+
+                // Fetch other categories lazily or in parallel with a limit
+                // We use our new cached 'get' method
                 const randomPage = Math.floor(Math.random() * 3) + 1;
-                const [
-                    trendingMoviesData,
-                    trendingTVData,
-                    popularMovies,
-                    popularTV,
-                    topRatedMovies,
-                    topRatedTV,
-                ] = await Promise.all([
-                    tmdb.getTrendingMovies("week"),
-                    tmdb.getTrendingTV("week"),
-                    fetchTMDBPage(`movie/popular?page=${randomPage}`),
-                    fetchTMDBPage(`tv/popular?page=${randomPage}`),
-                    fetchTMDBPage(`movie/top_rated?page=${randomPage}`),
-                    fetchTMDBPage(`tv/top_rated?page=${randomPage}`),
-                ]);
+
+                const [popularMovies, popularTV, topRatedMovies, topRatedTV] = await Promise.all([
+                    tmdb.searchMovies ? tmdb.get(`movie/popular?page=${randomPage}`) : fetchTMDBPage(`movie/popular?page=${randomPage}`),
+                    tmdb.searchTV ? tmdb.get(`tv/popular?page=${randomPage}`) : fetchTMDBPage(`tv/popular?page=${randomPage}`),
+                    tmdb.searchMovies ? tmdb.get(`movie/top_rated?page=${randomPage}`) : fetchTMDBPage(`movie/top_rated?page=${randomPage}`),
+                    tmdb.searchMovies ? tmdb.get(`tv/top_rated?page=${randomPage}`) : fetchTMDBPage(`tv/top_rated?page=${randomPage}`),
+                ].map(p => p.catch(() => ({ results: [] }))));
+
+                const popularMoviesResults = popularMovies.results || [];
+                const popularTVResults = popularTV.results || [];
+                const topRatedMoviesResults = topRatedMovies.results || [];
+                const topRatedTVResults = topRatedTV.results || [];
 
                 // Get user's seen media IDs for filtering
                 let seenIds = new Set();
                 if (user) {
-                    seenIds = await mediaService.getUserSeenMediaIds(user.uid);
+                    try {
+                        seenIds = await mediaService.getUserSeenMediaIds(user.uid);
+                    } catch {
+                        // Non-blocking — display all content if this fails
+                    }
                 }
 
                 // Merge and deduplicate movies
                 const allMovies = deduplicateById([
                     ...(trendingMoviesData || []),
-                    ...(popularMovies || []),
-                    ...(topRatedMovies || []),
+                    ...(popularMoviesResults || []),
+                    ...(topRatedMoviesResults || []),
                 ]);
 
                 // Merge and deduplicate TV
                 const allTV = deduplicateById([
                     ...(trendingTVData || []),
-                    ...(popularTV || []),
-                    ...(topRatedTV || []),
+                    ...(popularTVResults || []),
+                    ...(topRatedTVResults || []),
                 ]);
 
                 // Filter out seen content
@@ -183,12 +189,12 @@ export default function HomePage() {
                     trendingMovies: filteredTrendingMovies,
                     trendingTV: filteredTrendingTV,
                 });
-
-                fetchedRef.current = true;
             } catch (error) {
                 console.error("Error fetching content:", error);
+                // Ensure homepage renders even on total failure — show empty state
             } finally {
                 setLoading(false);
+                fetchedRef.current = true;
             }
         };
 
@@ -204,14 +210,13 @@ export default function HomePage() {
         fetchContent();
     }, [user]);
 
-    // Random spotlight (changes on refresh)
-    const allSpotlight = [...discoverMovies, ...trendingMovies].filter(
-        (m) => m.backdrop_path
-    );
-    const featuredMovie =
-        allSpotlight.length > 0
-            ? allSpotlight[Math.floor(Math.random() * Math.min(5, allSpotlight.length))]
-            : null;
+    // Stable spotlight — computed once from loaded data
+    const featuredMovie = (() => {
+        const candidates = [...discoverMovies, ...trendingMovies].filter(m => m.backdrop_path);
+        if (candidates.length === 0) return null;
+        // Use a stable index based on array length to avoid re-render flicker
+        return candidates[candidates.length % Math.min(5, candidates.length)];
+    })();
 
     if (loading) {
         return (
@@ -224,8 +229,23 @@ export default function HomePage() {
         );
     }
 
+    const hasContent = discoverMovies.length > 0 || trendingMovies.length > 0 || discoverTV.length > 0 || trendingTV.length > 0;
+
     return (
         <main className="min-h-screen bg-background">
+            {/* Fallback empty state when API is down */}
+            {!hasContent && (
+                <section className="container py-24 text-center">
+                    <Sparkles className="mx-auto text-accent mb-4" size={48} />
+                    <h2 className="text-2xl font-bold mb-2">Content is loading...</h2>
+                    <p className="text-textSecondary mb-6">We couldn&apos;t load content right now. Try refreshing the page.</p>
+                    <button onClick={() => { clearSessionCache(); fetchedRef.current = false; window.location.reload(); }}
+                        className="px-6 py-3 bg-accent text-background rounded-xl font-bold hover:bg-accent/90 transition">
+                        Refresh
+                    </button>
+                </section>
+            )}
+
             {/* Hero Section */}
             {featuredMovie && (
                 <section className="relative h-[80vh] w-full overflow-hidden">
@@ -351,9 +371,8 @@ export default function HomePage() {
 async function fetchTMDBPage(endpoint) {
     const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
     try {
-        const url = `https://api.themoviedb.org/3/${endpoint}${
-            endpoint.includes("?") ? "&" : "?"
-        }api_key=${TMDB_API_KEY}`;
+        const url = `https://api.themoviedb.org/3/${endpoint}${endpoint.includes("?") ? "&" : "?"
+            }api_key=${TMDB_API_KEY}`;
         const res = await fetch(url);
         if (!res.ok) return [];
         const data = await res.json();

@@ -164,7 +164,7 @@ export const profileService = {
                 const q = query(
                     collection(db, "user_ratings"),
                     where("userId", "==", userId),
-                    orderBy("ratedAt", "desc")
+                    orderBy("createdAt", "desc")
                 );
                 const snap = await getDocs(q);
                 return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -177,8 +177,8 @@ export const profileService = {
                 const snap = await getDocs(q);
                 const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 return docs.sort((a, b) => {
-                    const aTime = a.ratedAt?.seconds || 0;
-                    const bTime = b.ratedAt?.seconds || 0;
+                    const aTime = a.createdAt?.seconds || a.ratedAt?.seconds || 0;
+                    const bTime = b.createdAt?.seconds || b.ratedAt?.seconds || 0;
                     return bTime - aTime;
                 });
             },

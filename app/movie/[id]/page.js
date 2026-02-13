@@ -20,10 +20,22 @@ export default function MovieLegacyRedirect() {
 
         const redirect = async () => {
             try {
-                const data = await tmdb.getMovieDetails(movieId);
-                if (data) {
-                    router.replace(getMovieUrl(data));
-                    return;
+                try {
+                    // Race the fetch against a 2-second timeout
+                    // If fetching data takes too long, just use the fallback URL immediately
+                    const fetchPromise = tmdb.getMovieDetails(movieId);
+                    const timeoutPromise = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error("Timeout")), 2000)
+                    );
+
+                    const data = await Promise.race([fetchPromise, timeoutPromise]);
+
+                    if (data) {
+                        router.replace(getMovieUrl(data));
+                        return;
+                    }
+                } catch (e) {
+                    console.warn("Legacy movie redirect fallback (slow network or error):", e);
                 }
             } catch (e) {
                 console.error("Legacy movie redirect failed:", e);

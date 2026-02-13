@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { profileService } from "@/services/profileService";
 import { tmdb } from "@/lib/tmdb";
@@ -17,7 +17,7 @@ export default function ProfileFavoritesGrid({ userId }) {
 
     const ownerId = userId || user?.uid;
 
-    const loadFavorites = async () => {
+    const loadFavorites = useCallback(async () => {
         if (!ownerId) return;
         setLoading(true);
         try {
@@ -29,11 +29,11 @@ export default function ProfileFavoritesGrid({ userId }) {
         } finally {
             setLoading(false);
         }
-    };
+    }, [ownerId]);
 
     useEffect(() => {
         loadFavorites();
-    }, [ownerId]);
+    }, [loadFavorites]);
 
     useEffect(() => {
         const handler = () => loadFavorites();
@@ -43,7 +43,7 @@ export default function ProfileFavoritesGrid({ userId }) {
             eventBus.off("FAVORITES_UPDATED", handler);
             eventBus.off("MEDIA_UPDATED", handler);
         };
-    }, [ownerId]);
+    }, [loadFavorites]);
 
     if (loading) {
         return (

@@ -139,9 +139,12 @@ export const listService = {
         }
     },
 
-    async deleteComment(commentId) {
+    async deleteComment(commentId, userId) {
         try {
-            await deleteDoc(doc(db, "list_comments", commentId));
+            const commentRef = doc(db, "list_comments", commentId);
+            const snap = await getDoc(commentRef);
+            if (!snap.exists() || snap.data().userId !== userId) return false;
+            await deleteDoc(commentRef);
             return true;
         } catch (error) {
             console.error("Error deleting list comment:", error);
@@ -157,6 +160,41 @@ export const listService = {
         } catch (error) {
             console.error("Error updating list banner:", error);
             return false;
+        }
+    },
+
+    // ── Delete List ──
+    async deleteList(listId) {
+        try {
+            // Delete children FIRST to avoid orphaning on partial failure
+
+            // Clean up associated likes
+            try {
+                const likesQ = query(collection(db, "list_likes"), where("listId", "==", listId));
+                const likesSnap = await getDocs(likesQ);
+                const likeDeletes = likesSnap.docs.map((d) => deleteDoc(d.ref));
+                await Promise.all(likeDeletes);
+            } catch (e) {
+                console.warn("Failed to clean up list likes:", e);
+            }
+
+            // Clean up associated comments
+            try {
+                const commentsQ = query(collection(db, "list_comments"), where("listId", "==", listId));
+                const commentsSnap = await getDocs(commentsQ);
+                const commentDeletes = commentsSnap.docs.map((d) => deleteDoc(d.ref));
+                await Promise.all(commentDeletes);
+            } catch (e) {
+                console.warn("Failed to clean up list comments:", e);
+            }
+
+            // Delete the list document LAST
+            await deleteDoc(doc(db, "user_lists", listId));
+
+            return true;
+        } catch (error) {
+            console.error("Error deleting list:", error);
+            throw error;
         }
     },
 };

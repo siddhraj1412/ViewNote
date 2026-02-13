@@ -4,6 +4,7 @@ import MediaGrid from "@/components/MediaGrid";
 import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
+import { getMediaUrl } from "@/lib/slugify";
 import { Play } from "lucide-react";
 
 export default function PausedSection({ pausedMovies = [], pausedTV = [] }) {
@@ -18,7 +19,7 @@ export default function PausedSection({ pausedMovies = [], pausedTV = [] }) {
                     {allPaused.map((item) => (
                         <div key={item.id} className="group">
                             <Link
-                                href={`/${item.mediaType}/${item.mediaId}`}
+                                href={getMediaUrl(item, item.mediaType)}
                                 className="block"
                             >
                                 <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow">

@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Upload, X, ZoomIn, ZoomOut, Loader2, RotateCcw } from "lucide-react";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { updateProfile } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
 import showToast from "@/lib/toast";
@@ -213,7 +213,22 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
 
     // ── Upload ──
     const handleUpload = async () => {
-        if (!file || !imgElement || !userId) return;
+        if (!file || !imgElement) {
+            showToast.error("Please choose a photo first.");
+            return;
+        }
+        if (!userId) {
+            showToast.error("Not signed in. Please sign in again.");
+            return;
+        }
+        if (!auth.currentUser) {
+            showToast.error("Auth not ready. Please try again.");
+            return;
+        }
+        if (auth.currentUser.uid !== userId) {
+            showToast.error("Session mismatch. Please refresh and try again.");
+            return;
+        }
         setUploading(true);
         setProgress(0);
 
@@ -303,13 +318,18 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                     try {
                         const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
                         const profileRef = doc(db, "user_profiles", userId);
-                        await updateDoc(profileRef, {
+                        await setDoc(profileRef, {
+                            userId,
                             profile_picture_url: downloadUrl,
-                            updatedAt: new Date(),
-                        });
+                            updatedAt: serverTimestamp(),
+                        }, { merge: true });
                         // Also update Firebase Auth photoURL
                         if (auth.currentUser) {
-                            try { await updateProfile(auth.currentUser, { photoURL: downloadUrl }); } catch {}
+                            try {
+                                await updateProfile(auth.currentUser, { photoURL: downloadUrl });
+                            } catch (e) {
+                                console.error("Failed to update auth photoURL:", e);
+                            }
                         }
                         showToast.success("Profile photo updated!");
                         if (onUploadSuccess) onUploadSuccess(downloadUrl);
@@ -317,7 +337,7 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                         onClose();
                     } catch (err) {
                         console.error("Post-upload failed:", err);
-                        showToast.error("Photo uploaded but profile update failed.");
+                        showToast.error("Photo uploaded but saving to profile failed.");
                     } finally {
                         setUploading(false);
                         setProgress(0);

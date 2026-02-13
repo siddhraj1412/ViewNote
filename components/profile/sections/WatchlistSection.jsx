@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { Heart, Star, FileText, Repeat } from "lucide-react";
 import { tmdb } from "@/lib/tmdb";
 import { getMediaUrl } from "@/lib/slugify";
 import { profileService } from "@/services/profileService";
@@ -17,6 +18,7 @@ export default function WatchlistSection({ userId }) {
     const ownerId = userId || params?.id || user?.uid;
 
     const [watchlistItems, setWatchlistItems] = useState([]);
+    const [ratingsByKey, setRatingsByKey] = useState({});
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState("all");
 
@@ -56,9 +58,56 @@ export default function WatchlistSection({ userId }) {
             if (key === "watchlist") {
                 setWatchlistItems(items);
             }
+            if (key === "ratings") {
+                const next = {};
+                for (const r of items || []) {
+                    const k = `${r.mediaType}_${r.mediaId}`;
+                    next[k] = r;
+                }
+                setRatingsByKey(next);
+            }
         });
         return cleanup;
     }, [ownerId]);
+
+    const renderIndicators = (ratingDoc) => {
+        if (!ratingDoc) return null;
+
+        const hasRating = typeof ratingDoc.rating === "number" && ratingDoc.rating > 0;
+        const hasLiked = ratingDoc.liked === true;
+        const hasReview = typeof ratingDoc.review === "string" && ratingDoc.review.trim().length > 0;
+        const viewCount = typeof ratingDoc.viewCount === "number" ? ratingDoc.viewCount : 1;
+        const hasRewatch = viewCount > 1;
+
+        if (!hasRating && !hasLiked && !hasReview && !hasRewatch) return null;
+
+        return (
+            <div className="mt-1 flex items-center gap-2 text-[11px] text-textSecondary">
+                {hasRating && (
+                    <span className="inline-flex items-center gap-1">
+                        <Star size={12} className="text-yellow-400" fill="currentColor" />
+                        <span>{ratingDoc.rating}</span>
+                    </span>
+                )}
+                {hasLiked && (
+                    <span className="inline-flex items-center">
+                        <Heart size={12} className="text-red-400" fill="currentColor" />
+                    </span>
+                )}
+                {hasReview && (
+                    <span className="inline-flex items-center">
+                        <FileText size={12} className="text-textSecondary" />
+                    </span>
+                )}
+                {hasRewatch && (
+                    <span className="inline-flex items-center gap-1">
+                        <Repeat size={12} className="text-textSecondary" />
+                        <span>{viewCount}x</span>
+                    </span>
+                )}
+            </div>
+        );
+    };
 
     if (loading) {
         return <div className="text-center py-12 text-textSecondary">Loading watchlist...</div>;
@@ -75,13 +124,13 @@ export default function WatchlistSection({ userId }) {
 
     return (
         <div>
-            <div className="flex gap-2 mb-4">
+            <div className="flex flex-wrap gap-2 mb-5">
                 {["all", "movie", "tv"].map(f => {
                     const count = f === "all" ? watchlistItems.length : f === "movie" ? movieCount : tvCount;
                     const label = f === "all" ? "All" : f === "movie" ? "Movies" : "Series";
                     return (
                         <button key={f} onClick={() => setFilter(f)}
-                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${filter === f ? "bg-accent text-white" : "bg-white/5 text-textSecondary hover:text-white"}`}>
+                            className={`px-4 py-2 text-xs font-semibold rounded-full border transition-colors ${filter === f ? "bg-accent text-white border-accent" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}>
                             {label} ({count})
                         </button>
                     );
@@ -115,6 +164,7 @@ export default function WatchlistSection({ userId }) {
                         <h3 className="text-sm font-semibold line-clamp-1 group-hover:text-accent transition-colors">
                             {item.title || item.name}
                         </h3>
+                        {renderIndicators(ratingsByKey[`${item.mediaType}_${item.mediaId}`])}
                         <p className="text-xs text-textSecondary">
                             {item.addedAt?.seconds
                                 ? new Date(item.addedAt.seconds * 1000).toLocaleDateString()

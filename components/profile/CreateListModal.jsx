@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { X, Search, Loader2, GripVertical, ChevronRight, ChevronDown, Plus, Film, Tv, Clapperboard, Layers } from "lucide-react";
+import { X, Search, Loader2, GripVertical, ChevronRight, ChevronDown, Plus, Film, Tv, Clapperboard, Layers, Trash2 } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import showToast from "@/lib/toast";
+import { listService } from "@/services/listService";
 
 const LIST_TYPES = [
     { value: "movie", label: "Movie", icon: "🎬" },
@@ -29,6 +30,9 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState("");
+    const [deleting, setDeleting] = useState(false);
 
     // Series drill-down state
     const [expandedSeries, setExpandedSeries] = useState(null); // { id, name, poster_path }
@@ -53,6 +57,7 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
             setName(""); setDescription(""); setRanked(false); setItems([]);
             setSearchQuery(""); setSearchResults([]); setSearchFilter("multi"); setListType("hybrid");
             setExpandedSeries(null); setSeasons([]); setExpandedSeason(null); setEpisodes({});
+            setShowDeleteConfirm(false); setDeleteConfirmText(""); setDeleting(false);
         } else if (editList) {
             setName(editList.name || "");
             setDescription(editList.description || "");
@@ -254,6 +259,23 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
             });
         }
         setDragIdx(null); setOverIdx(null);
+    };
+
+    // ── Delete ──
+    const handleDelete = async () => {
+        if (!editList?.id || deleteConfirmText !== editList.name) return;
+        setDeleting(true);
+        try {
+            await listService.deleteList(editList.id);
+            showToast.success("List deleted");
+            if (onCreated) onCreated();
+            onClose();
+        } catch (error) {
+            console.error("Error deleting list:", error);
+            showToast.error("Failed to delete list");
+        } finally {
+            setDeleting(false);
+        }
     };
 
     // ── Save ──
@@ -533,14 +555,55 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-white/5 bg-white/5 flex items-center justify-between shrink-0">
-                    <span className="text-xs text-textSecondary">{items.length} item{items.length !== 1 ? "s" : ""}</span>
-                    <div className="flex gap-3">
-                        <button onClick={onClose} disabled={saving} className="px-4 py-2 text-sm text-textSecondary hover:text-white transition-colors">Cancel</button>
-                        <button onClick={handleSave} disabled={!name.trim() || saving}
-                            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${!name.trim() || saving ? "bg-white/5 text-white/20 cursor-not-allowed" : "bg-accent text-white hover:bg-accent/90 shadow-lg shadow-accent/20"}`}>
-                            {saving ? (isEdit ? "Saving..." : "Creating...") : (isEdit ? "Save Changes" : "Create List")}
-                        </button>
+                <div className="p-4 border-t border-white/5 bg-white/5 shrink-0">
+                    {/* Delete confirmation inline */}
+                    {isEdit && showDeleteConfirm && (
+                        <div className="mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                            <p className="text-xs text-red-400 mb-2">
+                                Type <strong>"{editList.name}"</strong> to confirm deletion. This cannot be undone.
+                            </p>
+                            <input
+                                type="text"
+                                value={deleteConfirmText}
+                                onChange={e => setDeleteConfirmText(e.target.value)}
+                                placeholder="Type list name to confirm"
+                                className="w-full px-3 py-2 bg-background border border-red-500/30 rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:border-red-500/60 mb-2"
+                            />
+                            <div className="flex gap-2 justify-end">
+                                <button onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(""); }}
+                                    className="px-3 py-1.5 text-xs text-textSecondary hover:text-white transition-colors">
+                                    Cancel
+                                </button>
+                                <button onClick={handleDelete}
+                                    disabled={deleteConfirmText !== editList.name || deleting}
+                                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                        deleteConfirmText === editList.name && !deleting
+                                            ? "bg-red-500 text-white hover:bg-red-600"
+                                            : "bg-white/5 text-white/20 cursor-not-allowed"
+                                    }`}>
+                                    {deleting ? "Deleting..." : "Delete Forever"}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <span className="text-xs text-textSecondary">{items.length} item{items.length !== 1 ? "s" : ""}</span>
+                            {isEdit && !showDeleteConfirm && (
+                                <button onClick={() => setShowDeleteConfirm(true)}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all">
+                                    <Trash2 size={13} />
+                                    Delete List
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={onClose} disabled={saving || deleting} className="px-4 py-2 text-sm text-textSecondary hover:text-white transition-colors">Cancel</button>
+                            <button onClick={handleSave} disabled={!name.trim() || saving || deleting}
+                                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${!name.trim() || saving || deleting ? "bg-white/5 text-white/20 cursor-not-allowed" : "bg-accent text-white hover:bg-accent/90 shadow-lg shadow-accent/20"}`}>
+                                {saving ? (isEdit ? "Saving..." : "Creating...") : (isEdit ? "Save Changes" : "Create List")}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

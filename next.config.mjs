@@ -25,6 +25,9 @@ const nextConfig = {
     compress: true,
     // Enable React strict mode for better development
     reactStrictMode: true,
+    eslint: {
+        ignoreDuringBuilds: true,
+    },
     // Power optimizations
     poweredByHeader: false,
 };

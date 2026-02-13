@@ -49,6 +49,19 @@ export function TextSkeleton({ lines = 3, className = '' }) {
     );
 }
 
+export function MovieCardSkeleton({ className = '' }) {
+    return (
+        <div className={`space-y-3 ${className}`}>
+            <div
+                className="bg-gray-800 animate-pulse rounded-2xl"
+                style={{ aspectRatio: '2/3', minHeight: '260px' }}
+            />
+            <div className="h-4 bg-gray-800 animate-pulse rounded w-3/4" />
+            <div className="h-3 bg-gray-800 animate-pulse rounded w-1/2" />
+        </div>
+    );
+}
+
 export function DetailPageSkeleton() {
     return (
         <div className="min-h-screen">

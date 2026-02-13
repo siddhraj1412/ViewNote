@@ -75,13 +75,13 @@ export default function PausedSectionTab({ userId }) {
 
     return (
         <div>
-            <div className="flex gap-2 mb-4">
+            <div className="flex flex-wrap gap-2 mb-5">
                 {["all", "movie", "tv"].map(f => {
                     const count = f === "all" ? pausedItems.length : f === "movie" ? movieCount : tvCount;
                     const label = f === "all" ? "All" : f === "movie" ? "Movies" : "Series";
                     return (
                         <button key={f} onClick={() => setFilter(f)}
-                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${filter === f ? "bg-accent text-white" : "bg-white/5 text-textSecondary hover:text-white"}`}>
+                            className={`px-4 py-2 text-xs font-semibold rounded-full border transition-colors ${filter === f ? "bg-accent text-white border-accent" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}>
                             {label} ({count})
                         </button>
                     );

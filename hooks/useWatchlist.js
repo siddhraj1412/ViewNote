@@ -29,7 +29,7 @@ export function useWatchlist() {
         const fetchWatchlist = async () => {
             try {
                 const q = query(
-                    collection(db, "watchlist"),
+                    collection(db, "user_watchlist"),
                     where("userId", "==", user.uid)
                 );
                 const snapshot = await getDocs(q);
@@ -56,7 +56,7 @@ export function useWatchlist() {
         if (!user) throw new Error("User not authenticated");
 
         try {
-            const docRef = await addDoc(collection(db, "watchlist"), {
+            const docRef = await addDoc(collection(db, "user_watchlist"), {
                 userId: user.uid,
                 mediaId,
                 mediaType,
@@ -75,7 +75,7 @@ export function useWatchlist() {
                 addedAt: new Date(),
             };
 
-            setWatchlist([...watchlist, newItem]);
+            setWatchlist(prev => [...prev, newItem]);
             return docRef.id;
         } catch (error) {
             console.error("Error adding to watchlist:", error);
@@ -90,8 +90,8 @@ export function useWatchlist() {
             const item = watchlist.find((i) => i.mediaId === mediaId);
             if (!item) return;
 
-            await deleteDoc(doc(db, "watchlist", item.id));
-            setWatchlist(watchlist.filter((i) => i.mediaId !== mediaId));
+            await deleteDoc(doc(db, "user_watchlist", item.id));
+            setWatchlist(prev => prev.filter((i) => i.mediaId !== mediaId));
         } catch (error) {
             console.error("Error removing from watchlist:", error);
             throw error;

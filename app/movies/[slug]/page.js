@@ -9,6 +9,9 @@ import ActionBar from "@/components/ActionBar";
 import CastSlider from "@/components/CastSlider";
 import CrewSection from "@/components/CrewSection";
 import ProductionSection from "@/components/ProductionSection";
+import RatingDistribution from "@/components/RatingDistribution";
+import MediaSection from "@/components/MediaSection";
+import ReviewsForMedia from "@/components/ReviewsForMedia";
 import { Calendar, Clock, Star } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useRatings } from "@/hooks/useRatings";
@@ -23,7 +26,9 @@ export default function MovieSlugPage() {
 
     const [movie, setMovie] = useState(null);
     const [stronglyRelated, setStronglyRelated] = useState([]);
+    const [mediaImages, setMediaImages] = useState({ posters: [], backdrops: [] });
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     const { user } = useAuth();
     const { getRating } = useRatings();
@@ -44,9 +49,12 @@ export default function MovieSlugPage() {
         }
 
         const fetchMovie = async () => {
+            setLoading(true);
+            setError(null);
             try {
                 const data = await tmdb.getMovieDetails(movieId);
                 if (!data) {
+                    setError("Movie not found");
                     setLoading(false);
                     return;
                 }
@@ -63,10 +71,23 @@ export default function MovieSlugPage() {
                 }
 
                 // Fetch strongly related movies
-                const related = await tmdb.getStronglyRelated(movieId, "movie", data);
-                setStronglyRelated(related);
+                try {
+                    const related = await tmdb.getStronglyRelated(movieId, "movie", data);
+                    setStronglyRelated(related);
+                } catch (e) {
+                    console.warn("Failed to fetch related movies", e);
+                }
+
+                // Fetch images for Media section (single fetch)
+                try {
+                    const images = await tmdb.getMovieImages(movieId);
+                    setMediaImages({ posters: images?.posters || [], backdrops: images?.backdrops || [] });
+                } catch (_) {
+                    setMediaImages({ posters: [], backdrops: [] });
+                }
             } catch (error) {
                 console.error("Error fetching movie:", error);
+                setError(error.message || "Failed to load movie");
             } finally {
                 setLoading(false);
             }
@@ -79,6 +100,21 @@ export default function MovieSlugPage() {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center pt-16">
                 <div className="text-2xl text-textSecondary">Loading...</div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center pt-16 gap-4">
+                <div className="text-2xl text-red-500">{error.includes("404") ? "Movie not found" : "Something went wrong"}</div>
+                <p className="text-textSecondary">{error}</p>
+                <button
+                    onClick={() => window.location.reload()}
+                    className="px-6 py-2 bg-accent text-white rounded-lg hover:bg-accent/80 transition"
+                >
+                    Retry
+                </button>
             </div>
         );
     }
@@ -191,50 +227,64 @@ export default function MovieSlugPage() {
             </div>
 
             {/* Content Sections */}
-            <div className="container py-12 space-y-16">
-                {movie.credits?.cast && movie.credits.cast.length > 0 && (
-                    <section>
-                        <h2 className="text-3xl font-bold mb-6">Cast</h2>
-                        <CastSlider cast={movie.credits.cast} />
-                    </section>
-                )}
+            <div className="container py-12">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                    {/* Left column (below poster area) */}
+                    <div className="lg:col-span-4 space-y-6">
+                        <RatingDistribution mediaId={movieId} />
+                    </div>
 
-                {movie.credits?.crew && movie.credits.crew.length > 0 && (
-                    <section>
-                        <h2 className="text-3xl font-bold mb-6">Crew</h2>
-                        <CrewSection crew={movie.credits.crew} />
-                    </section>
-                )}
+                    {/* Right column */}
+                    <div className="lg:col-span-8 space-y-16">
+                        {movie.credits?.cast && movie.credits.cast.length > 0 && (
+                            <section>
+                                <h2 className="text-3xl font-bold mb-6">Cast</h2>
+                                <CastSlider cast={movie.credits.cast} />
+                            </section>
+                        )}
 
-                {movie.production_companies && movie.production_companies.length > 0 && (
-                    <ProductionSection productions={movie.production_companies} />
-                )}
+                        {movie.credits?.crew && movie.credits.crew.length > 0 && (
+                            <section>
+                                <h2 className="text-3xl font-bold mb-6">Crew</h2>
+                                <CrewSection crew={movie.credits.crew} />
+                            </section>
+                        )}
 
-                {stronglyRelated.length > 0 && (
-                    <section>
-                        <h2 className="text-3xl font-bold mb-6">Strongly Related</h2>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {stronglyRelated.map((related) => (
-                                <Link key={related.id} href={getMovieUrl(related)} className="group">
-                                    <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
-                                        <Image
-                                            src={tmdb.getImageUrl(related.poster_path)}
-                                            alt={related.title}
-                                            fill
-                                            className="object-cover"
-                                        />
-                                        {related.similarityScore && (
-                                            <div className="absolute top-2 right-2 bg-accent text-background px-2 py-1 rounded text-xs font-bold">
-                                                {related.similarityScore}%
+                        {movie.production_companies && movie.production_companies.length > 0 && (
+                            <ProductionSection productions={movie.production_companies} />
+                        )}
+
+                        <ReviewsForMedia mediaId={movieId} mediaType="movie" title={movie.title} />
+
+                        <MediaSection title="Media" posters={mediaImages.posters} backdrops={mediaImages.backdrops} />
+
+                        {stronglyRelated.length > 0 && (
+                            <section>
+                                <h2 className="text-3xl font-bold mb-6">Strongly Related</h2>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                    {stronglyRelated.map((related) => (
+                                        <Link key={related.id} href={getMovieUrl(related)} className="group">
+                                            <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
+                                                <Image
+                                                    src={tmdb.getImageUrl(related.poster_path)}
+                                                    alt={related.title}
+                                                    fill
+                                                    className="object-cover"
+                                                />
+                                                {related.similarityScore && (
+                                                    <div className="absolute top-2 right-2 bg-accent text-background px-2 py-1 rounded text-xs font-bold">
+                                                        {related.similarityScore}%
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
-                                    <h3 className="font-medium text-sm line-clamp-2">{related.title}</h3>
-                                </Link>
-                            ))}
-                        </div>
-                    </section>
-                )}
+                                            <h3 className="font-medium text-sm line-clamp-2">{related.title}</h3>
+                                        </Link>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+                    </div>
+                </div>
             </div>
         </main>
     );

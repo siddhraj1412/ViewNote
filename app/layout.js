@@ -7,6 +7,7 @@ import Navbar from "@/components/Navbar";
 import ScrollToTop from "@/components/ScrollToTop";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import LoadingBar from "@/components/LoadingBar";
+import Footer from "@/components/Footer";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -64,8 +65,11 @@ export default function RootLayout({ children }) {
                         />
                         <LoadingBar />
                         <ScrollToTop />
-                        <Navbar />
-                        {children}
+                        <div className="min-h-screen flex flex-col">
+                            <Navbar />
+                            <div className="flex-1">{children}</div>
+                            <Footer />
+                        </div>
                     </AuthProvider>
                 </ErrorBoundary>
             </body>

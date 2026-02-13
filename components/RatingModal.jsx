@@ -267,6 +267,15 @@ export default function RatingModal({
                                         showHalfStars={true}
                                     />
                                     {rating > 0 && (
+                                        <button
+                                            onClick={() => setRating(0)}
+                                            className="p-1 rounded-full bg-white/5 border border-white/10 text-textSecondary hover:text-white hover:bg-white/10 transition-all"
+                                            title="Clear rating"
+                                        >
+                                            <XIcon size={14} />
+                                        </button>
+                                    )}
+                                    {rating > 0 && (
                                         <span className="text-sm text-textSecondary whitespace-nowrap">{getRatingLabel(rating)}</span>
                                     )}
                                 </div>

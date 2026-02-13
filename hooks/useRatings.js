@@ -29,7 +29,7 @@ export function useRatings() {
         const fetchRatings = async () => {
             try {
                 const q = query(
-                    collection(db, "ratings"),
+                    collection(db, "user_ratings"),
                     where("userId", "==", user.uid)
                 );
                 const snapshot = await getDocs(q);
@@ -60,18 +60,18 @@ export function useRatings() {
             const existingRating = ratings.find((r) => r.mediaId === mediaId);
 
             if (existingRating) {
-                await updateDoc(doc(db, "ratings", existingRating.id), {
+                await updateDoc(doc(db, "user_ratings", existingRating.id), {
                     rating,
                     ratedAt: serverTimestamp(),
                 });
 
-                setRatings(
-                    ratings.map((r) =>
+                setRatings(prev =>
+                    prev.map((r) =>
                         r.mediaId === mediaId ? { ...r, rating, ratedAt: new Date() } : r
                     )
                 );
             } else {
-                const docRef = await addDoc(collection(db, "ratings"), {
+                const docRef = await addDoc(collection(db, "user_ratings"), {
                     userId: user.uid,
                     mediaId,
                     mediaType,
@@ -94,7 +94,7 @@ export function useRatings() {
                     ratedAt: new Date(),
                 };
 
-                setRatings([...ratings, newRating]);
+                setRatings(prev => [...prev, newRating]);
             }
         } catch (error) {
             console.error("Error setting rating:", error);
