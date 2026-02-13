@@ -6,10 +6,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
 import { parseSlugId, getShowUrl } from "@/lib/slugify";
-import CastSlider from "@/components/CastSlider";
+import CastGrid from "@/components/CastGrid";
 import CrewSection from "@/components/CrewSection";
+import ProductionSection from "@/components/ProductionSection";
 import MediaSection from "@/components/MediaSection";
 import ReviewsForMedia from "@/components/ReviewsForMedia";
+import SectionTabs from "@/components/SectionTabs";
 
 export default function SeasonPage() {
     const params = useParams();
@@ -101,47 +103,26 @@ export default function SeasonPage() {
             </div>
 
             <div className="container py-12">
-                <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-                    <div className="flex flex-wrap gap-2">
-                        <button
-                            onClick={() => setActiveTab("episodes")}
-                            className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "episodes" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
+                <SectionTabs
+                    tabs={[
+                        { id: "episodes", label: "Episodes" },
+                        { id: "cast", label: "Cast" },
+                        { id: "crew", label: "Crew" },
+                        { id: "production", label: "Production" },
+                        { id: "reviews", label: "Reviews" },
+                        { id: "media", label: "Media" },
+                    ]}
+                    activeTab={activeTab}
+                    onChange={setActiveTab}
+                    rightSlot={
+                        <Link
+                            href={backToShow}
+                            className="px-6 py-3 rounded-xl text-base font-semibold border transition-colors bg-white/5 text-textSecondary border-white/10 hover:text-white"
                         >
-                            Episodes
-                        </button>
-                        <button
-                            onClick={() => setActiveTab("cast")}
-                            className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "cast" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
-                        >
-                            Cast
-                        </button>
-                        <button
-                            onClick={() => setActiveTab("crew")}
-                            className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "crew" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
-                        >
-                            Crew
-                        </button>
-                        <button
-                            onClick={() => setActiveTab("reviews")}
-                            className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "reviews" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
-                        >
-                            Reviews
-                        </button>
-                        <button
-                            onClick={() => setActiveTab("media")}
-                            className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "media" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
-                        >
-                            Media
-                        </button>
-                    </div>
-
-                    <Link
-                        href={backToShow}
-                        className="px-4 py-2 text-sm font-semibold rounded-full border transition-colors bg-white/5 text-textSecondary border-white/10 hover:text-white"
-                    >
-                        Back to show
-                    </Link>
-                </div>
+                            Back to show
+                        </Link>
+                    }
+                />
 
                 {activeTab === "episodes" && (
                     <section>
@@ -166,7 +147,7 @@ export default function SeasonPage() {
                 {activeTab === "cast" && season.credits?.cast && season.credits.cast.length > 0 && (
                     <section>
                         <h2 className="text-3xl font-bold mb-6">Cast</h2>
-                        <CastSlider cast={season.credits.cast} />
+                        <CastGrid cast={season.credits.cast} />
                     </section>
                 )}
 
@@ -175,6 +156,10 @@ export default function SeasonPage() {
                         <h2 className="text-3xl font-bold mb-6">Crew</h2>
                         <CrewSection crew={season.credits.crew} />
                     </section>
+                )}
+
+                {activeTab === "production" && tv.production_companies && tv.production_companies.length > 0 && (
+                    <ProductionSection productions={tv.production_companies} />
                 )}
 
                 {activeTab === "reviews" && (

@@ -8,7 +8,11 @@ export default {
     theme: {
         container: {
             center: true,
-            padding: "1.5rem",
+            padding: {
+                DEFAULT: "1.5rem",
+                md: "2rem",
+                lg: "2.5rem",
+            },
             screens: {
                 "2xl": "1400px",
             },

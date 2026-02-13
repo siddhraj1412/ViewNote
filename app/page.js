@@ -70,12 +70,12 @@ const MediaCard = memo(function MediaCard({ item, type }) {
 
     return (
         <Link href={href} className="group">
-            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
+            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg">
                 <Image
                     src={tmdb.getImageUrl(item.poster_path)}
                     alt={title || "Poster"}
                     fill
-                    className="object-cover"
+                    className="object-cover object-center"
                     loading="lazy"
                     sizes="(max-width: 768px) 50vw, (max-width: 1024px) 25vw, 20vw"
                 />

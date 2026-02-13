@@ -6,12 +6,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { tmdb } from "@/lib/tmdb";
 import ActionBar from "@/components/ActionBar";
-import CastSlider from "@/components/CastSlider";
+import CastGrid from "@/components/CastGrid";
 import CrewSection from "@/components/CrewSection";
 import ProductionSection from "@/components/ProductionSection";
 import RatingDistribution from "@/components/RatingDistribution";
 import MediaSection from "@/components/MediaSection";
 import ReviewsForMedia from "@/components/ReviewsForMedia";
+import SectionTabs from "@/components/SectionTabs";
 import { Calendar, Clock, Star } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useRatings } from "@/hooks/useRatings";
@@ -237,53 +238,35 @@ export default function MovieSlugPage() {
 
                     {/* Right column */}
                     <div className="lg:col-span-8">
-                        <div className="flex flex-wrap gap-2 mb-8">
-                            <button
-                                onClick={() => setActiveTab("cast")}
-                                className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "cast" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
-                            >
-                                Cast
-                            </button>
-                            <button
-                                onClick={() => setActiveTab("crew")}
-                                className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "crew" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
-                            >
-                                Crew
-                            </button>
-                            <button
-                                onClick={() => setActiveTab("reviews")}
-                                className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "reviews" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
-                            >
-                                Reviews
-                            </button>
-                            <button
-                                onClick={() => setActiveTab("media")}
-                                className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${activeTab === "media" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}
-                            >
-                                Media
-                            </button>
-                        </div>
+                        <SectionTabs
+                            tabs={[
+                                { id: "cast", label: "Cast" },
+                                { id: "crew", label: "Crew" },
+                                { id: "production", label: "Production" },
+                                { id: "reviews", label: "Reviews" },
+                                { id: "media", label: "Media" },
+                            ]}
+                            activeTab={activeTab}
+                            onChange={setActiveTab}
+                        />
 
                         <div className="space-y-16">
                             {activeTab === "cast" && movie.credits?.cast && movie.credits.cast.length > 0 && (
                                 <section>
                                     <h2 className="text-3xl font-bold mb-6">Cast</h2>
-                                    <CastSlider cast={movie.credits.cast} />
+                                    <CastGrid cast={movie.credits.cast} />
                                 </section>
                             )}
 
-                            {activeTab === "crew" && (
-                                <>
-                                    {movie.credits?.crew && movie.credits.crew.length > 0 && (
-                                        <section>
-                                            <h2 className="text-3xl font-bold mb-6">Crew</h2>
-                                            <CrewSection crew={movie.credits.crew} />
-                                        </section>
-                                    )}
-                                    {movie.production_companies && movie.production_companies.length > 0 && (
-                                        <ProductionSection productions={movie.production_companies} />
-                                    )}
-                                </>
+                            {activeTab === "crew" && movie.credits?.crew && movie.credits.crew.length > 0 && (
+                                <section>
+                                    <h2 className="text-3xl font-bold mb-6">Crew</h2>
+                                    <CrewSection crew={movie.credits.crew} />
+                                </section>
+                            )}
+
+                            {activeTab === "production" && movie.production_companies && movie.production_companies.length > 0 && (
+                                <ProductionSection productions={movie.production_companies} />
                             )}
 
                             {activeTab === "reviews" && (
