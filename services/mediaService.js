@@ -236,20 +236,20 @@ export const mediaService = {
                 ratingDoc.watchNumber = extra.viewCount || 2;
                 ratingDoc.isRewatch = true;
                 await runTransaction(db, async (transaction) => {
+                    // ── ALL READS FIRST ──
                     const primaryStatuses = ["watched", "watchlist", "paused", "dropped"];
                     for (const status of primaryStatuses) {
                         await transaction.get(doc(db, STATUS_COLLECTIONS[status], uniqueId));
                     }
-                    // Create new rating doc with auto ID
-                    const newRatingRef = doc(collection(db, "user_ratings"));
-                    transaction.set(newRatingRef, ratingDoc);
-                    // Also update the primary rating doc's viewCount
                     const primaryRef = doc(db, "user_ratings", uniqueId);
                     const primarySnap = await transaction.get(primaryRef);
+
+                    // ── ALL WRITES AFTER ──
+                    const newRatingRef = doc(collection(db, "user_ratings"));
+                    transaction.set(newRatingRef, ratingDoc);
                     if (primarySnap.exists()) {
                         transaction.update(primaryRef, { viewCount: extra.viewCount || 2 });
                     }
-                    // Ensure watched status
                     transaction.set(doc(db, "user_watched", uniqueId), watchedDoc, { merge: true });
                     transaction.delete(doc(db, "user_watchlist", uniqueId));
                     transaction.delete(doc(db, "user_paused", uniqueId));
@@ -258,11 +258,13 @@ export const mediaService = {
             } else {
                 // Normal rate or edit: use deterministic doc ID
                 await runTransaction(db, async (transaction) => {
+                    // ── ALL READS FIRST ──
                     const primaryStatuses = ["watched", "watchlist", "paused", "dropped"];
                     for (const status of primaryStatuses) {
                         await transaction.get(doc(db, STATUS_COLLECTIONS[status], uniqueId));
                     }
 
+                    // ── ALL WRITES AFTER ──
                     transaction.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
                     transaction.set(doc(db, "user_watched", uniqueId), watchedDoc, { merge: true });
                     transaction.delete(doc(db, "user_watchlist", uniqueId));
@@ -357,6 +359,7 @@ export const mediaService = {
                 isPaused: paused.exists(),
                 isDropped: dropped.exists(),
                 rating: rating.exists() ? rating.data().rating : 0,
+                hasEntry: rating.exists(),
             };
         } catch (error) {
             console.error("Error checking status:", error);

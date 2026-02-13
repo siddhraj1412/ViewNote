@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { MessageSquare, Heart, Eye, Calendar } from "lucide-react";
+import { MessageSquare, Heart, Eye, Calendar, ThumbsUp } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import StarRating from "@/components/StarRating";
+import { reviewService } from "@/services/reviewService";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p";
 
@@ -25,6 +26,7 @@ function generateSlugFromTitle(text) {
 export default function ReviewsSection({ userId, username }) {
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [socialCounts, setSocialCounts] = useState({}); // { [reviewId]: { likes: N, comments: N } }
 
     const fetchReviews = useCallback(async () => {
         if (!userId) return;
@@ -40,6 +42,21 @@ export default function ReviewsSection({ userId, username }) {
                 .filter((r) => r.review && r.review.trim().length > 0)
                 .sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
             setReviews(items);
+
+            // Fetch like and comment counts for each review
+            const counts = {};
+            await Promise.all(items.map(async (item) => {
+                try {
+                    const [likeCount, comments] = await Promise.all([
+                        reviewService.getLikeCount(item.id),
+                        reviewService.getComments(item.id),
+                    ]);
+                    counts[item.id] = { likes: likeCount, comments: comments.length };
+                } catch {
+                    counts[item.id] = { likes: 0, comments: 0 };
+                }
+            }));
+            setSocialCounts(counts);
         } catch (error) {
             console.error("Error loading reviews:", error);
         } finally {
@@ -163,6 +180,23 @@ export default function ReviewsSection({ userId, username }) {
                                             ))}
                                             {item.tags.length > 5 && (
                                                 <span className="text-[10px] text-textSecondary">+{item.tags.length - 5}</span>
+                                            )}
+                                        </div>
+                                    )}
+                                    {/* Social counts */}
+                                    {(socialCounts[item.id]?.likes > 0 || socialCounts[item.id]?.comments > 0) && (
+                                        <div className="flex items-center gap-3 mt-2.5 pt-2 border-t border-white/5">
+                                            {socialCounts[item.id]?.likes > 0 && (
+                                                <div className="flex items-center gap-1 text-xs text-textSecondary">
+                                                    <ThumbsUp size={12} />
+                                                    <span>{socialCounts[item.id].likes}</span>
+                                                </div>
+                                            )}
+                                            {socialCounts[item.id]?.comments > 0 && (
+                                                <div className="flex items-center gap-1 text-xs text-textSecondary">
+                                                    <MessageSquare size={12} />
+                                                    <span>{socialCounts[item.id].comments}</span>
+                                                </div>
                                             )}
                                         </div>
                                     )}

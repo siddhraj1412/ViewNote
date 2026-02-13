@@ -70,15 +70,22 @@ export default function PausedSectionTab({ userId }) {
 
     const filtered = filter === "all" ? pausedItems : pausedItems.filter(i => filter === "movie" ? i.mediaType === "movie" : i.mediaType === "tv");
 
+    const movieCount = pausedItems.filter(i => i.mediaType === "movie").length;
+    const tvCount = pausedItems.filter(i => i.mediaType === "tv").length;
+
     return (
         <div>
             <div className="flex gap-2 mb-4">
-                {["all", "movie", "tv"].map(f => (
-                    <button key={f} onClick={() => setFilter(f)}
-                        className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${filter === f ? "bg-accent text-white" : "bg-white/5 text-textSecondary hover:text-white"}`}>
-                        {f === "all" ? "All" : f === "movie" ? "Movies" : "Series"}
-                    </button>
-                ))}
+                {["all", "movie", "tv"].map(f => {
+                    const count = f === "all" ? pausedItems.length : f === "movie" ? movieCount : tvCount;
+                    const label = f === "all" ? "All" : f === "movie" ? "Movies" : "Series";
+                    return (
+                        <button key={f} onClick={() => setFilter(f)}
+                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${filter === f ? "bg-accent text-white" : "bg-white/5 text-textSecondary hover:text-white"}`}>
+                            {label} ({count})
+                        </button>
+                    );
+                })}
             </div>
             {filtered.length === 0 ? (
                 <div className="text-center py-12 text-textSecondary">No {filter === "movie" ? "movies" : "series"} paused</div>

@@ -6,11 +6,14 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import StarRating from "@/components/StarRating";
-import { Heart, Calendar, Eye, ArrowLeft, Tag, MessageCircle, Send, Trash2, ThumbsUp } from "lucide-react";
+import { Heart, Calendar, Eye, ArrowLeft, Tag, MessageCircle, Send, Trash2, ThumbsUp, Edit3 } from "lucide-react";
 import Link from "next/link";
 import { getMediaUrl } from "@/lib/slugify";
 import { reviewService } from "@/services/reviewService";
 import showToast from "@/lib/toast";
+import dynamic from "next/dynamic";
+
+const RatingModal = dynamic(() => import("@/components/RatingModal"), { ssr: false, loading: () => null });
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w300";
 const TMDB_IMG_LG = "https://image.tmdb.org/t/p/w500";
@@ -38,6 +41,8 @@ export default function ReviewDetailPage() {
     const [commentText, setCommentText] = useState("");
     const [commentLoading, setCommentLoading] = useState(false);
     const [deletingComment, setDeletingComment] = useState(null);
+    const [reviewOwnerId, setReviewOwnerId] = useState(null);
+    const [showEditModal, setShowEditModal] = useState(false);
 
     useEffect(() => {
         if (!username || !mediaSlug) return;
@@ -59,6 +64,7 @@ export default function ReviewDetailPage() {
                 const profileDoc = profileSnap.docs[0];
                 const userId = profileDoc.data().userId || profileDoc.id;
                 setProfileData(profileDoc.data());
+                setReviewOwnerId(userId);
 
                 const ratingsRef = collection(db, "user_ratings");
                 const ratingsQuery = query(ratingsRef, where("userId", "==", userId));
@@ -200,7 +206,7 @@ export default function ReviewDetailPage() {
 
     return (
         <div className="min-h-screen">
-            <div className="container py-8 md:py-12 max-w-3xl mx-auto">
+            <div className="container py-8 md:py-12 max-w-3xl mx-auto relative z-10 pt-24">
                 <button
                     onClick={() => router.back()}
                     className="flex items-center gap-2 text-textSecondary hover:text-white transition mb-8"
@@ -241,6 +247,15 @@ export default function ReviewDetailPage() {
                             <Link href={`/${username}`} className="text-sm text-accent hover:underline font-medium">
                                 @{username}
                             </Link>
+                            {user?.uid === reviewOwnerId && (
+                                <button
+                                    onClick={() => setShowEditModal(true)}
+                                    className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-textSecondary hover:text-white transition-all"
+                                >
+                                    <Edit3 size={14} />
+                                    Edit
+                                </button>
+                            )}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-4">
@@ -253,10 +268,10 @@ export default function ReviewDetailPage() {
                             {review.liked && (
                                 <Heart size={18} className="text-red-400" fill="currentColor" />
                             )}
-                            {review.viewCount > 1 && (
+                            {(review.viewCount || 1) >= 1 && (
                                 <div className="flex items-center gap-1 text-sm text-textSecondary">
                                     <Eye size={14} />
-                                    <span>Watched {review.viewCount}x</span>
+                                    <span>Watched {review.viewCount || 1}x</span>
                                 </div>
                             )}
                         </div>
@@ -381,6 +396,19 @@ export default function ReviewDetailPage() {
                     </div>
                 </div>
             </div>
+
+            {showEditModal && review && (
+                <RatingModal
+                    isOpen={showEditModal}
+                    onClose={() => setShowEditModal(false)}
+                    mediaId={review.mediaId}
+                    mediaType={review.mediaType}
+                    title={review.title}
+                    poster_path={review.poster_path}
+                    currentRating={review.rating}
+                    mode="edit"
+                />
+            )}
         </div>
     );
 }

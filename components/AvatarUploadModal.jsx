@@ -237,7 +237,29 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
             });
             uploadTaskRef.current = uploadTask;
 
+            let lastProgress = 0;
+            let lastProgressTime = Date.now();
+
+            // Stall detection: if progress doesn't change for 15s, cancel
+            const stallCheck = setInterval(() => {
+                const now = Date.now();
+                if (now - lastProgressTime > 15000 && lastProgress < 100) {
+                    clearInterval(stallCheck);
+                    uploadTask.cancel();
+                    if (attempt < 3) {
+                        showToast.error(`Upload stalled, retrying (${attempt}/3)...`);
+                        setProgress(0);
+                        setTimeout(() => attemptUpload(attempt + 1), 1000 * attempt);
+                    } else {
+                        showToast.error("Upload stalled after 3 attempts. Please try again.");
+                        setUploading(false);
+                        setProgress(0);
+                    }
+                }
+            }, 3000);
+
             const timeout = setTimeout(() => {
+                clearInterval(stallCheck);
                 uploadTask.cancel();
                 showToast.error("Upload timed out. Please try again.");
                 setUploading(false);
@@ -249,12 +271,20 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                 (snapshot) => {
                     const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
                     setProgress(pct);
+                    if (pct > lastProgress) {
+                        lastProgress = pct;
+                        lastProgressTime = Date.now();
+                    }
                 },
                 (error) => {
                     clearTimeout(timeout);
+                    clearInterval(stallCheck);
                     if (error.code === "storage/canceled") {
-                        setUploading(false);
-                        setProgress(0);
+                        // Only reset if we're not retrying
+                        if (attempt >= 3) {
+                            setUploading(false);
+                            setProgress(0);
+                        }
                         return;
                     }
                     if (attempt < 3) {
@@ -269,6 +299,7 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                 },
                 async () => {
                     clearTimeout(timeout);
+                    clearInterval(stallCheck);
                     try {
                         const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
                         const profileRef = doc(db, "user_profiles", userId);

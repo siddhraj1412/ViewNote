@@ -4,33 +4,49 @@ import { useState, useEffect, useCallback } from "react";
 import { Calendar, Heart, Eye } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { getMediaUrl } from "@/lib/slugify";
 import StarRating from "@/components/StarRating";
 import eventBus from "@/lib/eventBus";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w154";
+const PAGE_SIZE = 50;
 
 export default function DiarySection({ userId }) {
     const { user } = useAuth();
     const ownerId = userId || user?.uid;
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [showAll, setShowAll] = useState(false);
 
     const fetchDiary = useCallback(async () => {
         if (!ownerId) { setLoading(false); return; }
         setLoading(true);
         try {
-            const q = query(
-                collection(db, "user_ratings"),
-                where("userId", "==", ownerId)
-            );
-            const snap = await getDocs(q);
+            // Try with orderBy first (requires composite index)
+            let snap;
+            try {
+                const q = query(
+                    collection(db, "user_ratings"),
+                    where("userId", "==", ownerId),
+                    orderBy("ratedAt", "desc"),
+                    limit(200)
+                );
+                snap = await getDocs(q);
+            } catch (indexErr) {
+                // Fallback: query without orderBy if index isn't deployed yet
+                console.warn("Diary index not ready, falling back:", indexErr.message);
+                const fallbackQ = query(
+                    collection(db, "user_ratings"),
+                    where("userId", "==", ownerId),
+                    limit(200)
+                );
+                snap = await getDocs(fallbackQ);
+            }
             const items = snap.docs
                 .map((d) => ({ id: d.id, ...d.data() }))
                 .sort((a, b) => {
-                    // Sort by watchedDate if available, else ratedAt
                     const dateA = a.watchedDate || (a.ratedAt?.seconds ? new Date(a.ratedAt.seconds * 1000).toISOString().slice(0, 10) : "");
                     const dateB = b.watchedDate || (b.ratedAt?.seconds ? new Date(b.ratedAt.seconds * 1000).toISOString().slice(0, 10) : "");
                     return dateB.localeCompare(dateA);
@@ -107,7 +123,7 @@ export default function DiarySection({ userId }) {
                 <span className="text-sm text-textSecondary">{entries.length} entries</span>
             </div>
             <div className="space-y-2">
-                {entries.map((item) => {
+                {(showAll ? entries : entries.slice(0, PAGE_SIZE)).map((item) => {
                     const url = getMediaUrl(
                         { id: item.mediaId, title: item.title, name: item.title },
                         item.mediaType
@@ -149,6 +165,14 @@ export default function DiarySection({ userId }) {
                     );
                 })}
             </div>
+            {!showAll && entries.length > PAGE_SIZE && (
+                <button
+                    onClick={() => setShowAll(true)}
+                    className="mt-4 w-full py-2.5 text-sm font-medium text-accent hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all"
+                >
+                    Show all {entries.length} entries
+                </button>
+            )}
         </div>
     );
 }

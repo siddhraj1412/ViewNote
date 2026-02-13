@@ -80,15 +80,15 @@ export default function WatchedSectionTab() {
 
     return (
         <div className="space-y-6">
-            <div className="flex gap-3 flex-wrap">
+            <div className="flex gap-2 mb-4 flex-wrap">
                 {["all", "movies", "series"].map((f) => (
                     <button
                         key={f}
                         onClick={() => setFilter(f)}
-                        className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                        className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
                             filter === f
-                                ? "bg-accent text-background"
-                                : "bg-secondary text-textSecondary hover:bg-white/10"
+                                ? "bg-accent text-white"
+                                : "bg-white/5 text-textSecondary hover:text-white"
                         }`}
                     >
                         {f.charAt(0).toUpperCase() + f.slice(1)} ({counts[f]})

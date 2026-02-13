@@ -37,6 +37,7 @@ export default function RootLayout({ children }) {
                     <AuthProvider>
                         <Toaster
                             position="top-center"
+                            containerStyle={{ top: 80 }}
                             toastOptions={{
                                 duration: 5000,
                                 style: {

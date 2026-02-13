@@ -58,6 +58,7 @@ export default function ActionBar({
         isPaused: false,
         isDropped: false,
         rating: currentRating,
+        hasEntry: currentRating > 0,
     });
     const [loading, setLoading] = useState(true);
 
@@ -179,7 +180,7 @@ export default function ActionBar({
                     {status.isWatched ? "Watched" : "Mark Watched"}
                 </Button>
 
-                {status.rating > 0 ? (
+                {status.hasEntry ? (
                     <div className="relative">
                         <Button
                             variant="secondary"
@@ -187,7 +188,7 @@ export default function ActionBar({
                             className="flex items-center gap-2"
                         >
                             <Star size={18} fill="currentColor" className="text-accent" />
-                            Rated {status.rating}
+                            {status.rating > 0 ? `Rated ${status.rating}` : "Reviewed"}
                         </Button>
                         {showRateMenu && (
                             <>
@@ -212,14 +213,14 @@ export default function ActionBar({
                         )}
                     </div>
                 ) : (
-                <Button
-                    variant="secondary"
-                    onClick={() => { setRatingMode("normal"); setShowRatingModal(true); }}
-                    className="flex items-center gap-2"
-                >
-                    <Star size={18} fill="none" />
-                    Rate
-                </Button>
+                    <Button
+                        variant="secondary"
+                        onClick={() => { setRatingMode("normal"); setShowRatingModal(true); }}
+                        className="flex items-center gap-2"
+                    >
+                        <Star size={18} fill="none" />
+                        Rate
+                    </Button>
                 )}
 
                 <Button
@@ -315,11 +316,11 @@ export default function ActionBar({
                     </button>
 
                     <button
-                        onClick={() => { setRatingMode(status.rating > 0 ? "edit" : "normal"); setShowRatingModal(true); }}
-                        className={`flex flex-col items-center gap-1 ${status.rating > 0 ? "text-accent" : "text-textSecondary"}`}
+                        onClick={() => { setRatingMode(status.hasEntry ? "edit" : "normal"); setShowRatingModal(true); }}
+                        className={`flex flex-col items-center gap-1 ${status.hasEntry ? "text-accent" : "text-textSecondary"}`}
                     >
-                        <Star size={20} fill={status.rating > 0 ? "currentColor" : "none"} />
-                        <span className="text-xs">{status.rating > 0 ? status.rating : "Rate"}</span>
+                        <Star size={20} fill={status.hasEntry ? "currentColor" : "none"} />
+                        <span className="text-xs">{status.rating > 0 ? status.rating : status.hasEntry ? "Edit" : "Rate"}</span>
                     </button>
 
                     <button
@@ -348,7 +349,7 @@ export default function ActionBar({
                     <>
                         <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowMoreMenu(false)} />
                         <div className="fixed bottom-20 left-4 right-4 bg-secondary border border-white/10 rounded-lg shadow-xl z-50">
-                            {status.rating > 0 && (
+                            {status.hasEntry && (
                                 <button
                                     onClick={() => { setRatingMode("rateAgain"); setShowMoreMenu(false); setShowRatingModal(true); }}
                                     className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3"

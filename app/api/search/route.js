@@ -38,6 +38,20 @@ export async function GET(request) {
             });
         }
 
+        // ── Images endpoint (backdrops) for movies or TV ──
+        const movieId = searchParams.get('movieId');
+        if ((tvId || movieId) && detail === 'images') {
+            const mediaType = tvId ? 'tv' : 'movie';
+            const mediaId = tvId || movieId;
+            const url = `${TMDB_BASE_URL}/${mediaType}/${mediaId}/images?api_key=${TMDB_API_KEY}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('TMDB API error');
+            const data = await res.json();
+            return NextResponse.json({ backdrops: data.backdrops || [], posters: data.posters || [] }, {
+                headers: { 'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200' },
+            });
+        }
+
         if (!query) {
             return NextResponse.json(
                 { error: 'Query parameter is required' },
