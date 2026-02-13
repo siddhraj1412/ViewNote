@@ -52,6 +52,16 @@ function NavbarContent() {
         setDropdownOpen(false);
     }, [pathname, searchParams]);
 
+    // Listen for toast navigation events (client-side nav)
+    useEffect(() => {
+        const handler = (e) => {
+            const href = e.detail?.href;
+            if (href) router.push(href);
+        };
+        window.addEventListener("toast-navigate", handler);
+        return () => window.removeEventListener("toast-navigate", handler);
+    }, [router]);
+
     const handleLogout = async () => {
         setDropdownOpen(false);
         await logout();

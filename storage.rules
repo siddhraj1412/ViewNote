@@ -25,6 +25,16 @@ service firebase.storage {
       // Allow delete only for the owner
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
+
+    // List banner uploads
+    match /lists/{userId}/{listId}/banner {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
     
     // Deny all other access
     match /{allPaths=**} {

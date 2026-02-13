@@ -58,7 +58,7 @@ export default function ProfileBio({ userId }) {
 
     return (
         <div className="mb-2">
-            <p className="text-textPrimary leading-relaxed whitespace-pre-wrap">
+            <p className="text-textPrimary leading-relaxed whitespace-pre-wrap break-words" style={{ overflowWrap: "anywhere" }}>
                 {bio}
             </p>
         </div>

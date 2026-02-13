@@ -4,7 +4,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Upload, X, ZoomIn, ZoomOut, Loader2, RotateCcw } from "lucide-react";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { updateProfile } from "firebase/auth";
+import { db, auth } from "@/lib/firebase";
 import showToast from "@/lib/toast";
 import eventBus from "@/lib/eventBus";
 
@@ -28,24 +29,40 @@ function renderCroppedCanvas(img, pos, zoom, size = 512) {
     return canvas;
 }
 
-// ── Compress to webp ≤200KB ──
+// ── Compress to webp ≤200KB (falling back to JPEG if webp not supported) ──
 function compressCanvas(canvas) {
     return new Promise((resolve, reject) => {
-        const tryQuality = (q) => {
-            canvas.toBlob(
-                (blob) => {
-                    if (!blob) { reject(new Error("Compression failed")); return; }
-                    if (blob.size > 200 * 1024 && q > 0.3) {
-                        tryQuality(q - 0.1);
-                    } else {
-                        resolve(blob);
-                    }
-                },
-                "image/webp",
-                q
-            );
+        const tryFormat = (format, q) => {
+            try {
+                canvas.toBlob(
+                    (blob) => {
+                        if (!blob) {
+                            // If webp failed, try jpeg
+                            if (format === "image/webp") {
+                                tryFormat("image/jpeg", 0.85);
+                                return;
+                            }
+                            reject(new Error("Compression failed"));
+                            return;
+                        }
+                        if (blob.size > 200 * 1024 && q > 0.3) {
+                            tryFormat(format, q - 0.1);
+                        } else {
+                            resolve(blob);
+                        }
+                    },
+                    format,
+                    q
+                );
+            } catch {
+                if (format === "image/webp") {
+                    tryFormat("image/jpeg", 0.85);
+                } else {
+                    reject(new Error("Compression failed"));
+                }
+            }
         };
-        tryQuality(0.85);
+        tryFormat("image/webp", 0.85);
     });
 }
 
@@ -215,7 +232,7 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
             const storageRef = ref(storage, `users/${userId}/avatar.webp`);
 
             const uploadTask = uploadBytesResumable(storageRef, compressed, {
-                contentType: "image/webp",
+                contentType: compressed.type || "image/webp",
                 customMetadata: { uploadedBy: userId },
             });
             uploadTaskRef.current = uploadTask;
@@ -259,6 +276,10 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                             profile_picture_url: downloadUrl,
                             updatedAt: new Date(),
                         });
+                        // Also update Firebase Auth photoURL
+                        if (auth.currentUser) {
+                            try { await updateProfile(auth.currentUser, { photoURL: downloadUrl }); } catch {}
+                        }
                         showToast.success("Profile photo updated!");
                         if (onUploadSuccess) onUploadSuccess(downloadUrl);
                         eventBus.emit("PROFILE_UPDATED", { type: "avatar", url: downloadUrl });

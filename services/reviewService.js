@@ -106,6 +106,7 @@ export const reviewService = {
 
     async getComments(reviewDocId) {
         try {
+            // Try ordered query first (requires composite index)
             const q = query(
                 collection(db, "review_comments"),
                 where("reviewDocId", "==", reviewDocId),
@@ -121,6 +122,29 @@ export const reviewService = {
                 };
             });
         } catch (error) {
+            // Fallback: query without orderBy if index is missing
+            if (error.code === "failed-precondition") {
+                console.warn("[ReviewService] Missing index for review_comments. Using client-side sort.");
+                try {
+                    const fallbackQ = query(
+                        collection(db, "review_comments"),
+                        where("reviewDocId", "==", reviewDocId)
+                    );
+                    const snap = await getDocs(fallbackQ);
+                    const results = snap.docs.map((d) => {
+                        const data = d.data();
+                        return {
+                            id: d.id,
+                            ...data,
+                            createdAt: data.createdAt?.toDate?.() || new Date(),
+                        };
+                    });
+                    return results.sort((a, b) => b.createdAt - a.createdAt);
+                } catch (fallbackErr) {
+                    console.error("Fallback comment query also failed:", fallbackErr);
+                    return [];
+                }
+            }
             console.error("Error fetching comments:", error);
             return [];
         }

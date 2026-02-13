@@ -17,7 +17,9 @@ import {
     Image as ImageIcon,
     Share2,
     Check,
-    ListPlus
+    ListPlus,
+    Edit3,
+    RefreshCw
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 
@@ -60,6 +62,8 @@ export default function ActionBar({
     const [loading, setLoading] = useState(true);
 
     const [showRatingModal, setShowRatingModal] = useState(false);
+    const [ratingMode, setRatingMode] = useState("normal");
+    const [showRateMenu, setShowRateMenu] = useState(false); // "normal" | "edit" | "rateAgain"
     const [showMoreMenu, setShowMoreMenu] = useState(false);
     const [showPosterSelector, setShowPosterSelector] = useState(false);
     const [showBannerSelector, setShowBannerSelector] = useState(false);
@@ -175,14 +179,48 @@ export default function ActionBar({
                     {status.isWatched ? "Watched" : "Mark Watched"}
                 </Button>
 
+                {status.rating > 0 ? (
+                    <div className="relative">
+                        <Button
+                            variant="secondary"
+                            onClick={() => setShowRateMenu(!showRateMenu)}
+                            className="flex items-center gap-2"
+                        >
+                            <Star size={18} fill="currentColor" className="text-accent" />
+                            Rated {status.rating}
+                        </Button>
+                        {showRateMenu && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setShowRateMenu(false)} />
+                                <div className="absolute top-full mt-2 left-0 bg-secondary border border-white/10 rounded-lg shadow-xl z-50 min-w-[180px]">
+                                    <button
+                                        onClick={() => { setRatingMode("edit"); setShowRateMenu(false); setShowRatingModal(true); }}
+                                        className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
+                                    >
+                                        <Edit3 size={16} />
+                                        Edit Review
+                                    </button>
+                                    <button
+                                        onClick={() => { setRatingMode("rateAgain"); setShowRateMenu(false); setShowRatingModal(true); }}
+                                        className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
+                                    >
+                                        <RefreshCw size={16} />
+                                        Watch Again
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                ) : (
                 <Button
                     variant="secondary"
-                    onClick={() => setShowRatingModal(true)}
+                    onClick={() => { setRatingMode("normal"); setShowRatingModal(true); }}
                     className="flex items-center gap-2"
                 >
-                    <Star size={18} fill={status.rating > 0 ? "currentColor" : "none"} className={status.rating > 0 ? "text-accent" : ""} />
-                    {status.rating > 0 ? `Rated ${status.rating}` : "Rate"}
+                    <Star size={18} fill="none" />
+                    Rate
                 </Button>
+                )}
 
                 <Button
                     variant={status.isWatchlist ? "glass" : "secondary"}
@@ -277,7 +315,7 @@ export default function ActionBar({
                     </button>
 
                     <button
-                        onClick={() => setShowRatingModal(true)}
+                        onClick={() => { setRatingMode(status.rating > 0 ? "edit" : "normal"); setShowRatingModal(true); }}
                         className={`flex flex-col items-center gap-1 ${status.rating > 0 ? "text-accent" : "text-textSecondary"}`}
                     >
                         <Star size={20} fill={status.rating > 0 ? "currentColor" : "none"} />
@@ -310,9 +348,18 @@ export default function ActionBar({
                     <>
                         <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowMoreMenu(false)} />
                         <div className="fixed bottom-20 left-4 right-4 bg-secondary border border-white/10 rounded-lg shadow-xl z-50">
+                            {status.rating > 0 && (
+                                <button
+                                    onClick={() => { setRatingMode("rateAgain"); setShowMoreMenu(false); setShowRatingModal(true); }}
+                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3"
+                                >
+                                    <RefreshCw size={18} />
+                                    Watch Again
+                                </button>
+                            )}
                             <button
                                 onClick={() => { if (!user) { showToast.info("Please sign in"); return; } setShowAddToList(true); setShowMoreMenu(false); }}
-                                className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3"
+                                className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
                             >
                                 <ListPlus size={18} />
                                 Add to List
@@ -366,13 +413,14 @@ export default function ActionBar({
             {showRatingModal && (
                 <RatingModal
                     isOpen={showRatingModal}
-                    onClose={() => setShowRatingModal(false)}
+                    onClose={() => { setShowRatingModal(false); setRatingMode("normal"); }}
                     mediaId={mediaId}
                     mediaType={mediaType}
                     title={title}
                     poster_path={posterPath}
                     currentRating={status.rating}
                     releaseYear={releaseYear}
+                    mode={ratingMode}
                 />
             )}
 

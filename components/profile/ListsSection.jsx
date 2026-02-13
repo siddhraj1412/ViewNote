@@ -134,7 +134,7 @@ export default function ListsSection({ ownerId, isOwnProfile }) {
                                             <img
                                                 src={`https://image.tmdb.org/t/p/w185${item.poster_path}`}
                                                 alt={item.title}
-                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                className="w-full h-full object-cover transition-transform duration-300"
                                             />
                                         ) : (
                                             <div className="w-full h-full bg-white/5" />

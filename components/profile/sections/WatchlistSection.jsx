@@ -18,6 +18,7 @@ export default function WatchlistSection({ userId }) {
 
     const [watchlistItems, setWatchlistItems] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [filter, setFilter] = useState("all");
 
     const fetchWatchlist = useCallback(async () => {
         if (!ownerId) return;
@@ -67,9 +68,23 @@ export default function WatchlistSection({ userId }) {
         return <div className="text-center py-12 text-textSecondary">No items in watchlist</div>;
     }
 
+    const filtered = filter === "all" ? watchlistItems : watchlistItems.filter(i => filter === "movie" ? i.mediaType === "movie" : i.mediaType === "tv");
+
     return (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-            {watchlistItems.map((item) => (
+        <div>
+            <div className="flex gap-2 mb-4">
+                {["all", "movie", "tv"].map(f => (
+                    <button key={f} onClick={() => setFilter(f)}
+                        className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${filter === f ? "bg-accent text-white" : "bg-white/5 text-textSecondary hover:text-white"}`}>
+                        {f === "all" ? "All" : f === "movie" ? "Movies" : "Series"}
+                    </button>
+                ))}
+            </div>
+            {filtered.length === 0 ? (
+                <div className="text-center py-12 text-textSecondary">No {filter === "movie" ? "movies" : "series"} in watchlist</div>
+            ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+                {filtered.map((item) => (
                 <Link
                     key={item.id}
                     href={getMediaUrl(item, item.mediaType)}
@@ -101,6 +116,8 @@ export default function WatchlistSection({ userId }) {
                     </div>
                 </Link>
             ))}
+            </div>
+            )}
         </div>
     );
 }

@@ -81,7 +81,7 @@ export default function LikesSection({ userId }) {
                                 <img
                                     src={`${TMDB_IMG}${item.poster_path}`}
                                     alt={item.title}
-                                    className="w-full aspect-[2/3] rounded-xl object-cover group-hover:scale-105 transition-transform"
+                                    className="w-full aspect-[2/3] rounded-xl object-cover transition-transform"
                                 />
                             ) : (
                                 <div className="w-full aspect-[2/3] rounded-xl bg-white/10 flex items-center justify-center">

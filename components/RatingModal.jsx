@@ -38,6 +38,7 @@ export default function RatingModal({
     poster_path,
     currentRating = 0,
     releaseYear = "",
+    mode = "normal", // "normal" | "edit" | "rateAgain"
 }) {
     const [rating, setRating] = useState(currentRating);
     const [review, setReview] = useState("");
@@ -48,6 +49,7 @@ export default function RatingModal({
     const [tagInput, setTagInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [loadingExisting, setLoadingExisting] = useState(false);
+    const [hasExisting, setHasExisting] = useState(false);
     const { user } = useAuth();
 
     // Load existing review data when modal opens
@@ -60,12 +62,26 @@ export default function RatingModal({
             try {
                 const existing = await mediaService.getReview(user, mediaId, mediaType);
                 if (!cancelled && existing) {
-                    setReview(existing.review || "");
-                    if (existing.rating) setRating(existing.rating);
-                    if (existing.watchedDate) setWatchedDate(formatDateForInput(existing.watchedDate));
-                    if (typeof existing.liked === "boolean") setLiked(existing.liked);
-                    if (existing.viewCount > 0) setViewCount(existing.viewCount);
-                    if (Array.isArray(existing.tags)) setTags(existing.tags);
+                    setHasExisting(true);
+                    if (mode === "rateAgain") {
+                        // Rate Again: start fresh but increment view count
+                        setReview("");
+                        setRating(0);
+                        setWatchedDate(formatDateForInput(new Date()));
+                        setLiked(false);
+                        setViewCount((existing.viewCount || 1) + 1);
+                        setTags([]);
+                    } else {
+                        // Normal or Edit: load existing data
+                        setReview(existing.review || "");
+                        if (existing.rating) setRating(existing.rating);
+                        if (existing.watchedDate) setWatchedDate(formatDateForInput(existing.watchedDate));
+                        if (typeof existing.liked === "boolean") setLiked(existing.liked);
+                        if (existing.viewCount > 0) setViewCount(existing.viewCount);
+                        if (Array.isArray(existing.tags)) setTags(existing.tags);
+                    }
+                } else {
+                    setHasExisting(false);
                 }
             } catch {
                 // ignore
@@ -123,6 +139,7 @@ export default function RatingModal({
                 liked,
                 viewCount,
                 tags,
+                rateAgain: mode === "rateAgain",
             });
             onClose();
         } catch (err) {
@@ -151,7 +168,7 @@ export default function RatingModal({
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="I watched..." maxWidth="700px">
+        <Modal isOpen={isOpen} onClose={onClose} title={mode === "rateAgain" ? "Rate Again" : mode === "edit" ? "Edit Review" : "I watched..."} maxWidth="700px">
             <div className="p-6">
                 <div className="flex flex-col md:flex-row gap-6">
                     {/* Left – Poster */}
@@ -301,7 +318,7 @@ export default function RatingModal({
                                 onClick={handleSubmit}
                                 disabled={loading}
                             >
-                                {loading ? "Saving..." : currentRating > 0 ? "Update" : "Save"}
+                                {loading ? "Saving..." : mode === "rateAgain" ? "Save New Review" : currentRating > 0 ? "Update" : "Save"}
                             </Button>
                         </div>
                         {currentRating > 0 && (

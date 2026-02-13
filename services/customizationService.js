@@ -74,7 +74,7 @@ export const customizationService = {
             });
 
             store.completeOptimisticUpdate(key);
-            showToast.linked("Changed your poster", `/${user.username || user.uid}`);
+            showToast.success("Poster updated");
 
             return { success: true };
         } catch (error) {
@@ -127,7 +127,7 @@ export const customizationService = {
             });
 
             store.completeOptimisticUpdate(key);
-            showToast.linked("Changed your banner", `/${user.username || user.uid}`);
+            showToast.success("Banner updated");
 
             return { success: true };
         } catch (error) {

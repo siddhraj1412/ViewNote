@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
+import { db, storage } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAuth } from "@/context/AuthContext";
 import { detectListType, getListTypeInfo } from "@/lib/listUtils";
-import { Crown, ArrowLeft, Grid3X3, List, Edit2, Trash2 } from "lucide-react";
+import { Crown, ArrowLeft, Grid3X3, List, Edit2, Trash2, Heart, MessageCircle, Send, Image as ImageIcon } from "lucide-react";
 import { deleteDoc } from "firebase/firestore";
 import showToast from "@/lib/toast";
+import { listService } from "@/services/listService";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p";
 
@@ -25,6 +27,14 @@ export default function ListPage() {
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [ownerProfile, setOwnerProfile] = useState(null);
+    const [liked, setLiked] = useState(false);
+    const [likeCount, setLikeCount] = useState(0);
+    const [comments, setComments] = useState([]);
+    const [commentText, setCommentText] = useState("");
+    const [sendingComment, setSendingComment] = useState(false);
+    const [showComments, setShowComments] = useState(false);
+    const [uploadingBanner, setUploadingBanner] = useState(false);
+    const bannerInputRef = useRef(null);
 
     useEffect(() => {
         if (!listId) return;
@@ -49,6 +59,60 @@ export default function ListPage() {
         };
         fetchList();
     }, [listId]);
+
+    // Load likes & comments
+    useEffect(() => {
+        if (!listId) return;
+        listService.getLikeState(listId, user?.uid).then(({ liked, count }) => {
+            setLiked(liked);
+            setLikeCount(count);
+        });
+        listService.getComments(listId).then(setComments);
+    }, [listId, user?.uid]);
+
+    const handleLike = async () => {
+        if (!user) { showToast.info("Please sign in"); return; }
+        try {
+            const result = await listService.toggleLike(listId, user);
+            setLiked(result.liked);
+            setLikeCount(result.count);
+        } catch { showToast.error("Failed to like"); }
+    };
+
+    const handleComment = async () => {
+        if (!user) { showToast.info("Please sign in"); return; }
+        if (!commentText.trim()) return;
+        setSendingComment(true);
+        try {
+            const c = await listService.addComment(listId, user, commentText);
+            if (c) { setComments(prev => [c, ...prev]); setCommentText(""); }
+        } catch { showToast.error("Failed to comment"); }
+        setSendingComment(false);
+    };
+
+    const handleDeleteComment = async (commentId) => {
+        const ok = await listService.deleteComment(commentId);
+        if (ok) setComments(prev => prev.filter(c => c.id !== commentId));
+    };
+
+    const handleBannerUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !user) return;
+        setUploadingBanner(true);
+        try {
+            const storageRef = ref(storage, `lists/${user.uid}/${listId}/banner`);
+            await uploadBytes(storageRef, file);
+            const url = await getDownloadURL(storageRef);
+            await listService.updateBanner(listId, url);
+            setList(prev => ({ ...prev, bannerUrl: url }));
+            showToast.success("Banner updated");
+        } catch (err) {
+            console.error(err);
+            showToast.error("Failed to upload banner");
+        }
+        setUploadingBanner(false);
+        if (bannerInputRef.current) bannerInputRef.current.value = "";
+    };
 
     const handleDelete = async () => {
         setDeleting(true);
@@ -98,19 +162,30 @@ export default function ListPage() {
 
     return (
         <main className="min-h-screen bg-background">
-            {/* Banner from first item poster */}
-            {items.length > 0 && items[0].poster_path && (
+            {/* Banner */}
+            {(list.bannerUrl || (items.length > 0 && items[0].poster_path)) && (
                 <div className="relative h-[35vh] md:h-[40vh] overflow-hidden">
                     <img
-                        src={`${TMDB_IMG}/w1280${items[0].poster_path}`}
+                        src={list.bannerUrl || `${TMDB_IMG}/w1280${items[0].poster_path}`}
                         alt=""
                         className="w-full h-full object-cover object-top"
                     />
                     <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-background" />
+                    {isOwner && (
+                        <button
+                            onClick={() => bannerInputRef.current?.click()}
+                            disabled={uploadingBanner}
+                            className="absolute bottom-4 right-4 z-10 flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm text-white/80 text-xs rounded-lg hover:bg-black/80 transition"
+                        >
+                            <ImageIcon size={14} />
+                            {uploadingBanner ? "Uploading..." : "Change Banner"}
+                        </button>
+                    )}
+                    <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} />
                 </div>
             )}
 
-            <div className="container pb-16" style={{ marginTop: items.length > 0 && items[0].poster_path ? "-80px" : "80px" }}>
+            <div className="container pb-16" style={{ marginTop: (list.bannerUrl || (items.length > 0 && items[0].poster_path)) ? "-80px" : "80px" }}>
                 <div className="relative z-10">
                     {/* Back button */}
                     <button onClick={() => router.back()}
@@ -186,6 +261,69 @@ export default function ListPage() {
                         </div>
                     )}
 
+                    {/* Social: Like & Comments */}
+                    <div className="flex items-center gap-4 mb-6">
+                        <button onClick={handleLike} className="flex items-center gap-1.5 text-sm group">
+                            <Heart size={18} fill={liked ? "currentColor" : "none"} className={liked ? "text-red-500" : "text-textSecondary group-hover:text-red-400 transition-colors"} />
+                            <span className={liked ? "text-red-500" : "text-textSecondary"}>{likeCount || ""}</span>
+                        </button>
+                        <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-1.5 text-sm text-textSecondary hover:text-white transition-colors">
+                            <MessageCircle size={18} />
+                            <span>{comments.length || ""}</span>
+                        </button>
+                    </div>
+
+                    {showComments && (
+                        <div className="mb-8 border border-white/5 rounded-xl p-4 bg-white/[0.02]">
+                            <div className="flex gap-2 mb-4">
+                                <input
+                                    value={commentText}
+                                    onChange={(e) => setCommentText(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleComment()}
+                                    placeholder="Add a comment..."
+                                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-textSecondary focus:outline-none focus:ring-1 focus:ring-accent"
+                                />
+                                <button onClick={handleComment} disabled={sendingComment || !commentText.trim()}
+                                    className="px-3 py-2 bg-accent text-white rounded-lg text-sm font-medium disabled:opacity-40 hover:bg-accent/80 transition">
+                                    <Send size={16} />
+                                </button>
+                            </div>
+                            {comments.length === 0 ? (
+                                <p className="text-sm text-textSecondary text-center py-4">No comments yet</p>
+                            ) : (
+                                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                                    {comments.map((c) => (
+                                        <div key={c.id} className="flex gap-3">
+                                            <Link href={`/${c.username}`} className="shrink-0">
+                                                {c.photoURL ? (
+                                                    <img src={c.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" />
+                                                ) : (
+                                                    <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-xs font-bold text-accent">
+                                                        {(c.username || "?")[0].toUpperCase()}
+                                                    </div>
+                                                )}
+                                            </Link>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-baseline gap-2">
+                                                    <Link href={`/${c.username}`} className="text-sm font-medium text-white hover:text-accent transition-colors">
+                                                        {c.username || "User"}
+                                                    </Link>
+                                                    <span className="text-[10px] text-textSecondary">
+                                                        {c.createdAt instanceof Date ? c.createdAt.toLocaleDateString() : ""}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-textSecondary break-words">{c.text}</p>
+                                            </div>
+                                            {user?.uid === c.userId && (
+                                                <button onClick={() => handleDeleteComment(c.id)} className="text-textSecondary hover:text-red-400 text-xs shrink-0">✕</button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Items */}
                     {items.length === 0 ? (
                         <div className="text-center py-16 text-textSecondary">
@@ -199,7 +337,7 @@ export default function ListPage() {
                                     <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-secondary">
                                         {item.poster_path ? (
                                             <img src={`${TMDB_IMG}/w342${item.poster_path}`} alt={item.title}
-                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                className="w-full h-full object-cover transition-transform duration-300" />
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center text-white/20">
                                                 <TypeIcon size={32} />

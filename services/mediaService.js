@@ -201,6 +201,7 @@ export const mediaService = {
     async rateMedia(user, mediaId, mediaType, rating, mediaData, reviewText = "", extra = {}) {
         if (!user) return false;
         const uniqueId = getUniqueId(user.uid, mediaType, mediaId);
+        const isRateAgain = extra.rateAgain === true;
 
         const ratingDoc = {
             userId: user.uid,
@@ -230,18 +231,45 @@ export const mediaService = {
         };
 
         try {
-            await runTransaction(db, async (transaction) => {
-                const primaryStatuses = ["watched", "watchlist", "paused", "dropped"];
-                for (const status of primaryStatuses) {
-                    await transaction.get(doc(db, STATUS_COLLECTIONS[status], uniqueId));
-                }
+            if (isRateAgain) {
+                // Rate Again: create a new doc with auto-generated ID
+                ratingDoc.watchNumber = extra.viewCount || 2;
+                ratingDoc.isRewatch = true;
+                await runTransaction(db, async (transaction) => {
+                    const primaryStatuses = ["watched", "watchlist", "paused", "dropped"];
+                    for (const status of primaryStatuses) {
+                        await transaction.get(doc(db, STATUS_COLLECTIONS[status], uniqueId));
+                    }
+                    // Create new rating doc with auto ID
+                    const newRatingRef = doc(collection(db, "user_ratings"));
+                    transaction.set(newRatingRef, ratingDoc);
+                    // Also update the primary rating doc's viewCount
+                    const primaryRef = doc(db, "user_ratings", uniqueId);
+                    const primarySnap = await transaction.get(primaryRef);
+                    if (primarySnap.exists()) {
+                        transaction.update(primaryRef, { viewCount: extra.viewCount || 2 });
+                    }
+                    // Ensure watched status
+                    transaction.set(doc(db, "user_watched", uniqueId), watchedDoc, { merge: true });
+                    transaction.delete(doc(db, "user_watchlist", uniqueId));
+                    transaction.delete(doc(db, "user_paused", uniqueId));
+                    transaction.delete(doc(db, "user_dropped", uniqueId));
+                });
+            } else {
+                // Normal rate or edit: use deterministic doc ID
+                await runTransaction(db, async (transaction) => {
+                    const primaryStatuses = ["watched", "watchlist", "paused", "dropped"];
+                    for (const status of primaryStatuses) {
+                        await transaction.get(doc(db, STATUS_COLLECTIONS[status], uniqueId));
+                    }
 
-                transaction.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
-                transaction.set(doc(db, "user_watched", uniqueId), watchedDoc, { merge: true });
-                transaction.delete(doc(db, "user_watchlist", uniqueId));
-                transaction.delete(doc(db, "user_paused", uniqueId));
-                transaction.delete(doc(db, "user_dropped", uniqueId));
-            });
+                    transaction.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
+                    transaction.set(doc(db, "user_watched", uniqueId), watchedDoc, { merge: true });
+                    transaction.delete(doc(db, "user_watchlist", uniqueId));
+                    transaction.delete(doc(db, "user_paused", uniqueId));
+                    transaction.delete(doc(db, "user_dropped", uniqueId));
+                });
+            }
 
             eventBus.emit("MEDIA_UPDATED", { mediaId, mediaType, action: "RATED", userId: user.uid });
             eventBus.emit("PROFILE_DATA_INVALIDATED", { userId: user.uid });
@@ -251,7 +279,12 @@ export const mediaService = {
             console.error("Error rating media:", error);
             try {
                 const batch = writeBatch(db);
-                batch.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
+                if (isRateAgain) {
+                    const newRatingRef = doc(collection(db, "user_ratings"));
+                    batch.set(newRatingRef, ratingDoc);
+                } else {
+                    batch.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
+                }
                 batch.set(doc(db, "user_watched", uniqueId), watchedDoc, { merge: true });
                 batch.delete(doc(db, "user_watchlist", uniqueId));
                 batch.delete(doc(db, "user_paused", uniqueId));
