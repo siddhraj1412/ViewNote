@@ -78,12 +78,12 @@ export default function SeasonPage() {
         <main className="min-h-screen bg-background">
             <div className="relative w-full pt-16">
                 <div className="relative w-full">
-                    <div className="relative aspect-[5/2] w-full">
+                    <div className="relative w-full min-h-[420px] md:min-h-[520px]">
                         <Image src={bannerUrl} alt={season.name || "Season"} fill className="object-contain" priority />
                         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/30 to-background" />
                     </div>
 
-                    <div className="container absolute inset-0 z-10 flex items-center">
+                    <div className="site-container absolute inset-0 z-10 flex items-center">
                         <div className="w-full pt-10">
                             <div className="flex items-start justify-between gap-6">
                                 <div>
@@ -102,7 +102,7 @@ export default function SeasonPage() {
                 </div>
             </div>
 
-            <div className="container py-12">
+            <div className="site-container py-12">
                 <SectionTabs
                     tabs={[
                         { id: "episodes", label: "Episodes" },

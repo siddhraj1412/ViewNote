@@ -70,12 +70,12 @@ const MediaCard = memo(function MediaCard({ item, type }) {
 
     return (
         <Link href={href} className="group">
-            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg">
+            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
                 <Image
                     src={tmdb.getImageUrl(item.poster_path)}
                     alt={title || "Poster"}
                     fill
-                    className="object-cover object-center"
+                    className="object-cover"
                     loading="lazy"
                     sizes="(max-width: 768px) 50vw, (max-width: 1024px) 25vw, 20vw"
                 />
@@ -248,31 +248,32 @@ export default function HomePage() {
 
             {/* Hero Section */}
             {featuredMovie && (
-                <section className="relative h-[80vh] w-full overflow-hidden">
-                    <div className="absolute inset-0">
-                        <Image
-                            src={tmdb.getBannerUrl(
-                                featuredMovie.backdrop_path,
-                                featuredMovie.poster_path
-                            )}
-                            alt={featuredMovie.title || featuredMovie.name || "Featured content"}
-                            fill
-                            className="object-cover"
-                            priority
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+                <div className="relative w-full pt-16 min-h-[calc(100vh-4rem)]">
+                    <div className="absolute inset-0 bg-black">
+                        <div className="relative site-container h-full">
+                            <Image
+                                src={tmdb.getBannerUrl(featuredMovie.backdrop_path, null)}
+                                alt={featuredMovie.title || featuredMovie.name || "Featured content"}
+                                fill
+                                className="object-contain object-right"
+                                priority
+                                quality={90}
+                            />
+                        </div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/40" />
+                        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/50 to-transparent" />
                     </div>
 
-                    <div className="container h-full flex flex-col justify-end pb-20 relative z-10">
+                    <div className="relative site-container min-h-[calc(100vh-4rem)] flex items-end pb-12">
                         <div className="max-w-2xl">
-                            <h1 className="text-4xl md:text-6xl font-bold mb-4">
+                            <h1 className="text-4xl md:text-6xl font-bold mb-4 drop-shadow-lg">
                                 {featuredMovie.title || featuredMovie.name}
                             </h1>
                             <p className="text-lg md:text-xl text-textSecondary mb-8 line-clamp-3">
                                 {featuredMovie.overview}
                             </p>
                             <div className="flex flex-wrap gap-4">
-                                <Link href={getMediaUrl(featuredMovie, featuredMovie.title ? 'movie' : 'tv')}>
+                                <Link href={getMediaUrl(featuredMovie, featuredMovie.title ? "movie" : "tv")}>
                                     <Button size="lg">
                                         <Play className="mr-2 fill-current" size={20} />
                                         View Details
@@ -281,12 +282,12 @@ export default function HomePage() {
                             </div>
                         </div>
                     </div>
-                </section>
+                </div>
             )}
 
             {/* Trending Movies */}
             {trendingMovies.length > 0 && (
-                <section className="container py-16">
+                <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <TrendingUp className="text-accent" size={32} />
                         <h2 className="text-3xl md:text-4xl font-bold">Trending Movies</h2>
@@ -301,7 +302,7 @@ export default function HomePage() {
 
             {/* Discover Movies */}
             {discoverMovies.length > 0 && (
-                <section className="container py-16">
+                <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <Sparkles className="text-accent" size={32} />
                         <h2 className="text-3xl md:text-4xl font-bold">Discover Movies</h2>
@@ -316,7 +317,7 @@ export default function HomePage() {
 
             {/* Trending TV */}
             {trendingTV.length > 0 && (
-                <section className="container py-16">
+                <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <TrendingUp className="text-accent" size={32} />
                         <h2 className="text-3xl md:text-4xl font-bold">Trending Shows</h2>
@@ -331,7 +332,7 @@ export default function HomePage() {
 
             {/* Discover TV Shows */}
             {discoverTV.length > 0 && (
-                <section className="container py-16">
+                <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <Tv className="text-accent" size={32} />
                         <h2 className="text-3xl md:text-4xl font-bold">Discover Shows</h2>
@@ -346,7 +347,7 @@ export default function HomePage() {
 
             {/* CTA Section - Only for non-logged-in users */}
             {!user && (
-                <section className="container py-16">
+                <section className="site-container py-16">
                     <div className="bg-secondary rounded-2xl p-8 md:p-12 text-center border border-white/5">
                         <h2 className="text-3xl md:text-4xl font-bold mb-4">
                             Watch blind. Rate honestly.

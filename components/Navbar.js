@@ -108,7 +108,7 @@ function NavbarContent() {
     return (
         <>
             <nav
-                className={`${isFixed ? 'fixed' : 'absolute'} top-0 left-0 right-0 z-[9999] transition-all duration-300 ${scrollDirection === "down" ? "-translate-y-full" : "translate-y-0"
+                className={`${isFixed ? 'fixed' : 'absolute'} top-0 left-0 right-0 z-[10000] transition-all duration-300 ${scrollDirection === "down" ? "-translate-y-full" : "translate-y-0"
                     }`}
                 style={{
                     backgroundColor: scrolled ? "rgba(0, 0, 0, 0.2)" : "transparent",
@@ -116,11 +116,11 @@ function NavbarContent() {
                     WebkitBackdropFilter: scrolled ? "blur(10px)" : "none",
                 }}
             >
-                <div className="container">
+                <div className="site-container">
                     <div className="flex items-center justify-between h-16">
                         <Link
                             href="/"
-                            className="flex items-center gap-2 text-2xl font-bold hover:text-accent transition-all group"
+                            className="flex items-center gap-2 text-3xl font-bold hover:text-accent transition-all group"
                         >
                             <Film className="text-accent transition-colors" size={28} />
                             <span className="drop-shadow-lg">ViewNote</span>

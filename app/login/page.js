@@ -49,73 +49,75 @@ export default function LoginPage() {
     };
 
     return (
-        <main className="min-h-screen flex items-center justify-center p-4 pt-24 bg-background">
-            <div className="w-full max-w-md">
-                <div className="bg-secondary p-6 md:p-8 rounded-3xl border border-white/5 shadow-2xl">
-                    <h1 className="text-3xl md:text-4xl font-black mb-2 text-center">
-                        WELCOME BACK
-                    </h1>
-                    <p className="text-textSecondary text-center mb-6 md:mb-8">
-                        Pick up right where you left off.
-                    </p>
+        <main className="min-h-screen flex items-center justify-center pt-24 bg-background">
+            <div className="site-container w-full">
+                <div className="w-full">
+                    <div className="bg-secondary p-6 md:p-8 rounded-3xl border border-white/5 shadow-2xl">
+                        <h1 className="text-3xl md:text-4xl font-black mb-2 text-center">
+                            WELCOME BACK
+                        </h1>
+                        <p className="text-textSecondary text-center mb-6 md:mb-8">
+                            Pick up right where you left off.
+                        </p>
 
-                    <form onSubmit={handleEmailLogin} className="space-y-4">
-                        <Input
-                            label="Email"
-                            type="email"
-                            placeholder="name@example.com"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                        />
-                        <Input
-                            label="Password"
-                            type="password"
-                            placeholder="••••••••"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                        />
+                        <form onSubmit={handleEmailLogin} className="space-y-4">
+                            <Input
+                                label="Email"
+                                type="email"
+                                placeholder="name@example.com"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                            />
+                            <Input
+                                label="Password"
+                                type="password"
+                                placeholder="••••••••"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                            />
 
-                        {error && (
-                            <p className="text-warning text-sm font-medium">{error}</p>
-                        )}
+                            {error && (
+                                <p className="text-warning text-sm font-medium">{error}</p>
+                            )}
 
-                        <Button type="submit" className="w-full" disabled={loading || googleLoading}>
-                            {loading ? "Signing in..." : "Sign In"}
-                        </Button>
-                    </form>
+                            <Button type="submit" className="w-full" disabled={loading || googleLoading}>
+                                {loading ? "Signing in..." : "Sign In"}
+                            </Button>
+                        </form>
 
-                    <div className="relative my-6 md:my-8">
-                        <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-white/10"></span>
+                        <div className="relative my-6 md:my-8">
+                            <div className="absolute inset-0 flex items-center">
+                                <span className="w-full border-t border-white/10"></span>
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                                <span className="bg-secondary px-2 text-textSecondary uppercase tracking-widest font-bold">
+                                    Or continue with
+                                </span>
+                            </div>
                         </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-secondary px-2 text-textSecondary uppercase tracking-widest font-bold">
-                                Or continue with
-                            </span>
-                        </div>
-                    </div>
 
-                    <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={handleGoogleLogin}
-                        disabled={loading || googleLoading}
-                    >
-                        <Chrome size={20} className="mr-2" />
-                        {googleLoading ? "Signing in..." : "Google"}
-                    </Button>
-
-                    <p className="mt-6 md:mt-8 text-center text-textSecondary text-sm md:text-base">
-                        Don't have an account?{" "}
-                        <Link
-                            href="/signup"
-                            className="text-accent font-bold hover:underline"
+                        <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={handleGoogleLogin}
+                            disabled={loading || googleLoading}
                         >
-                            Sign Up
-                        </Link>
-                    </p>
+                            <Chrome size={20} className="mr-2" />
+                            {googleLoading ? "Signing in..." : "Google"}
+                        </Button>
+
+                        <p className="mt-6 md:mt-8 text-center text-textSecondary text-sm md:text-base">
+                            Don&apos;t have an account?{" "}
+                            <Link
+                                href="/signup"
+                                className="text-accent font-bold hover:underline"
+                            >
+                                Sign Up
+                            </Link>
+                        </p>
+                    </div>
                 </div>
             </div>
         </main>

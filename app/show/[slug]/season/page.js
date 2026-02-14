@@ -66,7 +66,7 @@ export default function ShowSeasonsPage() {
 
     return (
         <main className="min-h-screen bg-background pt-16">
-            <div className="container py-10">
+            <div className="site-container py-10">
                 <div className="flex items-start justify-between gap-6 mb-8">
                     <div>
                         <h1 className="text-4xl font-bold">{tv.name}</h1>

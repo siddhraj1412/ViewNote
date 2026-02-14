@@ -59,7 +59,7 @@ export default function InAppBrowser({ url, isOpen, onClose, title = "External C
                     >
                         <ArrowLeft size={20} />
                     </button>
-                    <h2 className="font-semibold truncate max-w-md">{title}</h2>
+                    <h2 className="font-semibold truncate">{title}</h2>
                 </div>
 
                 <div className="flex items-center gap-2">

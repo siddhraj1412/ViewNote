@@ -60,7 +60,7 @@ export default function ProductionPage() {
 
     return (
         <main className="min-h-screen bg-background pt-16">
-            <div className="container py-12">
+            <div className="site-container py-12">
                 {/* Header */}
                 <div className="flex flex-col md:flex-row gap-8 mb-12">
                     {/* Logo */}

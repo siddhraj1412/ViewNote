@@ -33,7 +33,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
     return (
         <html lang="en">
-            <body className={inter.className}>
+            <body className={`${inter.className} overflow-x-hidden`}>
                 <ErrorBoundary>
                     <AuthProvider>
                         <Toaster
@@ -65,9 +65,9 @@ export default function RootLayout({ children }) {
                         />
                         <LoadingBar />
                         <ScrollToTop />
-                        <div className="min-h-screen flex flex-col">
+                        <div className="min-h-screen flex flex-col w-full overflow-x-hidden">
                             <Navbar />
-                            <div className="flex-1">{children}</div>
+                            <div className="flex-1 w-full min-w-0">{children}</div>
                             <Footer />
                         </div>
                     </AuthProvider>

@@ -201,7 +201,7 @@ export default function SettingsPage() {
 
     return (
         <main className="min-h-screen bg-background">
-            <div className="container py-12 max-w-4xl">
+            <div className="site-container py-12">
                 <h1 className="text-4xl font-bold mb-8">Settings</h1>
 
                 {/* Profile Picture */}
@@ -399,7 +399,7 @@ export default function SettingsPage() {
 function FavoritesPreview({ items, type }) {
 
     if (items.length === 0) {
-        return <p className="text-sm text-textSecondary">No favorites set. Click "Edit Favorites" to add up to 5.</p>;
+        return <p className="text-sm text-textSecondary">No favorites set. Click &quot;Edit Favorites&quot; to add up to 5.</p>;
     }
 
     return (

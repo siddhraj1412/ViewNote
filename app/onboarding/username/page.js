@@ -91,6 +91,7 @@ export default function UsernameOnboardingPage() {
         return () => {
             if (timerRef.current) clearTimeout(timerRef.current);
         };
+
     }, [username, user]);
 
     const handleSave = async () => {
@@ -129,114 +130,114 @@ export default function UsernameOnboardingPage() {
     if (!user) return null;
 
     return (
-        <main className="min-h-screen bg-background flex items-center justify-center p-4">
-            <div className="w-full max-w-md">
-                <div className="bg-secondary p-8 rounded-3xl border border-white/5 shadow-2xl">
-                    {/* Header */}
-                    <div className="text-center mb-8">
-                        <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <AtSign size={32} className="text-accent" />
-                        </div>
-                        <h1 className="text-3xl font-black text-accent mb-2">
-                            Choose Your Username
-                        </h1>
-                        <p className="text-textSecondary text-sm">
-                            This will be your unique profile URL.
-                            <br />
-                            <span className="text-accent font-medium">
-                                viewnote.app/{username || "your-username"}
-                            </span>
-                        </p>
-                    </div>
-
-                    {/* Username Input */}
-                    <div className="mb-6">
-                        <div className="relative">
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-textSecondary">
-                                @
+        <main className="min-h-screen bg-background flex items-center justify-center pt-24">
+            <div className="site-container w-full">
+                <div className="w-full">
+                    <div className="bg-secondary rounded-3xl border border-white/5 p-6 md:p-8 shadow-2xl">
+                        {/* Header */}
+                        <div className="text-center mb-8">
+                            <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <AtSign size={32} className="text-accent" />
                             </div>
-                            <input
-                                type="text"
-                                value={username}
-                                onChange={(e) =>
-                                    setUsername(e.target.value.replace(/\s/g, ""))
-                                }
-                                placeholder="username"
-                                className="w-full pl-8 pr-10 py-3.5 bg-background border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-all text-lg"
-                                maxLength={20}
-                                autoFocus
-                            />
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                {status === "checking" && (
-                                    <Loader2
-                                        size={18}
-                                        className="animate-spin text-textSecondary"
-                                    />
-                                )}
-                                {status === "available" && (
-                                    <Check size={18} className="text-green-400" />
-                                )}
-                                {(status === "taken" || status === "invalid") && (
-                                    <X size={18} className="text-red-400" />
-                                )}
-                            </div>
-                        </div>
-
-                        {errorMsg && (
-                            <p className="text-red-400 text-xs mt-2">{errorMsg}</p>
-                        )}
-                        {status === "available" && (
-                            <p className="text-green-400 text-xs mt-2">
-                                Username is available!
+                            <h1 className="text-2xl md:text-3xl font-black">Choose your username</h1>
+                            <p className="text-textSecondary mt-2">
+                                This will be your unique profile URL.
+                                <br />
+                                <span className="text-accent font-medium">
+                                    viewnote.app/{username || "your-username"}
+                                </span>
                             </p>
-                        )}
+                        </div>
 
-                        {/* Suggestions */}
-                        {suggestions.length > 0 && (
-                            <div className="mt-3">
-                                <p className="text-xs text-textSecondary mb-1.5">
-                                    Try instead:
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {suggestions.map((s) => (
-                                        <button
-                                            key={s}
-                                            type="button"
-                                            onClick={() => setUsername(s)}
-                                            className="px-2.5 py-1 bg-white/5 hover:bg-accent/20 rounded-lg text-xs text-white/70 hover:text-accent transition-colors border border-white/10"
-                                        >
-                                            {s}
-                                        </button>
-                                    ))}
+                        {/* Username Input */}
+                        <div className="mb-6">
+                            <div className="relative">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-textSecondary">
+                                    @
+                                </div>
+                                <input
+                                    type="text"
+                                    value={username}
+                                    onChange={(e) =>
+                                        setUsername(e.target.value.replace(/\s/g, ""))
+                                    }
+                                    placeholder="username"
+                                    className="w-full pl-8 pr-10 py-3.5 bg-background border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-all text-lg"
+                                    maxLength={20}
+                                    autoFocus
+                                />
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                    {status === "checking" && (
+                                        <Loader2
+                                            size={18}
+                                            className="animate-spin text-textSecondary"
+                                        />
+                                    )}
+                                    {status === "available" && (
+                                        <Check size={18} className="text-green-400" />
+                                    )}
+                                    {(status === "taken" || status === "invalid") && (
+                                        <X size={18} className="text-red-400" />
+                                    )}
                                 </div>
                             </div>
-                        )}
-                    </div>
 
-                    {/* Rules */}
-                    <div className="mb-6 p-3 bg-background/50 rounded-lg">
-                        <p className="text-xs text-textSecondary leading-relaxed">
-                            <span className="font-medium text-white/60">Rules:</span>{" "}
-                            3–20 characters. Letters, numbers, and underscores only.
-                            Cannot be all numbers.
-                        </p>
-                    </div>
+                            {errorMsg && (
+                                <p className="text-red-400 text-xs mt-2">{errorMsg}</p>
+                            )}
+                            {status === "available" && (
+                                <p className="text-green-400 text-xs mt-2">
+                                    Username is available!
+                                </p>
+                            )}
 
-                    {/* Save Button */}
-                    <button
-                        onClick={handleSave}
-                        disabled={status !== "available" || saving}
-                        className="w-full py-3.5 bg-accent text-background rounded-xl font-bold text-lg hover:bg-accent/90 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                        {saving ? (
-                            <span className="flex items-center justify-center gap-2">
-                                <Loader2 size={18} className="animate-spin" />
-                                Saving...
-                            </span>
-                        ) : (
-                            "Continue"
-                        )}
-                    </button>
+                            {/* Suggestions */}
+                            {suggestions.length > 0 && (
+                                <div className="mt-3">
+                                    <p className="text-xs text-textSecondary mb-1.5">
+                                        Try instead:
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {suggestions.map((s) => (
+                                            <button
+                                                key={s}
+                                                type="button"
+                                                onClick={() => setUsername(s)}
+                                                className="px-2.5 py-1 bg-white/5 hover:bg-accent/20 rounded-lg text-xs text-white/70 hover:text-accent transition-colors border border-white/10"
+                                            >
+                                                {s}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Rules */}
+                        <div className="mb-6 p-3 bg-background/50 rounded-lg">
+                            <p className="text-xs text-textSecondary leading-relaxed">
+                                <span className="font-medium text-white/60">Rules:</span>{" "}
+                                3–20 characters. Letters, numbers, and underscores only.
+                                Cannot be all numbers.
+                            </p>
+                        </div>
+
+                        {/* Save Button */}
+                        <button
+                            onClick={handleSave}
+                            disabled={status !== "available" || saving}
+                            className="w-full py-3.5 bg-accent text-background rounded-xl font-bold text-lg hover:bg-accent/90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            {saving ? (
+                                <span className="flex items-center justify-center gap-2">
+                                    <Loader2 size={18} className="animate-spin" />
+                                    Saving...
+                                </span>
+                            ) : (
+                                "Continue"
+                            )}
+                        </button>
+                    </div>
                 </div>
             </div>
         </main>

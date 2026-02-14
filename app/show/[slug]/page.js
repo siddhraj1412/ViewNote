@@ -111,13 +111,13 @@ export default function ShowSlugPage() {
 
     return (
         <main className="min-h-screen bg-background">
-            <div className="relative w-full min-h-screen md:min-h-[600px] pt-16">
-                <div className="absolute inset-0">
+            <div className="relative w-full pt-16 min-h-[calc(100vh-4rem)]">
+                <div className="absolute inset-0 bg-black">
                     <Image
                         src={bannerUrl}
                         alt={tv.name}
                         fill
-                        className="object-cover object-center"
+                        className="object-contain object-center"
                         priority
                         quality={90}
                     />
@@ -125,7 +125,7 @@ export default function ShowSlugPage() {
                     <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/50 to-transparent" />
                 </div>
 
-                <div className="relative container pt-24 md:pt-32 pb-12">
+                <div className="relative site-container pt-24 md:pt-32 pb-12">
                     <div className="flex flex-col md:flex-row gap-8 items-start">
                         <div className="w-full md:w-80 flex-shrink-0">
                             <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-2xl">
@@ -183,7 +183,7 @@ export default function ShowSlugPage() {
                             )}
 
                             {tv.overview && (
-                                <p className="text-base md:text-lg text-textSecondary leading-relaxed max-w-3xl">
+                                <p className="text-base md:text-lg text-textSecondary leading-relaxed">
                                     {tv.overview}
                                 </p>
                             )}
@@ -210,7 +210,7 @@ export default function ShowSlugPage() {
                 </div>
             </div>
 
-            <div className="container py-12">
+            <div className="site-container py-12">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                     <div className="lg:col-span-4 space-y-6">
                         <RatingDistribution mediaId={tvId} />

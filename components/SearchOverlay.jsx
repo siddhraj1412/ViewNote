@@ -133,31 +133,32 @@ export default function SearchOverlay({ isOpen, onClose }) {
         <>
             {/* Backdrop */}
             <div
-                className="fixed inset-0 bg-black/80 z-50 backdrop-blur-sm"
+                className="fixed inset-0 bg-black/80 z-[10050] backdrop-blur-sm"
                 onClick={onClose}
             />
 
             {/* Search Panel */}
-            <div className="fixed top-0 left-0 right-0 z-50 max-w-3xl mx-auto p-4">
-                <div className="bg-secondary border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
-                    {/* Search Input */}
-                    <div className="flex items-center gap-3 p-4 border-b border-white/10">
-                        <Search size={20} className="text-textSecondary" />
-                        <input
-                            ref={inputRef}
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search movies, TV shows, people, or users..."
-                            className="flex-1 bg-transparent outline-none text-lg"
-                        />
-                        <button
-                            onClick={onClose}
-                            className="p-2 hover:bg-white/5 rounded-lg transition"
-                        >
-                            <X size={20} />
-                        </button>
-                    </div>
+            <div className="fixed top-0 left-0 right-0 z-[10050]">
+                <div className="site-container py-4">
+                    <div className="bg-secondary border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+                        {/* Search Input */}
+                        <div className="flex items-center gap-3 p-4 border-b border-white/10">
+                            <Search size={20} className="text-textSecondary" />
+                            <input
+                                ref={inputRef}
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search movies, TV shows, people, or users..."
+                                className="flex-1 bg-transparent outline-none text-lg"
+                            />
+                            <button
+                                onClick={onClose}
+                                className="p-2 hover:bg-white/5 rounded-lg transition"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
 
                     {/* Results */}
                     <div className="max-h-[60vh] overflow-y-auto">
@@ -272,6 +273,7 @@ export default function SearchOverlay({ isOpen, onClose }) {
                                 ))}
                             </div>
                         )}
+                    </div>
                     </div>
                 </div>
             </div>

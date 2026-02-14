@@ -135,124 +135,126 @@ export default function SignupPage() {
     };
 
     return (
-        <main className="min-h-screen flex items-center justify-center p-4 pt-24 bg-background">
-            <div className="w-full max-w-md">
-                <div className="bg-secondary p-6 md:p-8 rounded-3xl border border-white/5 shadow-2xl">
-                    <h1 className="text-3xl md:text-4xl font-black mb-2 text-center text-accent">
-                        JOIN VIEWNOTE
-                    </h1>
-                    <p className="text-textSecondary text-center mb-6 md:mb-8">
-                        Start your cinematic journey today.
-                    </p>
+        <main className="min-h-screen flex items-center justify-center pt-24 bg-background">
+            <div className="site-container w-full">
+                <div className="w-full">
+                    <div className="bg-secondary p-6 md:p-8 rounded-3xl border border-white/5 shadow-2xl">
+                        <h1 className="text-3xl md:text-4xl font-black mb-2 text-center text-accent">
+                            JOIN VIEWNOTE
+                        </h1>
+                        <p className="text-textSecondary text-center mb-6 md:mb-8">
+                            Start your cinematic journey today.
+                        </p>
 
-                    <form onSubmit={handleSignup} className="space-y-4">
-                        {/* Username Field */}
-                        <div>
-                            <label className="block text-sm font-medium text-textSecondary mb-1.5">
-                                Username
-                            </label>
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    placeholder="Pick a unique username"
-                                    value={username}
-                                    onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))}
-                                    className="w-full px-4 py-3 bg-background border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-all pr-10"
-                                    maxLength={20}
-                                />
-                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                    {getUsernameStatusIcon()}
-                                </div>
-                            </div>
-                            {usernameError && (
-                                <p className="text-warning text-xs mt-1">{usernameError}</p>
-                            )}
-                            {usernameStatus === 'available' && (
-                                <p className="text-green-400 text-xs mt-1">Username is available!</p>
-                            )}
-                            {usernameSuggestions.length > 0 && (
-                                <div className="mt-2">
-                                    <p className="text-xs text-textSecondary mb-1">Try instead:</p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {usernameSuggestions.map((s) => (
-                                            <button
-                                                key={s}
-                                                type="button"
-                                                onClick={() => setUsername(s)}
-                                                className="px-2 py-1 bg-white/5 hover:bg-accent/20 rounded-md text-xs text-white/70 hover:text-accent transition-colors border border-white/10"
-                                            >
-                                                {s}
-                                            </button>
-                                        ))}
+                        <form onSubmit={handleSignup} className="space-y-4">
+                            {/* Username Field */}
+                            <div>
+                                <label className="block text-sm font-medium text-textSecondary mb-1.5">
+                                    Username
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        placeholder="Pick a unique username"
+                                        value={username}
+                                        onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))}
+                                        className="w-full px-4 py-3 bg-background border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/25 transition-all pr-10"
+                                        maxLength={20}
+                                    />
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                        {getUsernameStatusIcon()}
                                     </div>
                                 </div>
+                                {usernameError && (
+                                    <p className="text-warning text-xs mt-1">{usernameError}</p>
+                                )}
+                                {usernameStatus === 'available' && (
+                                    <p className="text-green-400 text-xs mt-1">Username is available!</p>
+                                )}
+                                {usernameSuggestions.length > 0 && (
+                                    <div className="mt-2">
+                                        <p className="text-xs text-textSecondary mb-1">Try instead:</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {usernameSuggestions.map((s) => (
+                                                <button
+                                                    key={s}
+                                                    type="button"
+                                                    onClick={() => setUsername(s)}
+                                                    className="px-2 py-1 bg-white/5 hover:bg-accent/20 rounded-md text-xs text-white/70 hover:text-accent transition-colors border border-white/10"
+                                                >
+                                                    {s}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <Input
+                                label="Email"
+                                type="email"
+                                placeholder="name@example.com"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                            />
+                            <Input
+                                label="Password"
+                                type="password"
+                                placeholder="••••••••"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                            />
+                            <Input
+                                label="Confirm Password"
+                                type="password"
+                                placeholder="••••••••"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                required
+                            />
+
+                            {error && (
+                                <p className="text-warning text-sm font-medium">{error}</p>
                             )}
+
+                            <Button type="submit" className="w-full" disabled={loading || googleLoading}>
+                                {loading ? "Creating Account..." : "Create Account"}
+                            </Button>
+                        </form>
+
+                        <div className="relative my-6 md:my-8">
+                            <div className="absolute inset-0 flex items-center">
+                                <span className="w-full border-t border-white/10"></span>
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                                <span className="bg-secondary px-2 text-textSecondary uppercase tracking-widest font-bold">
+                                    Or sign up with
+                                </span>
+                            </div>
                         </div>
 
-                        <Input
-                            label="Email"
-                            type="email"
-                            placeholder="name@example.com"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                        />
-                        <Input
-                            label="Password"
-                            type="password"
-                            placeholder="••••••••"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                        />
-                        <Input
-                            label="Confirm Password"
-                            type="password"
-                            placeholder="••••••••"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            required
-                        />
-
-                        {error && (
-                            <p className="text-warning text-sm font-medium">{error}</p>
-                        )}
-
-                        <Button type="submit" className="w-full" disabled={loading || googleLoading}>
-                            {loading ? "Creating Account..." : "Create Account"}
-                        </Button>
-                    </form>
-
-                    <div className="relative my-6 md:my-8">
-                        <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-white/10"></span>
-                        </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-secondary px-2 text-textSecondary uppercase tracking-widest font-bold">
-                                Or sign up with
-                            </span>
-                        </div>
-                    </div>
-
-                    <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={handleGoogleSignup}
-                        disabled={loading || googleLoading}
-                    >
-                        <Chrome size={20} className="mr-2" />
-                        {googleLoading ? "Signing up..." : "Google"}
-                    </Button>
-
-                    <p className="mt-6 md:mt-8 text-center text-textSecondary text-sm md:text-base">
-                        Already have an account?{" "}
-                        <Link
-                            href="/login"
-                            className="text-accent font-bold hover:underline"
+                        <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={handleGoogleSignup}
+                            disabled={loading || googleLoading}
                         >
-                            Sign In
-                        </Link>
-                    </p>
+                            <Chrome size={20} className="mr-2" />
+                            {googleLoading ? "Signing up..." : "Google"}
+                        </Button>
+
+                        <p className="mt-6 md:mt-8 text-center text-textSecondary text-sm md:text-base">
+                            Already have an account?{" "}
+                            <Link
+                                href="/login"
+                                className="text-accent font-bold hover:underline"
+                            >
+                                Sign In
+                            </Link>
+                        </p>
+                    </div>
                 </div>
             </div>
         </main>

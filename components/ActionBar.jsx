@@ -303,11 +303,13 @@ export default function ActionBar({
 
             {/* Mobile Fixed Bottom Bar */}
             <div className="md:hidden fixed bottom-0 left-0 right-0 bg-secondary border-t border-white/10 px-4 py-3 z-40">
-                <div className="flex items-center justify-around max-w-md mx-auto">
+                <div className="site-container flex items-center justify-around">
                     <button
                         onClick={handleWatchedToggle}
                         disabled={loading || status.isWatched}
-                        className={`flex flex-col items-center gap-1 ${status.isWatched ? "text-white" : "text-textSecondary"}`}
+                        className={`flex flex-col items-center gap-1 text-xs font-semibold transition-all ${
+                            status.isWatched ? "text-accent" : "text-textSecondary"
+                        }`}
                     >
                         <div className={`p-2 rounded-full transition-all ${status.isWatched ? "btn-primary-glass" : "bg-transparent"}`}>
                             {status.isWatched ? <Check size={20} /> : <Eye size={20} />}

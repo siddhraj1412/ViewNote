@@ -39,9 +39,9 @@ function ResultsContent() {
     if (!query) return <div className="text-center py-20">No search term provided.</div>;
 
     return (
-        <div className="container py-8">
+        <div className="site-container py-8">
             <h1 className="text-3xl font-bold mb-8">
-                Results for <span className="text-accent">"{query}"</span>
+                Results for <span className="text-accent">&quot;{query}&quot;</span>
             </h1>
 
             {/* Tabs */}

@@ -174,8 +174,8 @@ export default function ReviewDetailPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-accent" />
+            <div className="min-h-screen bg-background flex items-center justify-center pt-16">
+                <div className="text-2xl text-textSecondary">Loading...</div>
             </div>
         );
     }
@@ -205,14 +205,14 @@ export default function ReviewDetailPage() {
     );
 
     return (
-        <div className="min-h-screen">
-            <div className="container py-8 md:py-12 max-w-3xl mx-auto relative z-10 pt-24">
+        <main className="min-h-screen bg-background pt-16">
+            <div className="site-container py-10">
                 <button
                     onClick={() => router.back()}
-                    className="flex items-center gap-2 text-textSecondary hover:text-white transition mb-8"
+                    className="mb-6 text-sm text-textSecondary hover:text-white transition-colors flex items-center gap-2"
                 >
-                    <ArrowLeft size={18} />
-                    <span>Back</span>
+                    <ArrowLeft size={16} />
+                    Back
                 </button>
 
                 <div className="flex flex-col md:flex-row gap-8">
@@ -409,7 +409,7 @@ export default function ReviewDetailPage() {
                     mode="edit"
                 />
             )}
-        </div>
+        </main>
     );
 }
 

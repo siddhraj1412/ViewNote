@@ -43,7 +43,7 @@ export default function LikesSection({ userId }) {
 
     if (loading) {
         return (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6">
                 {Array.from({ length: 12 }).map((_, i) => (
                     <div key={i} className="aspect-[2/3] rounded-xl bg-white/5 animate-pulse" />
                 ))}
@@ -65,11 +65,13 @@ export default function LikesSection({ userId }) {
 
     return (
         <div>
-            <div className="flex items-center justify-between mb-6">
-                <h2 className="text-3xl font-bold">Likes</h2>
-                <span className="text-sm text-textSecondary">{likes.length} liked</span>
+            <div className="flex items-center justify-between gap-3 mb-6">
+                <div className="flex items-center justify-between w-full">
+                    <h2 className="text-3xl font-bold">Likes</h2>
+                    <span className="text-sm text-textSecondary">{likes.length} liked</span>
+                </div>
             </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6">
                 {likes.map((item) => {
                     const url = getMediaUrl(
                         { id: item.mediaId, title: item.title, name: item.title },
@@ -78,13 +80,15 @@ export default function LikesSection({ userId }) {
                     return (
                         <Link key={item.id} href={url} className="group relative">
                             {item.poster_path ? (
-                                <img
-                                    src={`${TMDB_IMG}${item.poster_path}`}
-                                    alt={item.title}
-                                    className="w-full aspect-[2/3] rounded-xl object-cover transition-transform"
-                                />
+                                <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden bg-zinc-900">
+                                    <img
+                                        src={`${TMDB_IMG}${item.poster_path}`}
+                                        alt={item.title}
+                                        className="w-full h-full object-contain object-center"
+                                    />
+                                </div>
                             ) : (
-                                <div className="w-full aspect-[2/3] rounded-xl bg-white/10 flex items-center justify-center">
+                                <div className="w-full aspect-[2/3] rounded-xl bg-zinc-900 flex items-center justify-center">
                                     <Heart size={24} className="text-white/20" />
                                 </div>
                             )}

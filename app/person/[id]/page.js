@@ -12,7 +12,6 @@ export default function PersonPage() {
     const params = useParams();
     const { id: parsedId } = parseSlugId(params.id);
     const personId = parsedId || params.id;
-    const [sortKey, setSortKey] = useState("release_desc");
     const [person, setPerson] = useState(null);
     const [credits, setCredits] = useState({
         moviesActing: [],
@@ -21,34 +20,6 @@ export default function PersonPage() {
         tvCrew: [],
     });
     const [loading, setLoading] = useState(true);
-
-    const sortCredits = (items, mediaType) => {
-        const arr = Array.isArray(items) ? [...items] : [];
-
-        const getTitle = (i) => (i?.title || i?.name || "").toLowerCase();
-        const getPopularity = (i) => (typeof i?.popularity === "number" ? i.popularity : 0);
-        const getRating = (i) => (typeof i?.vote_average === "number" ? i.vote_average : 0);
-        const getDate = (i) => {
-            const d = mediaType === "tv" ? i?.first_air_date : i?.release_date;
-            return typeof d === "string" && d.length >= 4 ? d : "0000-00-00";
-        };
-
-        switch (sortKey) {
-            case "popularity_desc":
-                return arr.sort((a, b) => getPopularity(b) - getPopularity(a));
-            case "date_desc":
-                return arr.sort((a, b) => getDate(b).localeCompare(getDate(a)));
-            case "rating_desc":
-                return arr.sort((a, b) => getRating(b) - getRating(a));
-            case "title_az":
-                return arr.sort((a, b) => getTitle(a).localeCompare(getTitle(b)));
-            case "title_za":
-                return arr.sort((a, b) => getTitle(b).localeCompare(getTitle(a)));
-            case "release_desc":
-            default:
-                return arr.sort((a, b) => getDate(b).localeCompare(getDate(a)));
-        }
-    };
 
     useEffect(() => {
         const fetchPersonData = async () => {
@@ -180,8 +151,8 @@ export default function PersonPage() {
     }
 
     const CreditGrid = ({ items, mediaType }) => (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {sortCredits(items, mediaType).map((item, index) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 overflow-x-hidden">
+            {(items || []).map((item, index) => (
                 <Link
                     key={`${item.id}-${index}`}
                     href={getMediaUrl(item, mediaType)}
@@ -228,7 +199,7 @@ export default function PersonPage() {
 
     return (
         <main className="min-h-screen bg-background">
-            <div className="container py-12">
+            <div className="site-container py-12">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Left Column - Person Info */}
                     <div className="lg:col-span-1">
@@ -306,26 +277,14 @@ export default function PersonPage() {
 
                     {/* Right Column - Credits */}
                     <div className="lg:col-span-2 space-y-12">
-                        <div className="flex items-center justify-end">
-                            <select
-                                value={sortKey}
-                                onChange={(e) => setSortKey(e.target.value)}
-                                className="bg-secondary border border-white/10 text-sm text-white rounded-xl px-3 py-2 focus:outline-none focus:border-accent"
-                            >
-                                <option value="release_desc">Release date</option>
-                                <option value="popularity_desc">Popularity</option>
-                                <option value="rating_desc">Rating</option>
-                                <option value="title_az">Title A–Z</option>
-                                <option value="title_za">Title Z–A</option>
-                            </select>
-                        </div>
-
                         {/* Movies - Acting */}
                         {credits.moviesActing.length > 0 && (
                             <section>
-                                <div className="flex items-center gap-2 mb-6">
-                                    <Film className="text-accent" size={28} />
-                                    <h2 className="text-3xl font-bold">Movies - Acting</h2>
+                                <div className="flex items-center justify-between gap-3 mb-6">
+                                    <div className="flex items-center gap-2">
+                                        <Film className="text-accent" size={28} />
+                                        <h2 className="text-3xl font-bold">Movies - Acting</h2>
+                                    </div>
                                 </div>
                                 <CreditGrid items={credits.moviesActing} mediaType="movie" />
                             </section>
@@ -338,11 +297,13 @@ export default function PersonPage() {
                                     (dept) =>
                                         credits.moviesCrew?.[dept] && (
                                             <div key={dept}>
-                                                <div className="flex items-center gap-2 mb-6">
-                                                    <Film className="text-accent" size={28} />
-                                                    <h2 className="text-3xl font-bold">
-                                                        Movies - As {dept === "Directing" ? "Director" : dept === "Writing" ? "Writer" : dept}
-                                                    </h2>
+                                                <div className="flex items-center justify-between gap-3 mb-6">
+                                                    <div className="flex items-center gap-2">
+                                                        <Film className="text-accent" size={28} />
+                                                        <h2 className="text-3xl font-bold">
+                                                            Movies - As {dept === "Directing" ? "Director" : dept === "Writing" ? "Writer" : dept}
+                                                        </h2>
+                                                    </div>
                                                 </div>
                                                 <CreditGrid
                                                     items={credits.moviesCrew[dept]}
@@ -360,11 +321,13 @@ export default function PersonPage() {
                                     .sort()
                                     .map((dept) => (
                                         <div key={dept}>
-                                            <div className="flex items-center gap-2 mb-6">
-                                                <Film className="text-accent" size={28} />
-                                                <h2 className="text-3xl font-bold">
-                                                    Movies - As {dept}
-                                                </h2>
+                                            <div className="flex items-center justify-between gap-3 mb-6">
+                                                <div className="flex items-center gap-2">
+                                                    <Film className="text-accent" size={28} />
+                                                    <h2 className="text-3xl font-bold">
+                                                        Movies - As {dept}
+                                                    </h2>
+                                                </div>
                                             </div>
                                             <CreditGrid
                                                 items={credits.moviesCrew[dept]}
@@ -378,9 +341,11 @@ export default function PersonPage() {
                         {/* TV - Acting */}
                         {credits.tvActing.length > 0 && (
                             <section>
-                                <div className="flex items-center gap-2 mb-6">
-                                    <Tv className="text-accent" size={28} />
-                                    <h2 className="text-3xl font-bold">TV Shows - Acting</h2>
+                                <div className="flex items-center justify-between gap-3 mb-6">
+                                    <div className="flex items-center gap-2">
+                                        <Tv className="text-accent" size={28} />
+                                        <h2 className="text-3xl font-bold">TV Shows - Acting</h2>
+                                    </div>
                                 </div>
                                 <CreditGrid items={credits.tvActing} mediaType="tv" />
                             </section>
@@ -393,11 +358,13 @@ export default function PersonPage() {
                                     (dept) =>
                                         credits.tvCrew[dept] && (
                                             <div key={dept}>
-                                                <div className="flex items-center gap-2 mb-6">
-                                                    <Tv className="text-accent" size={28} />
-                                                    <h2 className="text-3xl font-bold">
-                                                        TV Shows - As {dept === "Directing" ? "Director" : dept === "Writing" ? "Writer" : dept}
-                                                    </h2>
+                                                <div className="flex items-center justify-between gap-3 mb-6">
+                                                    <div className="flex items-center gap-2">
+                                                        <Tv className="text-accent" size={28} />
+                                                        <h2 className="text-3xl font-bold">
+                                                            TV Shows - As {dept === "Directing" ? "Director" : dept === "Writing" ? "Writer" : dept}
+                                                        </h2>
+                                                    </div>
                                                 </div>
                                                 <CreditGrid
                                                     items={credits.tvCrew[dept]}
@@ -415,11 +382,13 @@ export default function PersonPage() {
                                     .sort()
                                     .map((dept) => (
                                         <div key={dept}>
-                                            <div className="flex items-center gap-2 mb-6">
-                                                <Tv className="text-accent" size={28} />
-                                                <h2 className="text-3xl font-bold">
-                                                    TV Shows - As {dept}
-                                                </h2>
+                                            <div className="flex items-center justify-between gap-3 mb-6">
+                                                <div className="flex items-center gap-2">
+                                                    <Tv className="text-accent" size={28} />
+                                                    <h2 className="text-3xl font-bold">
+                                                        TV Shows - As {dept}
+                                                    </h2>
+                                                </div>
                                             </div>
                                             <CreditGrid
                                                 items={credits.tvCrew[dept]}

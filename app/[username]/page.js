@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, Suspense } from "react";
+import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { useWatchlist } from "@/hooks/useWatchlist";
@@ -204,75 +205,70 @@ function UsernameProfileContent() {
 
     return (
         <main className="min-h-screen bg-background">
-            {/* Adaptive Hero Banner */}
-            <div className="relative" style={{ minHeight: "70vh" }}>
-                <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                        minHeight: "70vh",
-                        maxHeight: "90vh",
-                        height: "auto",
-                        backgroundImage: bannerUrl
-                            ? `url(${bannerUrl})`
-                            : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                        backgroundSize: bannerAspectRatio > 2.1 ? "contain" : "cover",
-                        backgroundRepeat: "no-repeat",
-                        backgroundPosition: "center",
-                    }}
-                >
-                    <div className="absolute inset-0 pointer-events-none" style={{
-                        background: "radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.3) 100%)"
-                    }} />
-                    <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent via-black/40 to-background" />
-                    <div className="absolute inset-0 pointer-events-none bg-black/20" />
+            <section className="w-full relative overflow-hidden pt-16 min-h-[calc(100vh-4rem)]">
+                <div className="absolute inset-0 bg-black">
+                    {bannerUrl ? (
+                        <div className="relative site-container h-full">
+                            <Image
+                                src={bannerUrl}
+                                fill
+                                priority
+                                quality={90}
+                                alt={`${displayName} banner`}
+                                className="object-contain object-right"
+                            />
+                        </div>
+                    ) : (
+                        <div className="absolute inset-0 bg-gradient-to-br from-[#667eea] to-[#764ba2]" />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/40" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/50 to-transparent" />
                 </div>
 
-                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 z-10">
-                    <div className="container">
-                        <div className="w-full pt-24 md:pt-0">
-                            <div className="flex flex-col gap-6">
-                                <div className="flex items-center">
-                                    <div className="flex items-center gap-5">
-                                        <div
-                                            className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center text-4xl font-bold border-4 border-background shadow-xl overflow-hidden relative"
-                                        >
-                                            {profileData?.profile_picture_url ? (
-                                                <img src={profileData.profile_picture_url} alt="Profile" className="w-full h-full object-cover"
-                                                    onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; e.target.parentElement.textContent = (profileData?.username?.[0] || 'U').toUpperCase(); }} />
-                                            ) : (
-                                                (profileData?.username?.[0] || user.username?.[0] || user.email?.[0] || "U").toUpperCase()
-                                            )}
-                                        </div>
-                                        <div className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-3">
-                                                <h1 className="text-4xl font-bold text-white drop-shadow-lg leading-none">
-                                                    {displayName}
-                                                </h1>
-                                                {isOwnProfile && (
-                                                    <button
-                                                        onClick={() => router.push("/settings")}
-                                                        className="px-3 py-1.5 btn-edit-profile-glass text-xs font-medium flex items-center gap-1.5 h-fit"
-                                                    >
-                                                        <span>Edit Profile</span>
-                                                    </button>
-                                                )}
-                                            </div>
+                <div className="relative site-container min-h-[calc(100vh-4rem)] flex items-end pb-12">
+                    <div className="flex items-center gap-5">
+                        <div className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center text-4xl font-bold border-4 border-background shadow-xl overflow-hidden relative">
+                            {profileData?.profile_picture_url ? (
+                                <img
+                                    src={profileData.profile_picture_url}
+                                    alt="Profile"
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                        e.target.onerror = null;
+                                        e.target.style.display = "none";
+                                        e.target.parentElement.textContent = (profileData?.username?.[0] || "U").toUpperCase();
+                                    }}
+                                />
+                            ) : (
+                                (profileData?.username?.[0] || user.username?.[0] || user.email?.[0] || "U").toUpperCase()
+                            )}
+                        </div>
 
-                                            <div className="text-white/80 max-w-2xl mt-1">
-                                                <ProfileBio userId={profileUserId} />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                        <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-3">
+                                <h1 className="text-4xl font-bold text-white drop-shadow-lg leading-none">
+                                    {displayName}
+                                </h1>
+                                {isOwnProfile && (
+                                    <button
+                                        onClick={() => router.push("/settings")}
+                                        className="px-3 py-1.5 btn-edit-profile-glass text-xs font-medium flex items-center gap-1.5 h-fit"
+                                    >
+                                        <span>Edit Profile</span>
+                                    </button>
+                                )}
+                            </div>
 
-                                <ProfileTabs activeSection={activeSection} onSectionChange={handleSectionChange} />
+                            <div className="text-white/80 max-w-2xl mt-1">
+                                <ProfileBio userId={profileUserId} />
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div className="container pt-0 pb-8">
+            <div className="site-container pt-2 pb-8">
+                <ProfileTabs activeSection={activeSection} onSectionChange={handleSectionChange} />
                 <ErrorBoundary>
                     {renderSection()}
                 </ErrorBoundary>

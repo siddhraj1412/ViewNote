@@ -20,7 +20,6 @@ export default function WatchlistSection({ userId }) {
     const [watchlistItems, setWatchlistItems] = useState([]);
     const [ratingsByKey, setRatingsByKey] = useState({});
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState("all");
 
     const fetchWatchlist = useCallback(async () => {
         if (!ownerId) return;
@@ -117,42 +116,22 @@ export default function WatchlistSection({ userId }) {
         return <div className="text-center py-12 text-textSecondary">No items in watchlist</div>;
     }
 
-    const filtered = filter === "all" ? watchlistItems : watchlistItems.filter(i => filter === "movie" ? i.mediaType === "movie" : i.mediaType === "tv");
-
-    const movieCount = watchlistItems.filter(i => i.mediaType === "movie").length;
-    const tvCount = watchlistItems.filter(i => i.mediaType === "tv").length;
-
     return (
         <div>
-            <div className="flex flex-wrap gap-2 mb-5">
-                {["all", "movie", "tv"].map(f => {
-                    const count = f === "all" ? watchlistItems.length : f === "movie" ? movieCount : tvCount;
-                    const label = f === "all" ? "All" : f === "movie" ? "Movies" : "Series";
-                    return (
-                        <button key={f} onClick={() => setFilter(f)}
-                            className={`px-4 py-2 text-xs font-semibold rounded-full border transition-colors ${filter === f ? "bg-accent text-white border-accent" : "bg-white/5 text-textSecondary border-white/10 hover:text-white"}`}>
-                            {label} ({count})
-                        </button>
-                    );
-                })}
-            </div>
-            {filtered.length === 0 ? (
-                <div className="text-center py-12 text-textSecondary">No {filter === "movie" ? "movies" : "series"} in watchlist</div>
-            ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-                {filtered.map((item) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {watchlistItems.map((item) => (
                 <Link
                     key={item.id}
                     href={getMediaUrl(item, item.mediaType)}
                     className="group"
                 >
-                    <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-all bg-secondary">
+                    <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-all bg-zinc-900">
                         <Image
                             src={tmdb.getImageUrl(item.poster_path)}
                             alt={item.title || item.name || "Media"}
                             fill
-                            className="object-cover"
-                            sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
+                            className="object-contain object-center"
+                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
                             loading="lazy"
                         />
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
@@ -174,7 +153,6 @@ export default function WatchlistSection({ userId }) {
                 </Link>
             ))}
             </div>
-            )}
         </div>
     );
 }

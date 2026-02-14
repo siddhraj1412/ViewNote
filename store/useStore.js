@@ -197,9 +197,12 @@ export const useStore = create(
 // Cross-tab synchronization
 if (typeof window !== "undefined") {
     window.addEventListener("storage", (e) => {
-        if (e.key === "viewnote-storage" && e.newValue) {
+        if (e.key === "viewnote-storage" && typeof e.newValue === "string" && e.newValue.trim().length > 0) {
             try {
                 const newState = JSON.parse(e.newValue);
+                if (!newState || typeof newState !== "object" || !newState.state || typeof newState.state !== "object") {
+                    return;
+                }
                 const currentState = useStore.getState();
 
                 // Only update if state actually changed
