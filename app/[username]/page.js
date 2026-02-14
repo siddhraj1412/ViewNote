@@ -215,14 +215,13 @@ function UsernameProfileContent() {
                                 priority
                                 quality={90}
                                 alt={`${displayName} banner`}
-                                className="object-contain object-right"
+                                className="object-contain object-right object-top"
                             />
                         </div>
                     ) : (
                         <div className="absolute inset-0 bg-gradient-to-br from-[#667eea] to-[#764ba2]" />
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/40" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/50 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
                 </div>
 
                 <div className="relative site-container min-h-[calc(100vh-4rem)] flex items-end pb-12">
