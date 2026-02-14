@@ -34,6 +34,8 @@ export default function RatingModal({
     onClose,
     mediaId,
     mediaType,
+    seriesId = null,
+    seasons = [],
     title,
     poster_path,
     currentRating = 0,
@@ -50,7 +52,11 @@ export default function RatingModal({
     const [loading, setLoading] = useState(false);
     const [loadingExisting, setLoadingExisting] = useState(false);
     const [hasExisting, setHasExisting] = useState(false);
+    const [selectedSeason, setSelectedSeason] = useState("all");
+    const [selectedEpisode, setSelectedEpisode] = useState("all");
     const { user } = useAuth();
+
+    const isTV = mediaType === "tv";
 
     // Load existing review data when modal opens
     useEffect(() => {
@@ -60,7 +66,12 @@ export default function RatingModal({
         const loadExisting = async () => {
             setLoadingExisting(true);
             try {
-                const existing = await mediaService.getReview(user, mediaId, mediaType);
+                const existing = await mediaService.getReview(user, mediaId, mediaType, {
+                    targetType: isTV ? (selectedSeason === "all" ? "series" : selectedEpisode === "all" ? "season" : "episode") : null,
+                    seriesId: isTV ? Number(seriesId ?? mediaId) : null,
+                    seasonNumber: isTV && selectedSeason !== "all" ? Number(selectedSeason) : null,
+                    episodeNumber: isTV && selectedSeason !== "all" && selectedEpisode !== "all" ? Number(selectedEpisode) : null,
+                });
                 if (!cancelled && existing) {
                     setHasExisting(true);
                     if (mode === "rateAgain") {
@@ -92,7 +103,7 @@ export default function RatingModal({
 
         loadExisting();
         return () => { cancelled = true; };
-    }, [isOpen, user, mediaId, mediaType]);
+    }, [isOpen, user, mediaId, mediaType, mode, selectedSeason, selectedEpisode, seriesId]);
 
     // Sync currentRating prop
     useEffect(() => {
@@ -134,13 +145,56 @@ export default function RatingModal({
 
         setLoading(true);
         try {
+            const tvSeriesId = isTV ? Number(seriesId ?? mediaId) : null;
+            const seasonNumber = isTV && selectedSeason !== "all" ? Number(selectedSeason) : null;
+            const episodeNumber = isTV && seasonNumber != null && selectedEpisode !== "all" ? Number(selectedEpisode) : null;
+            const targetType = !isTV
+                ? null
+                : seasonNumber == null
+                    ? "series"
+                    : episodeNumber == null
+                        ? "season"
+                        : "episode";
+
+            const seasonEpisodeCounts = isTV
+                ? Object.fromEntries((seasons || [])
+                    .filter((s) => s && typeof s.season_number === "number" && s.season_number > 0)
+                    .map((s) => [String(s.season_number), Number(s.episode_count || 0)]))
+                : null;
+            const totalSeasons = isTV
+                ? (seasons || []).filter((s) => s && typeof s.season_number === "number" && s.season_number > 0).length
+                : null;
+
             await mediaService.rateMedia(user, mediaId, mediaType, rating, { title, poster_path }, review.trim(), {
                 watchedDate,
                 liked,
                 viewCount,
                 tags,
                 rateAgain: mode === "rateAgain",
+                targetType,
+                seriesId: tvSeriesId,
+                seasonNumber,
+                episodeNumber,
+                totalSeasons,
+                seasonEpisodeCounts,
             });
+
+            if (isTV && (targetType === "season" || targetType === "episode")) {
+                try {
+                    const watching = await mediaService.isWatching(user, tvSeriesId);
+                    if (!watching) {
+                        const ok = window.confirm("Add this series to Currently Watching?");
+                        if (ok) {
+                            await mediaService.addToWatching(user, tvSeriesId, {
+                                title,
+                                poster_path,
+                                currentSeason: seasonNumber,
+                                currentEpisode: targetType === "episode" ? episodeNumber : null,
+                            });
+                        }
+                    }
+                } catch (_) {}
+            }
             onClose();
         } catch (err) {
             // Error handling in service
@@ -153,7 +207,35 @@ export default function RatingModal({
         if (!user) return;
         setLoading(true);
         try {
-            await mediaService.removeRating(user, mediaId, mediaType);
+            const tvSeriesId = isTV ? Number(seriesId ?? mediaId) : null;
+            const seasonNumber = isTV && selectedSeason !== "all" ? Number(selectedSeason) : null;
+            const episodeNumber = isTV && seasonNumber != null && selectedEpisode !== "all" ? Number(selectedEpisode) : null;
+            const targetType = !isTV
+                ? null
+                : seasonNumber == null
+                    ? "series"
+                    : episodeNumber == null
+                        ? "season"
+                        : "episode";
+
+            let keepWatchedIfNotCompleted = null;
+            if (isTV && (targetType === "series" || targetType === "season" || targetType === "episode")) {
+                const label = targetType === "series"
+                    ? title
+                    : targetType === "season"
+                        ? `Season ${seasonNumber}`
+                        : `Season ${seasonNumber} Episode ${episodeNumber}`;
+                const watched = window.confirm(`Did you watch ${label}?\n\nOK = Yes (keep in Watched)\nCancel = No (remove from Watched)`);
+                keepWatchedIfNotCompleted = watched;
+            }
+
+            await mediaService.removeRating(user, mediaId, mediaType, {
+                targetType,
+                seriesId: tvSeriesId,
+                seasonNumber,
+                episodeNumber,
+                keepWatchedIfNotCompleted,
+            });
             onClose();
         } catch (err) {
             // Error handled in service
@@ -227,6 +309,51 @@ export default function RatingModal({
                                 {review.length}/2000
                             </p>
                         </div>
+
+                        {isTV && (seasons || []).length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-sm text-textSecondary mb-1.5">Season</label>
+                                    <select
+                                        value={selectedSeason}
+                                        onChange={(e) => { setSelectedSeason(e.target.value); setSelectedEpisode("all"); }}
+                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
+                                    >
+                                        <option value="all">All Seasons</option>
+                                        {(seasons || [])
+                                            .filter((s) => s && typeof s.season_number === "number" && s.season_number > 0)
+                                            .sort((a, b) => a.season_number - b.season_number)
+                                            .map((s) => (
+                                                <option key={s.season_number} value={String(s.season_number)}>
+                                                    Season {s.season_number}
+                                                </option>
+                                            ))}
+                                    </select>
+                                </div>
+
+                                {selectedSeason !== "all" && (
+                                    <div>
+                                        <label className="block text-sm text-textSecondary mb-1.5">Episode</label>
+                                        <select
+                                            value={selectedEpisode}
+                                            onChange={(e) => setSelectedEpisode(e.target.value)}
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
+                                        >
+                                            <option value="all">All Episodes</option>
+                                            {(() => {
+                                                const seasonObj = (seasons || []).find((s) => String(s.season_number) === String(selectedSeason));
+                                                const epCount = Number(seasonObj?.episode_count || 0);
+                                                return Array.from({ length: epCount }, (_, i) => i + 1).map((n) => (
+                                                    <option key={n} value={String(n)}>
+                                                        Episode {n}
+                                                    </option>
+                                                ));
+                                            })()}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Tags */}
                         <div>

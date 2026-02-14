@@ -371,9 +371,10 @@ export default function HomePage() {
 async function fetchTMDBPage(endpoint) {
     const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
     try {
-        const url = `https://api.themoviedb.org/3/${endpoint}${
-            endpoint.includes("?") ? "&" : "?"
-        }api_key=${TMDB_API_KEY}`;
+        const isBrowser = typeof window !== "undefined";
+        const url = isBrowser
+            ? `/api/tmdb?endpoint=${encodeURIComponent(endpoint)}`
+            : `https://api.themoviedb.org/3/${endpoint}${endpoint.includes("?") ? "&" : "?"}api_key=${TMDB_API_KEY}`;
         const res = await fetch(url);
         if (!res.ok) return [];
         const data = await res.json();

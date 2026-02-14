@@ -204,6 +204,7 @@ export default function ShowSlugPage() {
                                 posterPath={tv.poster_path}
                                 currentRating={userRating}
                                 releaseYear={tv.first_air_date ? tv.first_air_date.slice(0, 4) : ""}
+                                seasons={tv.seasons || []}
                             />
                         </div>
                     </div>
@@ -213,7 +214,51 @@ export default function ShowSlugPage() {
             <div className="site-container py-12">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                     <div className="lg:col-span-4 space-y-6">
-                        <RatingDistribution mediaId={tvId} />
+                        {Array.isArray(tv.seasons) && tv.seasons.filter((s) => (s?.season_number ?? 0) > 0).length > 0 && (
+                            <section className="bg-secondary/40 border border-white/5 rounded-2xl p-5">
+                                <div className="flex items-center justify-between gap-4 mb-4">
+                                    <h2 className="text-lg font-bold">Seasons</h2>
+                                    <Link
+                                        href={`/show/${encodeURIComponent(rawSlug)}/season`}
+                                        className="text-xs font-semibold text-accent hover:text-white transition-colors"
+                                    >
+                                        View all
+                                    </Link>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-3">
+                                    {tv.seasons
+                                        .filter((s) => (s?.season_number ?? 0) > 0)
+                                        .sort((a, b) => (a.season_number || 0) - (b.season_number || 0))
+                                        .slice(0, 6)
+                                        .map((s) => {
+                                            const href = `/show/${encodeURIComponent(rawSlug)}/season/${s.id}/${s.season_number}`;
+                                            const img = tmdb.getImageUrl(s.poster_path, "w342", "poster");
+                                            return (
+                                                <Link key={s.id} href={href} className="group">
+                                                    <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/5 group-hover:border-white/10 transition-all">
+                                                        <Image
+                                                            src={img}
+                                                            alt={s.name || `Season ${s.season_number}`}
+                                                            fill
+                                                            className="object-cover"
+                                                            sizes="(max-width: 1024px) 33vw, 20vw"
+                                                            loading="lazy"
+                                                        />
+                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                                                    </div>
+                                                    <div className="mt-1">
+                                                        <div className="text-xs font-semibold line-clamp-1 group-hover:text-accent transition-colors">
+                                                            {s.name || `Season ${s.season_number}`}
+                                                        </div>
+                                                    </div>
+                                                </Link>
+                                            );
+                                        })}
+                                </div>
+                            </section>
+                        )}
+                        <RatingDistribution mediaId={tvId} mediaType="tv" />
                     </div>
 
                     <div className="lg:col-span-8">

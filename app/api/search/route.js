@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import { searchRateLimiter } from '@/lib/rateLimiter';
 
-const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-
 /**
  * Search API route with rate limiting and caching
  * GET /api/search?query=...&type=multi
@@ -11,6 +8,7 @@ const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
+        const origin = new URL(request.url).origin;
         const query = searchParams.get('query');
         const type = searchParams.get('type') || 'multi';
         const tvId = searchParams.get('tvId');
@@ -19,8 +17,8 @@ export async function GET(request) {
 
         // ── TV detail endpoints (seasons / episodes) ──
         if (tvId && detail === 'seasons') {
-            const url = `${TMDB_BASE_URL}/tv/${tvId}?api_key=${TMDB_API_KEY}`;
-            const res = await fetch(url);
+            const endpoint = `tv/${tvId}`;
+            const res = await fetch(`${origin}/api/tmdb?endpoint=${encodeURIComponent(endpoint)}`);
             if (!res.ok) throw new Error('TMDB API error');
             const data = await res.json();
             return NextResponse.json({ seasons: data.seasons || [] }, {
@@ -29,8 +27,8 @@ export async function GET(request) {
         }
 
         if (tvId && detail === 'episodes' && season) {
-            const url = `${TMDB_BASE_URL}/tv/${tvId}/season/${season}?api_key=${TMDB_API_KEY}`;
-            const res = await fetch(url);
+            const endpoint = `tv/${tvId}/season/${season}`;
+            const res = await fetch(`${origin}/api/tmdb?endpoint=${encodeURIComponent(endpoint)}`);
             if (!res.ok) throw new Error('TMDB API error');
             const data = await res.json();
             return NextResponse.json({ episodes: data.episodes || [] }, {
@@ -43,8 +41,8 @@ export async function GET(request) {
         if ((tvId || movieId) && detail === 'images') {
             const mediaType = tvId ? 'tv' : 'movie';
             const mediaId = tvId || movieId;
-            const url = `${TMDB_BASE_URL}/${mediaType}/${mediaId}/images?api_key=${TMDB_API_KEY}`;
-            const res = await fetch(url);
+            const endpoint = `${mediaType}/${mediaId}/images`;
+            const res = await fetch(`${origin}/api/tmdb?endpoint=${encodeURIComponent(endpoint)}`);
             if (!res.ok) throw new Error('TMDB API error');
             const data = await res.json();
             return NextResponse.json({ backdrops: data.backdrops || [], posters: data.posters || [] }, {
@@ -80,11 +78,8 @@ export async function GET(request) {
         }
 
         // Fetch from TMDB
-        const url = `${TMDB_BASE_URL}/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(
-            query
-        )}`;
-
-        const response = await fetch(url);
+        const endpoint = `search/${type}?query=${encodeURIComponent(query)}`;
+        const response = await fetch(`${origin}/api/tmdb?endpoint=${encodeURIComponent(endpoint)}`);
 
         if (!response.ok) {
             throw new Error('TMDB API error');

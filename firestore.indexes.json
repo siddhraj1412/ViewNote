@@ -75,6 +75,20 @@
             ]
         },
         {
+            "collectionGroup": "user_watching",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "userId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "startedAt",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
             "collectionGroup": "user_ratings",
             "queryScope": "COLLECTION",
             "fields": [
@@ -247,38 +261,6 @@
                 {
                     "fieldPath": "createdAt",
                     "order": "DESCENDING"
-                }
-            ]
-        },
-        {
-            "collectionGroup": "user_ratings",
-            "queryScope": "COLLECTION",
-            "fields": [
-                {
-                    "fieldPath": "userId",
-                    "order": "ASCENDING"
-                },
-                {
-                    "fieldPath": "review",
-                    "order": "ASCENDING"
-                },
-                {
-                    "fieldPath": "ratedAt",
-                    "order": "DESCENDING"
-                }
-            ]
-        },
-        {
-            "collectionGroup": "user_ratings",
-            "queryScope": "COLLECTION",
-            "fields": [
-                {
-                    "fieldPath": "userId",
-                    "order": "ASCENDING"
-                },
-                {
-                    "fieldPath": "liked",
-                    "order": "ASCENDING"
                 }
             ]
         },

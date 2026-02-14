@@ -37,12 +37,12 @@ export default function BannerSelector({ isOpen, onClose, mediaId, mediaType, de
     const fetchBanners = async () => {
         try {
             setLoading(true);
-            const endpoint = mediaType === "movie"
-                ? `https://api.themoviedb.org/3/movie/${mediaId}/images`
-                : `https://api.themoviedb.org/3/tv/${mediaId}/images`;
+            const tmdbEndpoint = mediaType === "movie"
+                ? `movie/${mediaId}/images`
+                : `tv/${mediaId}/images`;
 
             const response = await fetch(
-                `${endpoint}?api_key=${process.env.NEXT_PUBLIC_TMDB_API_KEY}`
+                `/api/tmdb?endpoint=${encodeURIComponent(tmdbEndpoint)}`
             );
             const data = await response.json();
             setBanners(data.backdrops || []);

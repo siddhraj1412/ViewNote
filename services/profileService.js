@@ -122,6 +122,41 @@ export const profileService = {
         return this.applyCustomizations(items, customizationsMap);
     },
 
+    async getWatching(userId) {
+        if (!userId) return [];
+        const customizationsMap = await this.getCustomizationsMap(userId);
+
+        const items = await retryQuery(
+            async () => {
+                const q = query(
+                    collection(db, "user_watching"),
+                    where("userId", "==", userId),
+                    orderBy("startedAt", "desc")
+                );
+                const snap = await getDocs(q);
+                return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            },
+            async () => {
+                const q = query(
+                    collection(db, "user_watching"),
+                    where("userId", "==", userId)
+                );
+                const snap = await getDocs(q);
+                const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                return docs.sort((a, b) => {
+                    const aTime = a.startedAt?.seconds || 0;
+                    const bTime = b.startedAt?.seconds || 0;
+                    return bTime - aTime;
+                });
+            },
+            "user_watching"
+        );
+
+        // Stored as tv only, but keep mediaType consistent for rendering.
+        const normalized = items.map((i) => ({ ...i, mediaType: i.mediaType || "tv", mediaId: i.seriesId ?? i.mediaId }));
+        return this.applyCustomizations(normalized, customizationsMap);
+    },
+
     async getWatchlist(userId) {
         if (!userId) return [];
         const customizationsMap = await this.getCustomizationsMap(userId);

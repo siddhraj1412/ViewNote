@@ -67,9 +67,18 @@ export default function WatchedSection({ userId }) {
         return <div className="text-center py-12 text-textSecondary">No items watched yet</div>;
     }
 
+    const visibleItems = watchedItems.filter((item) => {
+        if (item?.mediaType === "tv") {
+            const t = item?.targetType || "series";
+            if (t !== "series") return false;
+            if (item?.seasonNumber != null || item?.episodeNumber != null) return false;
+        }
+        return true;
+    });
+
     return (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-            {watchedItems.map((item) => (
+            {visibleItems.map((item) => (
                 <Link
                     key={item.id}
                     href={getMediaUrl(item, item.mediaType)}

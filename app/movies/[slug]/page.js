@@ -233,7 +233,7 @@ export default function MovieSlugPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                     {/* Left column (below poster area) */}
                     <div className="lg:col-span-4 space-y-6">
-                        <RatingDistribution mediaId={movieId} />
+                        <RatingDistribution mediaId={movieId} mediaType="movie" />
                     </div>
 
                     {/* Right column */}

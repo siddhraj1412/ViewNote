@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import { apiRateLimiter } from '@/lib/rateLimiter';
 
-const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-
 /**
  * Trending content API route
  * GET /api/trending?type=movie&timeWindow=week
@@ -11,6 +8,7 @@ const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
+        const origin = new URL(request.url).origin;
         const type = searchParams.get('type') || 'movie';
         const timeWindow = searchParams.get('timeWindow') || 'week';
 
@@ -34,10 +32,11 @@ export async function GET(request) {
         }
 
         // Fetch from TMDB
-        const url = `${TMDB_BASE_URL}/trending/${type}/${timeWindow}?api_key=${TMDB_API_KEY}`;
-        const response = await fetch(url, {
-            next: { revalidate: 3600 }, // Revalidate every hour
-        });
+        const endpoint = `trending/${type}/${timeWindow}`;
+        const response = await fetch(
+            `${origin}/api/tmdb?endpoint=${encodeURIComponent(endpoint)}`,
+            { next: { revalidate: 3600 } }
+        );
 
         if (!response.ok) {
             throw new Error('TMDB API error');

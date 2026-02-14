@@ -19,7 +19,8 @@ import {
     Check,
     ListPlus,
     Edit3,
-    RefreshCw
+    RefreshCw,
+    Tv
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 
@@ -48,6 +49,7 @@ export default function ActionBar({
     posterPath,
     currentRating = 0,
     releaseYear = "",
+    seasons = [],
 }) {
     const { user } = useAuth();
 
@@ -57,6 +59,7 @@ export default function ActionBar({
         isWatchlist: false,
         isPaused: false,
         isDropped: false,
+        isWatching: false,
         rating: currentRating,
         hasEntry: currentRating > 0,
     });
@@ -108,6 +111,13 @@ export default function ActionBar({
         if (!user) { showToast.info("Please sign in"); return; }
         setLoading(true);
 
+        if (mediaType === "tv") {
+            setRatingMode(status.hasEntry ? "edit" : "normal");
+            setShowRatingModal(true);
+            setLoading(false);
+            return;
+        }
+
         if (status.isWatched) {
             showToast.info("Already watched");
             setLoading(false);
@@ -119,6 +129,24 @@ export default function ActionBar({
             setStatus(prev => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
         }
         setLoading(false);
+    };
+
+    const handleWatchingToggle = async () => {
+        if (!user) { showToast.info("Please sign in"); return; }
+        if (mediaType !== "tv") return;
+
+        setLoading(true);
+        try {
+            if (status.isWatching) {
+                const ok = await mediaService.removeFromWatching(user, mediaId);
+                if (ok) setStatus(prev => ({ ...prev, isWatching: false }));
+            } else {
+                const ok = await mediaService.addToWatching(user, mediaId, { title, poster_path: posterPath });
+                if (ok) setStatus(prev => ({ ...prev, isWatching: true }));
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleWatchlistToggle = async () => {
@@ -179,6 +207,18 @@ export default function ActionBar({
                     {status.isWatched ? <Check size={18} /> : <Eye size={18} />}
                     {status.isWatched ? "Watched" : "Mark Watched"}
                 </Button>
+
+                {mediaType === "tv" && (
+                    <Button
+                        variant={status.isWatching ? "glass" : "secondary"}
+                        onClick={handleWatchingToggle}
+                        disabled={loading}
+                        className={`flex items-center gap-2 ${status.isWatching ? "btn-primary-glass" : ""}`}
+                    >
+                        <Tv size={18} />
+                        {status.isWatching ? "Watching" : "Currently Watching"}
+                    </Button>
+                )}
 
                 {status.hasEntry ? (
                     <div className="relative">
@@ -247,9 +287,18 @@ export default function ActionBar({
                         <>
                             <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
                             <div className="absolute top-full mt-2 right-0 bg-secondary border border-white/10 rounded-lg shadow-xl z-50 min-w-[200px]">
+                                {mediaType === "tv" && (
+                                    <button
+                                        onClick={() => { handleWatchingToggle(); setShowMoreMenu(false); }}
+                                        className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
+                                    >
+                                        <Tv size={16} />
+                                        {status.isWatching ? "Remove from Watching" : "Add to Watching"}
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => { if (!user) { showToast.info("Please sign in"); return; } setShowAddToList(true); setShowMoreMenu(false); }}
-                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
+                                    className={`w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm ${mediaType === "tv" ? "border-t border-white/5" : ""}`}
                                 >
                                     <ListPlus size={16} />
                                     Add to List
@@ -424,6 +473,8 @@ export default function ActionBar({
                     currentRating={status.rating}
                     releaseYear={releaseYear}
                     mode={ratingMode}
+                    seasons={seasons}
+                    seriesId={mediaType === "tv" ? mediaId : null}
                 />
             )}
 
