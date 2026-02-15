@@ -187,40 +187,40 @@ export default function WatchedSectionTab() {
                                         sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
                                         loading="lazy"
                                     />
-                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                                    {/* Metadata indicators */}
-                                    {meta && (
-                                        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 flex items-center gap-1.5">
-                                            {meta.rating > 0 && (
-                                                <span className="flex items-center gap-0.5 text-accent text-[10px] font-bold">
-                                                    <Star size={10} className="fill-accent" />
-                                                    {meta.rating % 1 === 0 ? meta.rating : meta.rating.toFixed(1)}
-                                                </span>
-                                            )}
-                                            {meta.liked && (
-                                                <Heart size={10} className="text-red-400 fill-red-400" />
-                                            )}
-                                            {meta.review && (
-                                                <MessageSquare size={10} className="text-blue-400" />
-                                            )}
-                                            {meta.viewCount > 1 && (
-                                                <span className="flex items-center gap-0.5 text-[10px] text-white/70">
-                                                    <RotateCcw size={9} />
-                                                    {meta.viewCount}
-                                                </span>
-                                            )}
-                                        </div>
-                                    )}
+                                    {/* Hover overlay with title + year */}
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex flex-col justify-end p-2.5 opacity-0 group-hover:opacity-100">
+                                        <h4 className="text-xs font-semibold text-white line-clamp-2 leading-tight">{item.title || item.name}</h4>
+                                        <p className="text-[10px] text-white/70 mt-0.5">
+                                            {item.release_date?.split?.("-")?.[0] || item.first_air_date?.split?.("-")?.[0] || ""}
+                                        </p>
+                                        {meta?.rating > 0 && (
+                                            <div className="flex items-center gap-0.5 mt-1">
+                                                <Star size={10} className="text-accent fill-accent" />
+                                                <span className="text-[10px] text-accent font-bold">{meta.rating}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="mt-2">
-                                    <h3 className="text-sm font-semibold line-clamp-1 group-hover:text-accent transition-colors">
-                                        {item.title || item.name}
-                                    </h3>
-                                    <p className="text-xs text-textSecondary">
-                                        {item.addedAt?.seconds
-                                            ? new Date(item.addedAt.seconds * 1000).toLocaleDateString()
-                                            : "Watched"}
-                                    </p>
+                                {/* Metadata indicators under poster */}
+                                <div className="mt-1.5 flex items-center gap-1.5 min-h-[18px]">
+                                    {meta?.rating > 0 && (
+                                        <span className="flex items-center gap-0.5 text-accent text-[10px] font-bold">
+                                            <Star size={10} className="fill-accent" />
+                                            {meta.rating % 1 === 0 ? meta.rating : meta.rating.toFixed(1)}
+                                        </span>
+                                    )}
+                                    {meta?.liked && (
+                                        <Heart size={10} className="text-red-400 fill-red-400" />
+                                    )}
+                                    {meta?.review && (
+                                        <MessageSquare size={10} className="text-blue-400" />
+                                    )}
+                                    {meta?.viewCount > 1 && (
+                                        <span className="flex items-center gap-0.5 text-[10px] text-white/50">
+                                            <RotateCcw size={9} />
+                                            {meta.viewCount}
+                                        </span>
+                                    )}
                                 </div>
                             </Link>
                         );

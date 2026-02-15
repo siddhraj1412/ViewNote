@@ -153,35 +153,38 @@ function EpisodesRow({ title, icon, items }) {
                 <h3 className="text-lg font-bold">{title}</h3>
             </div>
             <div className="grid grid-cols-5 gap-3">
-                {filledSlots.map((item) => (
-                    <div key={item.id} className="group">
-                        <div className="relative aspect-video rounded-xl overflow-hidden bg-secondary ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-accent transition-all">
-                            {(item.still_path || item.poster_path) ? (
-                                <Image
-                                    src={tmdb.getImageUrl(item.still_path || item.poster_path, "w300")}
-                                    alt={item.episodeName || item.title || "Episode"}
-                                    fill
-                                    className="object-cover"
-                                    loading="lazy"
-                                    sizes="20vw"
-                                />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-white/5">
-                                    <Play size={20} className="text-white/20" />
+                {filledSlots.map((item) => {
+                    const href = item.seriesId ? `/show/${item.seriesId}` : "#";
+                    return (
+                        <Link key={item.id} href={href} className="group">
+                            <div className="relative aspect-video rounded-xl overflow-hidden bg-secondary ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-accent transition-all">
+                                {(item.still_path || item.poster_path) ? (
+                                    <Image
+                                        src={tmdb.getImageUrl(item.still_path || item.poster_path, "w300")}
+                                        alt={item.episodeName || item.title || "Episode"}
+                                        fill
+                                        className="object-cover"
+                                        loading="lazy"
+                                        sizes="20vw"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center bg-white/5">
+                                        <Play size={20} className="text-white/20" />
+                                    </div>
+                                )}
+                                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                                    <p className="text-[10px] text-white/90 font-medium line-clamp-1">
+                                        {item.episodeName || item.title}
+                                    </p>
                                 </div>
-                            )}
-                            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-                                <p className="text-[10px] text-white/90 font-medium line-clamp-1">
-                                    {item.episodeName || item.title}
-                                </p>
                             </div>
-                        </div>
-                        <p className="mt-1 text-[11px] text-textSecondary line-clamp-1">
-                            {item.series_name || ""}
-                            {item.seasonNumber != null && item.episodeNumber != null ? ` · S${item.seasonNumber}E${item.episodeNumber}` : ""}
-                        </p>
-                    </div>
-                ))}
+                            <p className="mt-1 text-[11px] text-textSecondary line-clamp-1 group-hover:text-accent transition-colors">
+                                {item.series_name || ""}
+                                {item.seasonNumber != null && item.episodeNumber != null ? ` · S${item.seasonNumber}E${item.episodeNumber}` : ""}
+                            </p>
+                        </Link>
+                    );
+                })}
 
                 {[...Array(emptyCount)].map((_, i) => (
                     <div key={`empty-ep-${i}`}>

@@ -7,7 +7,7 @@ import Button from "@/components/ui/Button";
 import { mediaService } from "@/services/mediaService";
 import { useAuth } from "@/context/AuthContext";
 import showToast from "@/lib/toast";
-import { Heart, X as XIcon, Calendar } from "lucide-react";
+import { Heart, X as XIcon, Calendar, EyeOff } from "lucide-react";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w300";
 
@@ -59,6 +59,7 @@ export default function RatingModal({
     const [viewCount, setViewCount] = useState(1);
     const [tags, setTags] = useState([]);
     const [tagInput, setTagInput] = useState("");
+    const [spoiler, setSpoiler] = useState(false);
     const [loading, setLoading] = useState(false);
     const [loadingExisting, setLoadingExisting] = useState(false);
     const [hasExisting, setHasExisting] = useState(false);
@@ -102,6 +103,7 @@ export default function RatingModal({
                         if (typeof existing.liked === "boolean") setLiked(existing.liked);
                         if (existing.viewCount > 0) setViewCount(existing.viewCount);
                         if (Array.isArray(existing.tags)) setTags(existing.tags);
+                        if (typeof existing.spoiler === "boolean") setSpoiler(existing.spoiler);
                     }
                 } else {
                     setHasExisting(false);
@@ -173,9 +175,15 @@ export default function RatingModal({
             return;
         }
 
-        const normalizedRating = normalizeRating(rating);
-        if (!Number.isFinite(normalizedRating) || normalizedRating < 0.5 || normalizedRating > 5) {
+        // Allow zero-star reviews (no rating) — only validate if rating > 0
+        const normalizedRating = rating > 0 ? normalizeRating(rating) : 0;
+        if (normalizedRating > 0 && (!Number.isFinite(normalizedRating) || normalizedRating < 0.5 || normalizedRating > 5)) {
             showToast.error("Please select a rating from 0.5 to 5.0");
+            return;
+        }
+        // Require at least rating or review
+        if (normalizedRating === 0 && !review.trim()) {
+            showToast.error("Please add a rating or a review");
             return;
         }
 
@@ -206,6 +214,7 @@ export default function RatingModal({
                 liked,
                 viewCount,
                 tags,
+                spoiler: review.trim() ? spoiler : false,
                 rateAgain: mode === "rateAgain",
                 targetType,
                 seriesId: tvSeriesId,
@@ -241,6 +250,8 @@ export default function RatingModal({
         } finally {
             setLoading(false);
         }
+        // Always close on non-TV or when watching prompt isn't shown
+        // (TV season/episode with watching prompt is handled by prompt handlers)
     };
 
     const handleConfirmAddWatching = async () => {
@@ -373,6 +384,18 @@ export default function RatingModal({
                                 <p className="text-xs text-textSecondary/50 mt-0.5 text-right">
                                     {review.length}/2000
                                 </p>
+                                {review.trim().length > 0 && (
+                                    <label className="flex items-center gap-2 mt-1.5 cursor-pointer select-none group/spoiler">
+                                        <input
+                                            type="checkbox"
+                                            checked={spoiler}
+                                            onChange={(e) => setSpoiler(e.target.checked)}
+                                            className="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-accent focus:ring-accent/30 focus:ring-1 accent-[var(--accent)]"
+                                        />
+                                        <EyeOff size={13} className="text-textSecondary group-hover/spoiler:text-white transition-colors" />
+                                        <span className="text-xs text-textSecondary group-hover/spoiler:text-white transition-colors">Contains spoiler</span>
+                                    </label>
+                                )}
                             </div>
 
                             {isTV && (seasons || []).length > 0 && (

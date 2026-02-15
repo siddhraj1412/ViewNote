@@ -5,7 +5,7 @@ import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import StarRating from "@/components/StarRating";
-import { Heart, MessageSquare, ChevronDown, Loader2, Send, Trash2 } from "lucide-react";
+import { Heart, MessageSquare, ChevronDown, Loader2, Send, Trash2, EyeOff, Eye } from "lucide-react";
 import eventBus from "@/lib/eventBus";
 import { reviewService } from "@/services/reviewService";
 import { useAuth } from "@/context/AuthContext";
@@ -213,6 +213,39 @@ function InlineComments({ reviewId, user }) {
     );
 }
 
+/* ── Spoiler Text with reveal button ── */
+function SpoilerText({ text, isSpoiler }) {
+    const [revealed, setRevealed] = useState(false);
+
+    if (!text) return null;
+
+    if (!isSpoiler || revealed) {
+        return (
+            <p className="text-sm text-textSecondary whitespace-pre-wrap leading-relaxed line-clamp-4">
+                {text}
+            </p>
+        );
+    }
+
+    return (
+        <div className="relative">
+            <p className="text-sm text-textSecondary whitespace-pre-wrap leading-relaxed line-clamp-4 blur-sm select-none">
+                {text}
+            </p>
+            <div className="absolute inset-0 flex items-center justify-center">
+                <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRevealed(true); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg text-xs text-white hover:bg-white/20 transition-colors"
+                >
+                    <Eye size={12} />
+                    Reveal Spoiler
+                </button>
+            </div>
+        </div>
+    );
+}
+
 export default function ReviewsForMedia({ mediaId, mediaType, title, tvTargetType, tvSeasonNumber, tvEpisodeNumber, slug }) {
     const { user } = useAuth();
     const [reviews, setReviews] = useState([]);
@@ -397,6 +430,11 @@ export default function ReviewsForMedia({ mediaId, mediaType, title, tvTargetTyp
                                         {timeAgo(r.createdAt || r.ratedAt)}
                                     </div>
                                 </div>
+                                {r.spoiler && (
+                                    <span className="flex items-center gap-1 text-[10px] text-yellow-400/80 bg-yellow-400/10 px-2 py-0.5 rounded-full">
+                                        <EyeOff size={10} /> Spoiler
+                                    </span>
+                                )}
                                 {r.rating > 0 && (
                                     <div className="ml-auto">
                                         <StarRating value={r.rating} size={14} readonly showHalfStars />
@@ -404,10 +442,8 @@ export default function ReviewsForMedia({ mediaId, mediaType, title, tvTargetTyp
                                 )}
                             </div>
 
-                            {/* Review text */}
-                            <p className="text-sm text-textSecondary whitespace-pre-wrap leading-relaxed line-clamp-4">
-                                {r.review}
-                            </p>
+                            {/* Review text (with spoiler blur) */}
+                            <SpoilerText text={r.review} isSpoiler={!!r.spoiler} />
 
                             {/* Interaction row */}
                             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/5">

@@ -276,16 +276,17 @@ export default function ActionBar({
 
     const handleWatchedToggle = async () => {
         if (!user) { showToast.info("Please sign in"); return; }
-        setLoading(true);
 
         if (mediaType === "tv") {
             if (tvTargetType === "series") {
                 setShowSeriesWatchModal(true);
-                setLoading(false);
                 return;
             }
 
+            // Optimistic update
+            const prevStatus = { ...status };
             if (status.isWatched) {
+                setStatus((prev) => ({ ...prev, isWatched: false }));
                 try {
                     let ok = false;
                     if (tvTargetType === "season" && tvSeasonNumber != null) {
@@ -294,15 +295,15 @@ export default function ActionBar({
                     if (tvTargetType === "episode" && tvSeasonNumber != null && tvEpisodeNumber != null) {
                         ok = await mediaService.unwatchTVEpisode(user, mediaId, tvSeasonNumber, tvEpisodeNumber, tvSeasonEpisodeCounts);
                     }
-                    if (ok) {
-                        setStatus((prev) => ({ ...prev, isWatched: false }));
-                    }
-                } finally {
-                    setLoading(false);
+                    if (!ok) setStatus(prevStatus);
+                } catch {
+                    setStatus(prevStatus);
                 }
                 return;
             }
 
+            // Optimistic: mark watched
+            setStatus((prev) => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
             try {
                 const seriesData = { name: title, title, poster_path: posterPath };
                 let ok = false;
@@ -327,30 +328,32 @@ export default function ActionBar({
                         {}
                     );
                 }
-                if (ok) {
-                    setStatus(prev => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
-                }
-            } finally {
-                setLoading(false);
+                if (!ok) setStatus(prevStatus);
+            } catch {
+                setStatus(prevStatus);
             }
             return;
         }
 
-        try {
-            if (status.isWatched) {
+        // Optimistic update for movies
+        const prevStatus = { ...status };
+        if (status.isWatched) {
+            setStatus((prev) => ({ ...prev, isWatched: false }));
+            try {
                 const ok = await mediaService.unwatchMovie(user, mediaId);
-                if (ok) {
-                    setStatus(prev => ({ ...prev, isWatched: false }));
-                }
-                return;
+                if (!ok) setStatus(prevStatus);
+            } catch {
+                setStatus(prevStatus);
             }
+            return;
+        }
 
+        setStatus((prev) => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
+        try {
             const success = await mediaService.markAsWatched(user, mediaId, mediaType, { title, poster_path: posterPath });
-            if (success) {
-                setStatus(prev => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
-            }
-        } finally {
-            setLoading(false);
+            if (!success) setStatus(prevStatus);
+        } catch {
+            setStatus(prevStatus);
         }
     };
 
@@ -447,19 +450,20 @@ export default function ActionBar({
 
     const handleWatchlistToggle = async () => {
         if (!user) { showToast.info("Please sign in"); return; }
-        setLoading(true);
 
         if (status.isWatchlist) {
             showToast.info("Already in Watchlist");
-            setLoading(false);
             return;
         }
 
+        // Optimistic
+        const prevStatus = { ...status };
+        setStatus((prev) => ({ ...prev, isWatched: false, isWatchlist: true, isPaused: false, isDropped: false }));
+
         const success = await mediaService.addToWatchlist(user, mediaId, mediaType, { title, poster_path: posterPath });
-        if (success) {
-            setStatus(prev => ({ ...prev, isWatched: false, isWatchlist: true, isPaused: false, isDropped: false }));
+        if (!success) {
+            setStatus(prevStatus);
         }
-        setLoading(false);
     };
 
     const handlePause = async () => {

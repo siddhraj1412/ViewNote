@@ -263,6 +263,7 @@ export const mediaService = {
         if (typeof extra.liked === "boolean") ratingDoc.liked = extra.liked;
         if (typeof extra.viewCount === "number" && extra.viewCount > 0) ratingDoc.viewCount = extra.viewCount;
         if (Array.isArray(extra.tags)) ratingDoc.tags = extra.tags;
+        if (typeof extra.spoiler === "boolean") ratingDoc.spoiler = extra.spoiler;
 
         // Store TV target scope for season/episode-level reviews (accept both naming conventions)
         const targetType = extra.targetType || extra.tvTargetType || null;
@@ -442,6 +443,7 @@ export const mediaService = {
                     liked: data.liked || false,
                     viewCount: data.viewCount || 1,
                     tags: data.tags || [],
+                    spoiler: data.spoiler || false,
                 };
             }
             return null;

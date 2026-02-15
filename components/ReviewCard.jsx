@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { Heart, MessageSquare } from "lucide-react";
+import { Heart, MessageSquare, EyeOff } from "lucide-react";
 import StarRating from "@/components/StarRating";
 import { reviewService } from "@/services/reviewService";
 
@@ -30,6 +30,7 @@ export default function ReviewCard({ review, href = null, showPoster = true, sho
     const [commentCount, setCommentCount] = useState(0);
     const [liked, setLiked] = useState(false);
     const [likeLoading, setLikeLoading] = useState(false);
+    const [spoilerRevealed, setSpoilerRevealed] = useState(false);
 
     const reviewId = review?.id;
 
@@ -148,7 +149,25 @@ export default function ReviewCard({ review, href = null, showPoster = true, sho
                     </div>
 
                     {showText && review?.review ? (
-                        <p className="text-sm text-textSecondary mt-3 whitespace-pre-wrap leading-relaxed line-clamp-3">{review.review}</p>
+                        review?.spoiler && !spoilerRevealed ? (
+                            <div className="relative mt-3">
+                                <p className="text-sm text-textSecondary whitespace-pre-wrap leading-relaxed line-clamp-3 blur-sm select-none">
+                                    {review.review}
+                                </p>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSpoilerRevealed(true); }}
+                                        className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg text-[11px] text-white hover:bg-white/20 transition-colors"
+                                    >
+                                        <EyeOff size={11} />
+                                        Reveal Spoiler
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-textSecondary mt-3 whitespace-pre-wrap leading-relaxed line-clamp-3">{review.review}</p>
+                        )
                     ) : null}
 
                     <div className="flex items-center gap-4 mt-4 pt-3 border-t border-white/5">

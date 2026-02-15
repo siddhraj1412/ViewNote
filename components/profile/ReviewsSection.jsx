@@ -9,6 +9,7 @@ import StarRating from "@/components/StarRating";
 import { reviewService } from "@/services/reviewService";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p";
+const PREVIEW_SIZE = 24;
 
 function generateSlugFromTitle(text) {
     if (!text) return "";
@@ -26,6 +27,7 @@ function generateSlugFromTitle(text) {
 export default function ReviewsSection({ userId, username }) {
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [showAll, setShowAll] = useState(false);
     const [socialCounts, setSocialCounts] = useState({}); // { [reviewId]: { likes: N, comments: N } }
 
     const fetchReviews = useCallback(async () => {
@@ -131,7 +133,7 @@ export default function ReviewsSection({ userId, username }) {
             </div>
 
             <div className="space-y-4">
-                {reviews.map((item) => (
+                {(showAll ? reviews : reviews.slice(0, PREVIEW_SIZE)).map((item) => (
                     <Link key={item.id} href={getReviewLink(item)} className="block">
                         <div className="bg-secondary rounded-xl p-5 border border-white/5 hover:border-white/10 transition-all">
                             <div className="flex gap-4">
@@ -200,6 +202,14 @@ export default function ReviewsSection({ userId, username }) {
                     </Link>
                 ))}
             </div>
+            {!showAll && reviews.length > PREVIEW_SIZE && (
+                <button
+                    onClick={() => setShowAll(true)}
+                    className="mt-4 w-full py-2.5 text-sm font-medium text-accent hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all"
+                >
+                    Show all {reviews.length} reviews
+                </button>
+            )}
         </section>
     );
 }

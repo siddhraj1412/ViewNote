@@ -5,7 +5,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, deleteDoc, writeBatch } from "firebase/firestore";
-import { User, FileText, Film, Tv, Play, Palette, Trash2, AlertTriangle, Camera, LogOut, Image as ImageIcon, ChevronRight, Pencil } from "lucide-react";
+import { User, FileText, Film, Tv, Play, Palette, Trash2, AlertTriangle, Camera, LogOut, Image as ImageIcon, ChevronRight, Pencil, Download } from "lucide-react";
+import LetterboxdImportSection from "@/components/settings/LetterboxdImportSection";
 import showToast from "@/lib/toast";
 import FavoritesEditDialog from "@/components/settings/FavoritesEditDialog";
 import FavoriteEpisodesDialog from "@/components/settings/FavoriteEpisodesDialog";
@@ -339,6 +340,18 @@ export default function SettingsPage() {
                         previewType="landscape"
                         className="mt-3"
                     />
+                </section>
+
+                {/* ─── Import Section ─── */}
+                <section className="mb-10">
+                    <SectionLabel icon={Download} title="Import Data" />
+                    <div className="bg-secondary rounded-2xl p-5">
+                        <div className="mb-4">
+                            <h3 className="text-sm font-semibold text-white">Import from Letterboxd</h3>
+                            <p className="text-xs text-textSecondary mt-1">Upload your Letterboxd ZIP export to import watched history, ratings, reviews, likes, watchlist, and lists.</p>
+                        </div>
+                        <LetterboxdImportSection />
+                    </div>
                 </section>
 
                 {/* ─── Account Section ─── */}
