@@ -14,17 +14,16 @@ import RatingDistribution from "@/components/RatingDistribution";
 import MediaSection from "@/components/MediaSection";
 import ReviewsForMedia from "@/components/ReviewsForMedia";
 import SectionTabs from "@/components/SectionTabs";
-import SeasonCard from "@/components/SeasonCard";
-import TmdbRatingBadge from "@/components/TmdbRatingBadge";
 import StreamingAvailability from "@/components/StreamingAvailability";
+import SeasonCard from "@/components/SeasonCard";
 import { Calendar } from "lucide-react";
+import ExpandableText from "@/components/ExpandableText";
 import { useAuth } from "@/context/AuthContext";
 import { useMediaCustomization } from "@/hooks/useMediaCustomization";
 import { parseSlugId, getMovieUrl, getShowUrl } from "@/lib/slugify";
 import { db } from "@/lib/firebase";
 import { collection, doc, getDoc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import showToast from "@/lib/toast";
-import { mediaService } from "@/services/mediaService";
 
 const RatingModal = dynamic(() => import("@/components/RatingModal"), { ssr: false, loading: () => null });
 
@@ -36,7 +35,6 @@ export default function ShowSlugPage() {
 
     const [tv, setTv] = useState(null);
     const [stronglyRelated, setStronglyRelated] = useState([]);
-    const [mixedSimilar, setMixedSimilar] = useState([]);
     const [similarFilter, setSimilarFilter] = useState("all");
     const [mediaImages, setMediaImages] = useState({ posters: [], backdrops: [] });
     const [loading, setLoading] = useState(true);
@@ -87,18 +85,6 @@ export default function ShowSlugPage() {
 
                 const related = await tmdb.getStronglyRelated(tvId, "tv", data);
                 setStronglyRelated(related);
-
-                // Fetch mixed-type similar candidates (movie + tv) once; filter in-memory.
-                try {
-                    const multi = await tmdb.searchMulti(data.name);
-                    const results = Array.isArray(multi?.results) ? multi.results : [];
-                    const filtered = results
-                        .filter((r) => r && (r.media_type === "movie" || r.media_type === "tv") && r.id)
-                        .filter((r) => !(r.media_type === "tv" && String(r.id) === String(tvId)));
-                    setMixedSimilar(filtered);
-                } catch (_) {
-                    setMixedSimilar([]);
-                }
 
                 // Fetch images for Media section (single fetch)
                 try {
@@ -198,18 +184,24 @@ export default function ShowSlugPage() {
 
     const handleToggleSeasonWatched = useCallback(async (seasonNum) => {
         if (!user) { showToast.info("Please sign in"); return; }
+        const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(tvId)}`);
         try {
-            const seriesData = { name: tv?.name || tv?.title || "", title: tv?.name || tv?.title || "", poster_path: tv?.poster_path || "" };
-            if (watchedSeasons.has(seasonNum)) {
-                await mediaService.unwatchTVSeason(user, tvId, seasonNum, seasonEpisodeCountMap);
+            const snap = await getDoc(progressRef);
+            const current = snap.exists() ? (Array.isArray(snap.data().watchedSeasons) ? snap.data().watchedSeasons.map(Number) : []) : [];
+            const currentSet = new Set(current);
+            if (currentSet.has(seasonNum)) {
+                currentSet.delete(seasonNum);
+                showToast.success(`Season ${seasonNum} unmarked`);
             } else {
-                await mediaService.markTVSeasonWatched(user, tvId, seriesData, seasonNum, seasonEpisodeCountMap, {});
+                currentSet.add(seasonNum);
+                showToast.success(`Season ${seasonNum} marked as watched`);
             }
+            await setDoc(progressRef, { watchedSeasons: Array.from(currentSet), userId: user.uid, seriesId: Number(tvId) }, { merge: true });
         } catch (err) {
             console.error("Error toggling season watched:", err);
             showToast.error("Failed to update");
         }
-    }, [user, tvId, tv, watchedSeasons, seasonEpisodeCountMap]);
+    }, [user, tvId]);
 
     const handleQuickRateSeason = useCallback((seasonNum) => {
         if (!user) { showToast.info("Please sign in"); return; }
@@ -218,28 +210,11 @@ export default function ShowSlugPage() {
     }, [user]);
 
     const similarItemsAll = useMemo(() => {
-        const items = [];
-        (Array.isArray(stronglyRelated) ? stronglyRelated : []).forEach((r) => {
-            if (!r || !r.id) return;
-            items.push({
-                ...r,
-                media_type: "tv",
-            });
-        });
-
-        (Array.isArray(mixedSimilar) ? mixedSimilar : []).forEach((r) => {
-            if (!r || !r.id) return;
-            items.push(r);
-        });
-
-        const unique = new Map();
-        items.forEach((item) => {
-            const t = item.media_type || "tv";
-            const key = `${t}_${item.id}`;
-            if (!unique.has(key)) unique.set(key, item);
-        });
-        return Array.from(unique.values());
-    }, [stronglyRelated, mixedSimilar]);
+        return (Array.isArray(stronglyRelated) ? stronglyRelated : []).filter((r) => r && r.id).map((r) => ({
+            ...r,
+            media_type: r.media_type || "tv",
+        }));
+    }, [stronglyRelated]);
 
     const filteredSimilar = useMemo(() => {
         if (similarFilter === "all") return similarItemsAll;
@@ -347,9 +322,11 @@ export default function ShowSlugPage() {
                             )}
 
                             {tv.overview && (
-                                <p className="text-base md:text-lg text-textSecondary leading-relaxed">
-                                    {tv.overview}
-                                </p>
+                                <ExpandableText
+                                    text={tv.overview}
+                                    maxLines={4}
+                                    className="text-base md:text-lg text-textSecondary leading-relaxed"
+                                />
                             )}
 
                             {(() => {
@@ -388,7 +365,14 @@ export default function ShowSlugPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                     <div className="lg:col-span-4 space-y-6">
                         <RatingDistribution mediaId={tvId} mediaType="tv" />
-                        <TmdbRatingBadge value={tv.vote_average} />
+                        {tv.vote_average > 0 && (
+                            <div className="flex items-center gap-1.5 text-sm text-textSecondary">
+                                <span className="text-accent">★</span>
+                                <span className="font-semibold text-white tabular-nums">{Number(tv.vote_average).toFixed(1)}</span>
+                                <span>/ 10</span>
+                                <span className="text-xs opacity-60 ml-1">TMDB</span>
+                            </div>
+                        )}
                         <StreamingAvailability mediaType="tv" mediaId={tvId} />
                     </div>
 

@@ -15,8 +15,7 @@ import MediaSection from "@/components/MediaSection";
 import ReviewsForMedia from "@/components/ReviewsForMedia";
 import SectionTabs from "@/components/SectionTabs";
 import { useMediaCustomization } from "@/hooks/useMediaCustomization";
-import TmdbRatingBadge from "@/components/TmdbRatingBadge";
-import StreamingAvailability from "@/components/StreamingAvailability";
+import ExpandableText from "@/components/ExpandableText";
 
 export default function EpisodePage() {
     const params = useParams();
@@ -30,7 +29,7 @@ export default function EpisodePage() {
     const [tv, setTv] = useState(null);
     const [episode, setEpisode] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState("details");
+    const [activeTab, setActiveTab] = useState("cast");
 
     const customizationMediaId = tvId && Number.isFinite(seasonNumber) && Number.isFinite(episodeNumber)
         ? `${tvId}_s${seasonNumber}e${episodeNumber}`
@@ -129,18 +128,39 @@ export default function EpisodePage() {
                         </div>
 
                         <div className="flex-1 space-y-6">
-                            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold drop-shadow-lg">
+                            {/* Series name as top-level context */}
+                            <Link href={getShowUrl(tv)} className="text-accent hover:underline text-sm font-semibold uppercase tracking-wide">
+                                {tv.name}
+                            </Link>
+
+                            {/* Season + Episode label */}
+                            <div className="text-base text-textSecondary font-medium -mt-4">
+                                Season {seasonNumber} · Episode {episodeNumber}
+                            </div>
+
+                            {/* Episode name as H1 */}
+                            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold drop-shadow-lg -mt-2">
                                 {episode.name || `Episode ${episodeNumber}`}
                             </h1>
 
-                            <div className="text-sm text-textSecondary">
-                                {tv.name} • Season {seasonNumber} • Episode {episodeNumber}
+                            {/* Meta row: air date + runtime */}
+                            <div className="flex flex-wrap items-center gap-4 text-sm text-textSecondary">
+                                {episode.air_date && (
+                                    <span>{new Date(episode.air_date).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}</span>
+                                )}
+                                {episode.air_date && episode.runtime && <span>·</span>}
+                                {episode.runtime && (
+                                    <span>{episode.runtime}m</span>
+                                )}
                             </div>
 
+                            {/* Description */}
                             {episode.overview ? (
-                                <p className="text-base md:text-lg text-textSecondary leading-relaxed">
-                                    {episode.overview}
-                                </p>
+                                <ExpandableText
+                                    text={episode.overview}
+                                    maxLines={4}
+                                    className="text-base md:text-lg text-textSecondary leading-relaxed"
+                                />
                             ) : null}
 
                             <ActionBar
@@ -193,14 +213,19 @@ export default function EpisodePage() {
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                     <div className="lg:col-span-4 space-y-6">
                         <RatingDistribution mediaId={tvId} mediaType="tv" statsId={episodeStatsId} />
-                        <TmdbRatingBadge value={episode.vote_average} />
-                        <StreamingAvailability mediaType="tv" mediaId={tvId} />
+                        {episode.vote_average > 0 && (
+                            <div className="flex items-center gap-1.5 text-sm text-textSecondary">
+                                <span className="text-accent">★</span>
+                                <span className="font-semibold text-white tabular-nums">{Number(episode.vote_average).toFixed(1)}</span>
+                                <span>/ 10</span>
+                                <span className="text-xs opacity-60 ml-1">TMDB</span>
+                            </div>
+                        )}
                     </div>
 
                     <div className="lg:col-span-8">
                         <SectionTabs
                             tabs={[
-                                { id: "details", label: "Details" },
                                 { id: "cast", label: "Cast" },
                                 { id: "crew", label: "Crew" },
                                 { id: "production", label: "Production" },
@@ -212,27 +237,6 @@ export default function EpisodePage() {
                         />
 
                         <div className="space-y-16">
-                            {activeTab === "details" && (
-                                <section>
-                                    <h2 className="text-3xl font-bold mb-6">Details</h2>
-                                    <div className="space-y-4 text-textSecondary">
-                                        {episode.air_date ? (
-                                            <div className="text-sm">
-                                                Air date: {new Date(episode.air_date).toLocaleDateString()}
-                                            </div>
-                                        ) : null}
-                                        {episode.runtime ? (
-                                            <div className="text-sm">Runtime: {episode.runtime}m</div>
-                                        ) : null}
-                                        {episode.overview ? (
-                                            <p className="text-base md:text-lg leading-relaxed">{episode.overview}</p>
-                                        ) : (
-                                            <div className="text-sm">No overview available.</div>
-                                        )}
-                                    </div>
-                                </section>
-                            )}
-
                             {activeTab === "reviews" && (
                                 <ReviewsForMedia mediaId={tvId} mediaType="tv" title={tv.name} />
                             )}

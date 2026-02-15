@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -150,52 +150,111 @@ export default function PersonPage() {
         );
     }
 
-    const CreditGrid = ({ items, mediaType }) => (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 overflow-x-hidden">
-            {(items || []).map((item, index) => (
-                <Link
-                    key={`${item.id}-${index}`}
-                    href={getMediaUrl(item, mediaType)}
-                    className="group"
-                >
-                    <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
-                        <Image
-                            src={tmdb.getImageUrl(item.poster_path)}
-                            alt={item.title || item.name}
-                            fill
-                            className="object-cover"
-                            loading="lazy"
-                        />
-                    </div>
-                    <h3 className="font-medium text-sm line-clamp-2 mb-1">
-                        {item.title || item.name}
-                    </h3>
-                    {item.roles && item.roles.length > 0 && (
-                        <p className="text-xs text-textSecondary line-clamp-2">
-                            {item.roles.join(" • ")}
-                        </p>
-                    )}
-                    {item.character && !item.roles && (
-                        <p className="text-xs text-textSecondary line-clamp-1">
-                            as {item.character}
-                        </p>
-                    )}
-                    {item.job && !item.roles && (
-                        <p className="text-xs text-textSecondary line-clamp-1">
-                            {item.job}
-                        </p>
-                    )}
-                    {(item.release_date || item.first_air_date) && (
-                        <p className="text-xs text-textSecondary">
-                            {new Date(
-                                item.release_date || item.first_air_date
-                            ).getFullYear()}
-                        </p>
-                    )}
-                </Link>
-            ))}
-        </div>
-    );
+    const SORT_OPTIONS = [
+        { id: "latest", label: "Latest" },
+        { id: "oldest", label: "Oldest" },
+        { id: "a-z", label: "A → Z" },
+        { id: "z-a", label: "Z → A" },
+        { id: "popularity", label: "Popularity" },
+        { id: "rating", label: "Rating" },
+    ];
+
+    const CreditGrid = ({ items, mediaType }) => {
+        const [sortBy, setSortBy] = useState("latest");
+
+        const sortedItems = useMemo(() => {
+            if (!items || items.length === 0) return [];
+            const copy = [...items];
+            switch (sortBy) {
+                case "latest":
+                    return copy.sort((a, b) => {
+                        const da = a.release_date || a.first_air_date || "0000";
+                        const db_ = b.release_date || b.first_air_date || "0000";
+                        return db_.localeCompare(da);
+                    });
+                case "oldest":
+                    return copy.sort((a, b) => {
+                        const da = a.release_date || a.first_air_date || "9999";
+                        const db_ = b.release_date || b.first_air_date || "9999";
+                        return da.localeCompare(db_);
+                    });
+                case "a-z":
+                    return copy.sort((a, b) => (a.title || a.name || "").localeCompare(b.title || b.name || ""));
+                case "z-a":
+                    return copy.sort((a, b) => (b.title || b.name || "").localeCompare(a.title || a.name || ""));
+                case "popularity":
+                    return copy.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+                case "rating":
+                    return copy.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+                default:
+                    return copy;
+            }
+        }, [items, sortBy]);
+
+        return (
+            <div>
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                    {SORT_OPTIONS.map((opt) => (
+                        <button
+                            key={opt.id}
+                            onClick={() => setSortBy(opt.id)}
+                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                sortBy === opt.id
+                                    ? "bg-accent text-white"
+                                    : "bg-white/5 text-textSecondary hover:text-white"
+                            }`}
+                        >
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 overflow-x-hidden">
+                    {sortedItems.map((item, index) => (
+                        <Link
+                            key={`${item.id}-${index}`}
+                            href={getMediaUrl(item, mediaType)}
+                            className="group"
+                        >
+                            <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
+                                <Image
+                                    src={tmdb.getImageUrl(item.poster_path)}
+                                    alt={item.title || item.name}
+                                    fill
+                                    className="object-cover"
+                                    loading="lazy"
+                                />
+                            </div>
+                            <h3 className="font-medium text-sm line-clamp-2 mb-1">
+                                {item.title || item.name}
+                            </h3>
+                            {item.roles && item.roles.length > 0 && (
+                                <p className="text-xs text-textSecondary line-clamp-2">
+                                    {item.roles.join(" • ")}
+                                </p>
+                            )}
+                            {item.character && !item.roles && (
+                                <p className="text-xs text-textSecondary line-clamp-1">
+                                    as {item.character}
+                                </p>
+                            )}
+                            {item.job && !item.roles && (
+                                <p className="text-xs text-textSecondary line-clamp-1">
+                                    {item.job}
+                                </p>
+                            )}
+                            {(item.release_date || item.first_air_date) && (
+                                <p className="text-xs text-textSecondary">
+                                    {new Date(
+                                        item.release_date || item.first_air_date
+                                    ).getFullYear()}
+                                </p>
+                            )}
+                        </Link>
+                    ))}
+                </div>
+            </div>
+        );
+    };
 
     return (
         <main className="min-h-screen bg-background">

@@ -163,7 +163,10 @@ export default function ReviewDetailPage() {
             });
             // If we had to fallback to an unordered query, sort client-side.
             next.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            setComments(next);
+            // De-dupe by id (prevents duplicate keys if optimistic comment is already in state)
+            const unique = new Map();
+            for (const c of next) unique.set(String(c.id), c);
+            setComments(Array.from(unique.values()));
         }, () => {
             setComments([]);
         });
@@ -177,17 +180,27 @@ export default function ReviewDetailPage() {
     const handleToggleLike = useCallback(async () => {
         if (!user) { showToast.info("Please sign in to like"); return; }
         if (!review?.id || likeLoading) return;
+
+        // Optimistic UI: update immediately
+        const prevLiked = liked;
+        const prevCount = likeCount;
+        setLiked(!prevLiked);
+        setLikeCount(prevLiked ? Math.max(0, prevCount - 1) : prevCount + 1);
         setLikeLoading(true);
+
         try {
             const result = await reviewService.toggleLike(review.id, user);
             setLiked(result.liked);
             setLikeCount(result.count);
         } catch {
+            // Revert on failure
+            setLiked(prevLiked);
+            setLikeCount(prevCount);
             showToast.error("Failed to update like");
         } finally {
             setLikeLoading(false);
         }
-    }, [user, review?.id, likeLoading]);
+    }, [user, review?.id, likeLoading, liked, likeCount]);
 
     const handleAddComment = useCallback(async () => {
         if (!user) { showToast.info("Please sign in to comment"); return; }
@@ -196,7 +209,7 @@ export default function ReviewDetailPage() {
         try {
             const newComment = await reviewService.addComment(review.id, user, commentText);
             if (newComment) {
-                setComments(prev => [newComment, ...prev]);
+                setComments(prev => [newComment, ...prev.filter(c => String(c.id) !== String(newComment.id))]);
                 setCommentText("");
             }
         } catch {
@@ -309,26 +322,6 @@ export default function ReviewDetailPage() {
                             )}
                         </div>
 
-                        <div className="flex items-center gap-4 pt-2 border-t border-white/10">
-                            <button
-                                onClick={handleToggleLike}
-                                disabled={likeLoading}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${liked
-                                    ? "bg-accent/20 text-accent border border-accent/30"
-                                    : "bg-white/5 text-textSecondary hover:text-white border border-white/10 hover:border-white/20"
-                                    }`}
-                            >
-                                <ThumbsUp size={16} fill={liked ? "currentColor" : "none"} />
-                                <span className="tabular-nums">{likeCount}</span>
-                                <span>{liked ? "Liked" : "Like"}</span>
-                            </button>
-                            <div className="flex items-center gap-2 text-sm text-textSecondary">
-                                <MessageCircle size={16} />
-                                <span className="tabular-nums">{comments.length}</span>
-                                <span>Comment{comments.length !== 1 ? "s" : ""}</span>
-                            </div>
-                        </div>
-
                         <div className="flex flex-wrap items-center gap-4">
                             {review.rating > 0 && (
                                 <div className="flex items-center gap-2">
@@ -356,9 +349,29 @@ export default function ReviewDetailPage() {
 
                         {review.review && (
                             <div>
-                                <p className="text-white leading-relaxed whitespace-pre-wrap">{review.review}</p>
+                                <p className="text-white leading-relaxed whitespace-pre-wrap break-words">{review.review}</p>
                             </div>
                         )}
+
+                        <div className="flex items-center gap-4 pt-2 border-t border-white/10">
+                            <button
+                                onClick={handleToggleLike}
+                                disabled={likeLoading}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${liked
+                                    ? "bg-accent/20 text-accent border border-accent/30"
+                                    : "bg-white/5 text-textSecondary hover:text-white border border-white/10 hover:border-white/20"
+                                    }`}
+                            >
+                                <ThumbsUp size={16} fill={liked ? "currentColor" : "none"} />
+                                <span className="tabular-nums">{likeCount}</span>
+                                <span>{liked ? "Liked" : "Like"}</span>
+                            </button>
+                            <div className="flex items-center gap-2 text-sm text-textSecondary">
+                                <MessageCircle size={16} />
+                                <span className="tabular-nums">{comments.length}</span>
+                                <span>Comment{comments.length !== 1 ? "s" : ""}</span>
+                            </div>
+                        </div>
 
                         {review.tags && review.tags.length > 0 && (
                             <div className="flex flex-wrap gap-2">

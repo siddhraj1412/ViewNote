@@ -13,9 +13,9 @@ import RatingDistribution from "@/components/RatingDistribution";
 import MediaSection from "@/components/MediaSection";
 import ReviewsForMedia from "@/components/ReviewsForMedia";
 import SectionTabs from "@/components/SectionTabs";
-import TmdbRatingBadge from "@/components/TmdbRatingBadge";
 import StreamingAvailability from "@/components/StreamingAvailability";
-import { Calendar, Timer } from "lucide-react";
+import { Calendar, Clock } from "lucide-react";
+import ExpandableText from "@/components/ExpandableText";
 import { useAuth } from "@/context/AuthContext";
 import { useRatings } from "@/hooks/useRatings";
 import { useMediaCustomization } from "@/hooks/useMediaCustomization";
@@ -29,7 +29,6 @@ export default function MovieSlugPage() {
 
     const [movie, setMovie] = useState(null);
     const [stronglyRelated, setStronglyRelated] = useState([]);
-    const [mixedSimilar, setMixedSimilar] = useState([]);
     const [similarFilter, setSimilarFilter] = useState("all");
     const [mediaImages, setMediaImages] = useState({ posters: [], backdrops: [] });
     const [loading, setLoading] = useState(true);
@@ -84,18 +83,6 @@ export default function MovieSlugPage() {
                     console.warn("Failed to fetch related movies", e);
                 }
 
-                // Fetch mixed-type similar candidates (movie + tv) once; filter in-memory.
-                try {
-                    const multi = await tmdb.searchMulti(data.title);
-                    const results = Array.isArray(multi?.results) ? multi.results : [];
-                    const filtered = results
-                        .filter((r) => r && (r.media_type === "movie" || r.media_type === "tv") && r.id)
-                        .filter((r) => !(r.media_type === "movie" && String(r.id) === String(movieId)));
-                    setMixedSimilar(filtered);
-                } catch (_) {
-                    setMixedSimilar([]);
-                }
-
                 // Fetch images for Media section (single fetch)
                 try {
                     const images = await tmdb.getMovieImages(movieId);
@@ -115,28 +102,11 @@ export default function MovieSlugPage() {
     }, [movieId]);
 
     const similarItemsAll = useMemo(() => {
-        const items = [];
-        (Array.isArray(stronglyRelated) ? stronglyRelated : []).forEach((r) => {
-            if (!r || !r.id) return;
-            items.push({
-                ...r,
-                media_type: "movie",
-            });
-        });
-
-        (Array.isArray(mixedSimilar) ? mixedSimilar : []).forEach((r) => {
-            if (!r || !r.id) return;
-            items.push(r);
-        });
-
-        const unique = new Map();
-        items.forEach((item) => {
-            const t = item.media_type || "movie";
-            const key = `${t}_${item.id}`;
-            if (!unique.has(key)) unique.set(key, item);
-        });
-        return Array.from(unique.values());
-    }, [stronglyRelated, mixedSimilar]);
+        return (Array.isArray(stronglyRelated) ? stronglyRelated : []).filter((r) => r && r.id).map((r) => ({
+            ...r,
+            media_type: r.media_type || "movie",
+        }));
+    }, [stronglyRelated]);
 
     const filteredSimilar = useMemo(() => {
         if (similarFilter === "all") return similarItemsAll;
@@ -229,7 +199,7 @@ export default function MovieSlugPage() {
                                 )}
                                 {movie.runtime && (
                                     <div className="flex items-center gap-2">
-                                        <Timer size={20} className="text-accent" />
+                                        <Clock size={20} className="text-accent" />
                                         <span className="font-medium">
                                             {Math.floor(movie.runtime / 60)}h {movie.runtime % 60}m
                                         </span>
@@ -251,9 +221,11 @@ export default function MovieSlugPage() {
                             )}
 
                             {movie.overview && (
-                                <p className="text-base md:text-lg text-textSecondary leading-relaxed">
-                                    {movie.overview}
-                                </p>
+                                <ExpandableText
+                                    text={movie.overview}
+                                    maxLines={4}
+                                    className="text-base md:text-lg text-textSecondary leading-relaxed"
+                                />
                             )}
 
                             {Array.isArray(movie.production_countries) && movie.production_countries.length > 0 && (
@@ -281,7 +253,14 @@ export default function MovieSlugPage() {
                     {/* Left column (below poster area) */}
                     <div className="lg:col-span-4 space-y-6">
                         <RatingDistribution mediaId={movieId} mediaType="movie" />
-                        <TmdbRatingBadge value={movie.vote_average} />
+                        {movie.vote_average > 0 && (
+                            <div className="flex items-center gap-1.5 text-sm text-textSecondary">
+                                <span className="text-accent">★</span>
+                                <span className="font-semibold text-white tabular-nums">{Number(movie.vote_average).toFixed(1)}</span>
+                                <span>/ 10</span>
+                                <span className="text-xs opacity-60 ml-1">TMDB</span>
+                            </div>
+                        )}
                         <StreamingAvailability mediaType="movie" mediaId={movieId} />
                     </div>
 

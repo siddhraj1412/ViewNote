@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
@@ -11,10 +11,13 @@ import { useParams } from "next/navigation";
 import eventBus from "@/lib/eventBus";
 import { mediaService } from "@/services/mediaService";
 
+const PREVIEW_SIZE = 24;
+
 export default function DroppedSection({ userId }) {
     const { user } = useAuth();
     const params = useParams();
     const ownerId = userId || params?.id || user?.uid;
+    const usernameParam = params?.username;
 
     const [droppedItems, setDroppedItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -59,6 +62,10 @@ export default function DroppedSection({ userId }) {
         return cleanup;
     }, [ownerId]);
 
+    const previewItems = useMemo(() => {
+        return (droppedItems || []).slice(0, PREVIEW_SIZE);
+    }, [droppedItems]);
+
     if (loading) {
         return <div className="text-center py-12 text-textSecondary">Loading dropped items...</div>;
     }
@@ -69,8 +76,16 @@ export default function DroppedSection({ userId }) {
 
     return (
         <div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {droppedItems.map((item) => (
+            {droppedItems.length > PREVIEW_SIZE && usernameParam ? (
+                <div className="flex justify-end mb-4">
+                    <Link href={`/${encodeURIComponent(usernameParam)}/dropped`} className="text-sm text-accent hover:underline">
+                        See all
+                    </Link>
+                </div>
+            ) : null}
+
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+                {previewItems.map((item) => (
                 <Link
                     key={item.id}
                     href={getMediaUrl(item, item.mediaType)}
@@ -81,24 +96,14 @@ export default function DroppedSection({ userId }) {
                             src={tmdb.getImageUrl(item.poster_path)}
                             alt={item.title || item.name || "Media"}
                             fill
-                            className="object-contain object-center grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100 transition-all"
-                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
+                            className="object-cover grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100 transition-all"
+                            sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
                             loading="lazy"
                         />
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                         <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold text-white/90 border border-white/10">
                             DROPPED
                         </div>
-                    </div>
-                    <div className="mt-2">
-                        <h3 className="text-sm font-semibold line-clamp-1 group-hover:text-accent transition-colors">
-                            {item.title || item.name}
-                        </h3>
-                        <p className="text-xs text-textSecondary">
-                            {item.droppedAt?.seconds
-                                ? new Date(item.droppedAt.seconds * 1000).toLocaleDateString()
-                                : "Dropped"}
-                        </p>
                     </div>
                 </Link>
             ))}

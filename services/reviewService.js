@@ -4,6 +4,7 @@ import {
     getDoc,
     setDoc,
     deleteDoc,
+    runTransaction,
     collection,
     query,
     where,
@@ -11,10 +12,14 @@ import {
     addDoc,
     orderBy,
     serverTimestamp,
+    writeBatch,
+    increment,
 } from "firebase/firestore";
+import eventBus from "@/lib/eventBus";
 
 /**
  * Like/unlike a review. Uses deterministic doc ID to prevent duplicate likes.
+ * Also updates the likeCount field on the review doc for sorting reviews by popularity.
  */
 export const reviewService = {
     // Like doc ID = `{reviewDocId}_{userId}`
@@ -26,24 +31,49 @@ export const reviewService = {
         if (!user) return { liked: false, count: 0 };
         const likeId = this.getLikeId(reviewDocId, user.uid);
         const likeRef = doc(db, "review_likes", likeId);
+        const reviewRef = doc(db, "user_ratings", reviewDocId);
 
         try {
-            const existing = await getDoc(likeRef);
-            if (existing.exists()) {
-                await deleteDoc(likeRef);
-                const count = await this.getLikeCount(reviewDocId);
-                return { liked: false, count };
-            } else {
-                await setDoc(likeRef, {
-                    reviewDocId,
-                    userId: user.uid,
-                    username: user.username || "",
-                    photoURL: user.photoURL || "",
-                    createdAt: serverTimestamp(),
-                });
-                const count = await this.getLikeCount(reviewDocId);
-                return { liked: true, count };
-            }
+            let wasLiked = false;
+
+            await runTransaction(db, async (tx) => {
+                // ---- ALL READS FIRST ----
+                const likeSnap = await tx.get(likeRef);
+                const reviewSnap = await tx.get(reviewRef);
+
+                // ---- WRITES AFTER READS ----
+                if (likeSnap.exists()) {
+                    wasLiked = true;
+                    tx.delete(likeRef);
+                    // Decrement likeCount on the review doc
+                    if (reviewSnap.exists()) {
+                        const currentCount = Number(reviewSnap.data()?.likeCount || 0);
+                        tx.update(reviewRef, { likeCount: Math.max(0, currentCount - 1) });
+                    }
+                } else {
+                    wasLiked = false;
+                    tx.set(likeRef, {
+                        reviewDocId,
+                        userId: user.uid,
+                        username: user.username || "",
+                        photoURL: user.photoURL || "",
+                        createdAt: serverTimestamp(),
+                    });
+                    // Increment likeCount on the review doc
+                    if (reviewSnap.exists()) {
+                        const currentCount = Number(reviewSnap.data()?.likeCount || 0);
+                        tx.update(reviewRef, { likeCount: currentCount + 1 });
+                    }
+                }
+            });
+
+            const count = await this.getLikeCount(reviewDocId);
+            const likedNow = !wasLiked;
+
+            // Emit event so the media page can refresh stats if needed
+            eventBus.emit("REVIEW_LIKE_UPDATED", { reviewDocId, liked: likedNow, count });
+
+            return { liked: likedNow, count };
         } catch (error) {
             console.error("Error toggling like:", error);
             throw error;
@@ -161,6 +191,26 @@ export const reviewService = {
         } catch (error) {
             console.error("Error deleting comment:", error);
             return false;
+        }
+    },
+
+    async deleteReviewThread(reviewDocId) {
+        if (!reviewDocId) return { likesDeleted: 0, commentsDeleted: 0 };
+        try {
+            const [likesSnap, commentsSnap] = await Promise.all([
+                getDocs(query(collection(db, "review_likes"), where("reviewDocId", "==", reviewDocId))),
+                getDocs(query(collection(db, "review_comments"), where("reviewDocId", "==", reviewDocId))),
+            ]);
+
+            const batch = writeBatch(db);
+            likesSnap.docs.forEach((d) => batch.delete(d.ref));
+            commentsSnap.docs.forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+
+            return { likesDeleted: likesSnap.size, commentsDeleted: commentsSnap.size };
+        } catch (error) {
+            console.error("[ReviewService] deleteReviewThread error:", error);
+            return { likesDeleted: 0, commentsDeleted: 0 };
         }
     },
 };

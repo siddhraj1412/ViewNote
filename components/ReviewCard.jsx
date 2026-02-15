@@ -80,15 +80,27 @@ export default function ReviewCard({ review, href = null, showPoster = true, sho
         e.stopPropagation();
         if (!user) return;
         if (!reviewId || likeLoading) return;
+
+        // Optimistic UI: update immediately
+        const prevLiked = liked;
+        const prevCount = likeCount;
+        setLiked(!prevLiked);
+        setLikeCount(prevLiked ? Math.max(0, prevCount - 1) : prevCount + 1);
         setLikeLoading(true);
+
         try {
             const result = await reviewService.toggleLike(reviewId, user);
+            // Sync with server truth
             setLiked(result.liked);
             setLikeCount(result.count);
+        } catch {
+            // Revert on failure
+            setLiked(prevLiked);
+            setLikeCount(prevCount);
         } finally {
             setLikeLoading(false);
         }
-    }, [user, reviewId, likeLoading]);
+    }, [user, reviewId, likeLoading, liked, likeCount]);
 
     const username = review?.username || "";
     const userPhoto = review?.photoURL || review?.userPhotoURL || "";
@@ -146,12 +158,12 @@ export default function ReviewCard({ review, href = null, showPoster = true, sho
                             disabled={!user || likeLoading}
                             className="flex items-center gap-1.5 text-xs text-textSecondary hover:text-white transition-colors disabled:opacity-60"
                             aria-label={liked ? "Unlike" : "Like"}
-                            title={liked ? "Unlike" : "Like"}
+                            title={liked ? `You and ${Math.max(0, likeCount - 1)} others liked this` : `Liked by ${likeCount} users`}
                         >
                             <Heart size={14} className={liked ? "text-red-400" : "text-white/50"} fill={liked ? "currentColor" : "none"} />
                             <span className="tabular-nums">{likeCount}</span>
                         </button>
-                        <div className="flex items-center gap-1.5 text-xs text-textSecondary">
+                        <div className="flex items-center gap-1.5 text-xs text-textSecondary" title={`${commentCount} comments`}>
                             <MessageSquare size={14} />
                             <span className="tabular-nums">{commentCount}</span>
                         </div>

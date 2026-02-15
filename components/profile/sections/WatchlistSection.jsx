@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Heart, Star, FileText, Repeat } from "lucide-react";
@@ -12,10 +12,13 @@ import { useParams } from "next/navigation";
 import eventBus from "@/lib/eventBus";
 import { mediaService } from "@/services/mediaService";
 
+const PREVIEW_SIZE = 24;
+
 export default function WatchlistSection({ userId }) {
     const { user } = useAuth();
     const params = useParams();
     const ownerId = userId || params?.id || user?.uid;
+    const usernameParam = params?.username;
 
     const [watchlistItems, setWatchlistItems] = useState([]);
     const [ratingsByKey, setRatingsByKey] = useState({});
@@ -69,6 +72,10 @@ export default function WatchlistSection({ userId }) {
         return cleanup;
     }, [ownerId]);
 
+    const previewItems = useMemo(() => {
+        return (watchlistItems || []).slice(0, PREVIEW_SIZE);
+    }, [watchlistItems]);
+
     const renderIndicators = (ratingDoc) => {
         if (!ratingDoc) return null;
 
@@ -118,8 +125,15 @@ export default function WatchlistSection({ userId }) {
 
     return (
         <div>
+            {watchlistItems.length > PREVIEW_SIZE && usernameParam ? (
+                <div className="flex justify-end mb-4">
+                    <Link href={`/${encodeURIComponent(usernameParam)}/watchlist`} className="text-sm text-accent hover:underline">
+                        See all
+                    </Link>
+                </div>
+            ) : null}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {watchlistItems.map((item) => (
+                {previewItems.map((item) => (
                 <Link
                     key={item.id}
                     href={getMediaUrl(item, item.mediaType)}

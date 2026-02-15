@@ -19,6 +19,7 @@ export default function StreamingAvailability({ mediaType, mediaId }) {
     const [loading, setLoading] = useState(true);
     const [providers, setProviders] = useState(null);
     const [regions, setRegions] = useState([]);
+    const [theatricalDate, setTheatricalDate] = useState(null);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -84,14 +85,35 @@ export default function StreamingAvailability({ mediaType, mediaId }) {
             if (!mediaType || mediaId == null) return;
             setLoading(true);
             try {
-                const data = await tmdb.getWatchProviders(mediaType, mediaId);
+                const [data, releaseDates] = await Promise.all([
+                    tmdb.getWatchProviders(mediaType, mediaId),
+                    mediaType === "movie" ? tmdb.getMovieReleaseDates(mediaId) : Promise.resolve(null),
+                ]);
                 if (!mounted) return;
                 const results = data?.results || {};
                 const entry = results?.[country] || null;
                 setProviders(entry);
+
+                if (mediaType === "movie") {
+                    const list = Array.isArray(releaseDates?.results) ? releaseDates.results : [];
+                    const countryEntry = list.find((r) => String(r?.iso_3166_1 || "").toUpperCase() === String(country).toUpperCase());
+                    const releases = Array.isArray(countryEntry?.release_dates) ? countryEntry.release_dates : [];
+
+                    // Prefer theatrical (type 3) then wide theatrical (type 2)
+                    const theatrical = releases.find((r) => Number(r?.type) === 3 && r?.release_date) || releases.find((r) => Number(r?.type) === 2 && r?.release_date) || null;
+                    if (theatrical?.release_date) {
+                        const d = new Date(theatrical.release_date);
+                        setTheatricalDate(Number.isFinite(d.getTime()) ? d : null);
+                    } else {
+                        setTheatricalDate(null);
+                    }
+                } else {
+                    setTheatricalDate(null);
+                }
             } catch {
                 if (!mounted) return;
                 setProviders(null);
+                setTheatricalDate(null);
             } finally {
                 if (mounted) setLoading(false);
             }
@@ -113,6 +135,10 @@ export default function StreamingAvailability({ mediaType, mediaId }) {
 
     const hasAny = sections.length > 0;
     const tmdbLink = providers?.link ? String(providers.link) : "";
+    const countryName = useMemo(() => {
+        const hit = regions.find((r) => String(r.iso_3166_1).toUpperCase() === String(country).toUpperCase());
+        return hit?.english_name || country;
+    }, [regions, country]);
 
     return (
         <div className="bg-secondary rounded-xl border border-white/5 p-5">
@@ -121,7 +147,7 @@ export default function StreamingAvailability({ mediaType, mediaId }) {
                 <select
                     value={country}
                     onChange={(e) => setCountry(String(e.target.value || "US").toUpperCase())}
-                    className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50"
+                    className="bg-background text-white border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50 min-w-44 [color-scheme:dark]"
                     aria-label="Country"
                 >
                     {(regions.length > 0 ? regions : [{ iso_3166_1: "US", english_name: "United States" }]).map((r) => (
@@ -138,9 +164,21 @@ export default function StreamingAvailability({ mediaType, mediaId }) {
                     <div className="h-3 bg-white/10 rounded w-1/2" />
                 </div>
             ) : !hasAny ? (
-                <div className="mt-4 text-sm text-textSecondary">Currently not available on major platforms (TMDB data)</div>
+                <div className="mt-4 text-sm text-textSecondary">
+                    {mediaType === "movie" && theatricalDate ? (
+                        <div>
+                            This movie had a theatrical release in {countryName} on {theatricalDate.toLocaleDateString()}
+                        </div>
+                    ) : null}
+                    <div>Currently not available on major platforms (TMDB data)</div>
+                </div>
             ) : (
                 <div className="mt-4 space-y-4">
+                    {mediaType === "movie" && theatricalDate ? (
+                        <div className="text-sm text-textSecondary">
+                            This movie had a theatrical release in {countryName} on {theatricalDate.toLocaleDateString()}
+                        </div>
+                    ) : null}
                     {tmdbLink ? (
                         <a
                             href={tmdbLink}

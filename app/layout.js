@@ -8,6 +8,7 @@ import ScrollToTop from "@/components/ScrollToTop";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import LoadingBar from "@/components/LoadingBar";
 import Footer from "@/components/Footer";
+import DebugPanelWrapper from "@/components/DebugPanelWrapper";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -70,6 +71,7 @@ export default function RootLayout({ children }) {
                             <div className="flex-1 w-full min-w-0">{children}</div>
                             <Footer />
                         </div>
+                        <DebugPanelWrapper />
                     </AuthProvider>
                 </ErrorBoundary>
             </body>

@@ -5,25 +5,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
 import Button from "@/components/ui/Button";
-import { Play, Sparkles, Tv, TrendingUp } from "lucide-react";
+import { Play, Sparkles, Tv, TrendingUp, Calendar, Clapperboard, Flame, Clock } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { mediaService } from "@/services/mediaService";
 import { getMediaUrl } from "@/lib/slugify";
-
-/**
- * Weighted shuffle — prefers recent, high-rated, popular items
- */
-function weightedShuffle(arr) {
-    const weighted = arr.map((item, idx) => {
-        const popularityWeight = Math.min((item.popularity || 0) / 100, 1);
-        const ratingWeight = (item.vote_average || 0) / 10;
-        const recencyWeight = 1 - idx / arr.length;
-        const weight = popularityWeight * 0.4 + ratingWeight * 0.35 + recencyWeight * 0.25;
-        return { item, weight: weight + Math.random() * 0.3 };
-    });
-    weighted.sort((a, b) => b.weight - a.weight);
-    return weighted.map((w) => w.item);
-}
 
 /**
  * Session cache key
@@ -66,10 +51,11 @@ const MediaCard = memo(function MediaCard({ item, type }) {
     const href = getMediaUrl(item, type);
     const title = item.title || item.name;
     const year = (item.release_date || item.first_air_date || "").split("-")[0];
+    const rating = item.vote_average?.toFixed(1);
 
     return (
         <Link href={href} className="group">
-            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
+            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
                 <Image
                     src={tmdb.getImageUrl(item.poster_path)}
                     alt={title || "Poster"}
@@ -78,127 +64,97 @@ const MediaCard = memo(function MediaCard({ item, type }) {
                     loading="lazy"
                     sizes="(max-width: 768px) 50vw, (max-width: 1024px) 25vw, 20vw"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="absolute inset-x-0 bottom-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="text-sm font-semibold text-white line-clamp-2">
-                        {title}
-                    </div>
-                    {year ? (
-                        <div className="text-xs text-white/70">{year}</div>
-                    ) : null}
-                </div>
+            </div>
+            <h3 className="text-base md:text-lg font-semibold line-clamp-1 group-hover:text-accent transition-colors">
+                {title}
+            </h3>
+            <div className="flex items-center gap-2 text-textSecondary text-sm">
+                <span>{year}</span>
+                <span>•</span>
+                <span className="text-accent font-bold">★ {rating}</span>
             </div>
         </Link>
     );
 });
 
 export default function HomePage() {
-    const [discoverMovies, setDiscoverMovies] = useState([]);
-    const [discoverTV, setDiscoverTV] = useState([]);
-    const [trendingMovies, setTrendingMovies] = useState([]);
-    const [trendingTV, setTrendingTV] = useState([]);
+    const [sections, setSections] = useState({
+        trendingMovies: [],
+        trendingTV: [],
+        newEpisodes: [],
+        inTheatres: [],
+        popularMovies: [],
+        comingSoon: [],
+        mostAnticipated: [],
+    });
+    const [heroCategory, setHeroCategory] = useState("trending");
     const [loading, setLoading] = useState(true);
     const { user } = useAuth();
     const fetchedRef = useRef(false);
 
     useEffect(() => {
-        // On each page load (including refresh), generate new content
         const fetchContent = async () => {
-            // Check session cache — if same session, use cached data
             const cached = getSessionCache();
             if (cached && !fetchedRef.current) {
-                setDiscoverMovies(cached.discoverMovies || []);
-                setDiscoverTV(cached.discoverTV || []);
-                setTrendingMovies(cached.trendingMovies || []);
-                setTrendingTV(cached.trendingTV || []);
+                setSections(cached.sections || {});
+                setHeroCategory(cached.heroCategory || "trending");
                 setLoading(false);
                 fetchedRef.current = true;
                 return;
             }
 
             try {
-                // Fetch from multiple sources — use Promise.allSettled so partial failures don't block
-                const randomPage = Math.floor(Math.random() * 3) + 1;
+                // Future date for "most anticipated"
+                const today = new Date();
+                const futureDate = new Date(today);
+                futureDate.setMonth(futureDate.getMonth() + 2);
+                const futureDateStr = futureDate.toISOString().split("T")[0];
+                const todayStr = today.toISOString().split("T")[0];
+
                 const results = await Promise.allSettled([
-                    tmdb.getTrendingMovies("week"),
-                    tmdb.getTrendingTV("week"),
-                    fetchTMDBPage(`movie/popular?page=${randomPage}`),
-                    fetchTMDBPage(`tv/popular?page=${randomPage}`),
-                    fetchTMDBPage(`movie/top_rated?page=${randomPage}`),
-                    fetchTMDBPage(`tv/top_rated?page=${randomPage}`),
+                    tmdb.getTrendingMovies("week"),                          // 0
+                    tmdb.getTrendingTV("week"),                               // 1
+                    fetchTMDBPage("tv/on_the_air?page=1"),                    // 2 - New episodes
+                    fetchTMDBPage("movie/now_playing?page=1"),                // 3 - In theatres
+                    fetchTMDBPage("movie/popular?page=1"),                    // 4 - Popular movies
+                    fetchTMDBPage("movie/upcoming?page=1"),                   // 5 - Coming soon
+                    fetchTMDBPage(`discover/movie?primary_release_date.gte=${todayStr}&primary_release_date.lte=${futureDateStr}&sort_by=popularity.desc`), // 6 - Most anticipated
                 ]);
 
-                const [
-                    trendingMoviesData,
-                    trendingTVData,
-                    popularMovies,
-                    popularTV,
-                    topRatedMovies,
-                    topRatedTV,
-                ] = results.map(r => r.status === "fulfilled" ? r.value : []);
+                const extract = (i) => (results[i].status === "fulfilled" ? results[i].value : []);
 
-                // Get user's seen media IDs for filtering
                 let seenIds = new Set();
                 if (user) {
-                    try {
-                        seenIds = await mediaService.getUserSeenMediaIds(user.uid);
-                    } catch {
-                        // Non-blocking — display all content if this fails
-                    }
+                    try { seenIds = await mediaService.getUserSeenMediaIds(user.uid); } catch {}
                 }
 
-                // Merge and deduplicate movies
-                const allMovies = deduplicateById([
-                    ...(trendingMoviesData || []),
-                    ...(popularMovies || []),
-                    ...(topRatedMovies || []),
-                ]);
+                const filterSeen = (arr) => arr.filter((m) => !seenIds.has(m.id));
 
-                // Merge and deduplicate TV
-                const allTV = deduplicateById([
-                    ...(trendingTVData || []),
-                    ...(popularTV || []),
-                    ...(topRatedTV || []),
-                ]);
+                const newSections = {
+                    trendingMovies: filterSeen(extract(0)).slice(0, 10),
+                    trendingTV: filterSeen(extract(1)).slice(0, 10),
+                    newEpisodes: filterSeen(extract(2)).slice(0, 10),
+                    inTheatres: filterSeen(extract(3)).slice(0, 10),
+                    popularMovies: filterSeen(extract(4)).slice(0, 10),
+                    comingSoon: filterSeen(extract(5)).slice(0, 10),
+                    mostAnticipated: filterSeen(extract(6)).slice(0, 10),
+                };
 
-                // Filter out seen content
-                const unseenMovies = allMovies.filter((m) => !seenIds.has(m.id));
-                const unseenTV = allTV.filter((t) => !seenIds.has(t.id));
+                setSections(newSections);
 
-                // Apply weighted shuffle
-                const shuffledMovies = weightedShuffle(unseenMovies).slice(0, 10);
-                const shuffledTV = weightedShuffle(unseenTV).slice(0, 10);
+                const categories = ["trending", "popular", "top_rated"];
+                const cat = categories[Math.floor(Math.random() * categories.length)];
+                setHeroCategory(cat);
 
-                // Trending stays as-is (but also filtered)
-                const filteredTrendingMovies = (trendingMoviesData || [])
-                    .filter((m) => !seenIds.has(m.id))
-                    .slice(0, 10);
-                const filteredTrendingTV = (trendingTVData || [])
-                    .filter((t) => !seenIds.has(t.id))
-                    .slice(0, 10);
-
-                setDiscoverMovies(shuffledMovies);
-                setDiscoverTV(shuffledTV);
-                setTrendingMovies(filteredTrendingMovies);
-                setTrendingTV(filteredTrendingTV);
-
-                // Cache for this session
-                setSessionCache({
-                    discoverMovies: shuffledMovies,
-                    discoverTV: shuffledTV,
-                    trendingMovies: filteredTrendingMovies,
-                    trendingTV: filteredTrendingTV,
-                });
+                setSessionCache({ sections: newSections, heroCategory: cat });
             } catch (error) {
                 console.error("Error fetching content:", error);
-                // Ensure homepage renders even on total failure — show empty state
             } finally {
                 setLoading(false);
                 fetchedRef.current = true;
             }
         };
 
-        // Clear cache on actual page refresh (navigation reload)
         if (typeof window !== "undefined") {
             const navEntries = performance.getEntriesByType("navigation");
             if (navEntries.length > 0 && navEntries[0].type === "reload") {
@@ -210,13 +166,22 @@ export default function HomePage() {
         fetchContent();
     }, [user]);
 
-    // Stable spotlight — computed once from loaded data
+    // Stable spotlight — picks from trending or popular pool
     const featuredMovie = (() => {
-        const candidates = [...discoverMovies, ...trendingMovies].filter(m => m.backdrop_path);
+        let pool;
+        if (heroCategory === "top_rated") {
+            pool = [...sections.popularMovies].sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+        } else if (heroCategory === "popular") {
+            pool = [...sections.popularMovies].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+        } else {
+            pool = [...sections.trendingMovies, ...sections.popularMovies];
+        }
+        const candidates = pool.filter(m => m.backdrop_path);
         if (candidates.length === 0) return null;
-        // Use a stable index based on array length to avoid re-render flicker
         return candidates[candidates.length % Math.min(5, candidates.length)];
     })();
+
+    const heroCategoryLabel = heroCategory === "top_rated" ? "Top Rated" : heroCategory === "popular" ? "Popular Now" : "Trending";
 
     if (loading) {
         return (
@@ -229,7 +194,7 @@ export default function HomePage() {
         );
     }
 
-    const hasContent = discoverMovies.length > 0 || trendingMovies.length > 0 || discoverTV.length > 0 || trendingTV.length > 0;
+    const hasContent = Object.values(sections).some((arr) => arr.length > 0);
 
     return (
         <main className="min-h-screen bg-background">
@@ -258,6 +223,9 @@ export default function HomePage() {
                                 className="object-contain object-right object-top"
                                 priority
                                 quality={90}
+                                placeholder="blur"
+                                blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyMCIgaGVpZ2h0PSIxMDgwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMxMTExMTEiLz48L3N2Zz4="
+                                sizes="100vw"
                             />
                         </div>
                         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
@@ -265,6 +233,10 @@ export default function HomePage() {
 
                     <div className="relative site-container min-h-[calc(100vh-4rem)] flex items-end pb-12">
                         <div className="max-w-2xl">
+                            <div className="inline-flex items-center gap-2 mb-3 px-3 py-1 bg-accent/20 backdrop-blur-sm rounded-full text-accent text-sm font-semibold">
+                                <Sparkles size={14} />
+                                {heroCategoryLabel}
+                            </div>
                             <h1 className="text-4xl md:text-6xl font-bold mb-4 drop-shadow-lg">
                                 {featuredMovie.title || featuredMovie.name}
                             </h1>
@@ -284,61 +256,106 @@ export default function HomePage() {
                 </div>
             )}
 
-            {/* Trending Movies */}
-            {trendingMovies.length > 0 && (
+            {/* 1. Trending This Week */}
+            {sections.trendingMovies.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <TrendingUp className="text-accent" size={32} />
-                        <h2 className="text-3xl md:text-4xl font-bold">Trending Movies</h2>
+                        <h2 className="text-3xl md:text-4xl font-bold">Trending This Week</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {trendingMovies.map((movie) => (
+                        {sections.trendingMovies.map((movie) => (
                             <MediaCard key={movie.id} item={movie} type="movie" />
                         ))}
                     </div>
                 </section>
             )}
 
-            {/* Discover Movies */}
-            {discoverMovies.length > 0 && (
+            {/* 2. New Episodes */}
+            {sections.newEpisodes.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
-                        <Sparkles className="text-accent" size={32} />
-                        <h2 className="text-3xl md:text-4xl font-bold">Discover Movies</h2>
+                        <Tv className="text-accent" size={32} />
+                        <h2 className="text-3xl md:text-4xl font-bold">New Episodes</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {discoverMovies.map((movie) => (
+                        {sections.newEpisodes.map((show) => (
+                            <MediaCard key={show.id} item={show} type="tv" />
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* 3. In Theatres Now */}
+            {sections.inTheatres.length > 0 && (
+                <section className="site-container py-16">
+                    <div className="flex items-center gap-3 mb-8">
+                        <Clapperboard className="text-accent" size={32} />
+                        <h2 className="text-3xl md:text-4xl font-bold">In Theatres Now</h2>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
+                        {sections.inTheatres.map((movie) => (
                             <MediaCard key={movie.id} item={movie} type="movie" />
                         ))}
                     </div>
                 </section>
             )}
 
-            {/* Trending TV */}
-            {trendingTV.length > 0 && (
+            {/* 4. Popular Movies */}
+            {sections.popularMovies.length > 0 && (
+                <section className="site-container py-16">
+                    <div className="flex items-center gap-3 mb-8">
+                        <Flame className="text-accent" size={32} />
+                        <h2 className="text-3xl md:text-4xl font-bold">Popular Movies</h2>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
+                        {sections.popularMovies.map((movie) => (
+                            <MediaCard key={movie.id} item={movie} type="movie" />
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* 5. Trending Shows */}
+            {sections.trendingTV.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <TrendingUp className="text-accent" size={32} />
                         <h2 className="text-3xl md:text-4xl font-bold">Trending Shows</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {trendingTV.map((show) => (
+                        {sections.trendingTV.map((show) => (
                             <MediaCard key={show.id} item={show} type="tv" />
                         ))}
                     </div>
                 </section>
             )}
 
-            {/* Discover TV Shows */}
-            {discoverTV.length > 0 && (
+            {/* 6. Coming Soon */}
+            {sections.comingSoon.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
-                        <Tv className="text-accent" size={32} />
-                        <h2 className="text-3xl md:text-4xl font-bold">Discover Shows</h2>
+                        <Calendar className="text-accent" size={32} />
+                        <h2 className="text-3xl md:text-4xl font-bold">Coming Soon</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {discoverTV.map((show) => (
-                            <MediaCard key={show.id} item={show} type="tv" />
+                        {sections.comingSoon.map((movie) => (
+                            <MediaCard key={movie.id} item={movie} type="movie" />
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* 7. Most Anticipated */}
+            {sections.mostAnticipated.length > 0 && (
+                <section className="site-container py-16">
+                    <div className="flex items-center gap-3 mb-8">
+                        <Clock className="text-accent" size={32} />
+                        <h2 className="text-3xl md:text-4xl font-bold">Most Anticipated</h2>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
+                        {sections.mostAnticipated.map((movie) => (
+                            <MediaCard key={movie.id} item={movie} type="movie" />
                         ))}
                     </div>
                 </section>
@@ -382,17 +399,4 @@ async function fetchTMDBPage(endpoint) {
         console.error("fetchTMDBPage error:", error);
         return [];
     }
-}
-
-/**
- * Helper: Deduplicate by ID
- */
-function deduplicateById(items) {
-    const seen = new Map();
-    for (const item of items) {
-        if (item.id && !seen.has(item.id)) {
-            seen.set(item.id, item);
-        }
-    }
-    return Array.from(seen.values());
 }

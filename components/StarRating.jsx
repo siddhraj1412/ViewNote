@@ -47,7 +47,13 @@ export default function StarRating({
             <div
                 key={index}
                 className={`relative ${readonly ? "" : "cursor-pointer"}`}
-                onClick={() => !readonly && handleClick(showHalfStars ? displayValue : starValue)}
+                onClick={() => {
+                    if (readonly) return;
+                    const next = showHalfStars
+                        ? (hoverValue != null ? hoverValue : starValue)
+                        : starValue;
+                    handleClick(next);
+                }}
                 onMouseMove={(e) => handleMouseMove(e, index)}
                 onMouseLeave={handleMouseLeave}
                 style={{ width: size, height: size }}

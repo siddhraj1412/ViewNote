@@ -7,10 +7,10 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { getMediaUrl } from "@/lib/slugify";
-import { tmdb } from "@/lib/tmdb";
 import StarRating from "@/components/StarRating";
 import eventBus from "@/lib/eventBus";
 
+const TMDB_IMG = "https://image.tmdb.org/t/p/w154";
 const PAGE_SIZE = 50;
 
 export default function DiarySection({ userId }) {
@@ -134,7 +134,7 @@ export default function DiarySection({ userId }) {
                                 <div className="shrink-0">
                                     {item.poster_path ? (
                                         <img
-                                            src={tmdb.getImageUrl(item.poster_path, "w154", "poster")}
+                                            src={`${TMDB_IMG}${item.poster_path}`}
                                             alt={item.title}
                                             className="w-10 h-[60px] rounded-lg object-cover"
                                         />
@@ -146,8 +146,8 @@ export default function DiarySection({ userId }) {
                                     <h3 className="font-semibold text-white text-sm md:text-base truncate">{item.title}</h3>
                                     <div className="flex flex-wrap items-center gap-2 mt-1">
                                         <span className="text-xs text-textSecondary">{formatDate(item)}</span>
-                                        {Number(item.rating || 0) > 0 && (
-                                            <StarRating value={Number(item.rating || 0)} size={12} readonly showHalfStars />
+                                        {item.rating > 0 && (
+                                            <StarRating value={item.rating} size={12} readonly showHalfStars />
                                         )}
                                         {item.liked && (
                                             <Heart size={12} className="text-red-400" fill="currentColor" />

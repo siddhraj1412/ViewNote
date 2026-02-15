@@ -24,6 +24,14 @@ const RATING_LABELS = {
     5.0: "Exceptional",
 };
 
+function normalizeRating(raw) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return 0;
+    const rounded = Math.round(n * 2) / 2;
+    const clamped = Math.max(0.5, Math.min(5, rounded));
+    return clamped;
+}
+
 function formatDateForInput(date) {
     const d = date instanceof Date ? date : new Date(date);
     return d.toISOString().split("T")[0];
@@ -165,6 +173,12 @@ export default function RatingModal({
             return;
         }
 
+        const normalizedRating = normalizeRating(rating);
+        if (!Number.isFinite(normalizedRating) || normalizedRating < 0.5 || normalizedRating > 5) {
+            showToast.error("Please select a rating from 0.5 to 5.0");
+            return;
+        }
+
         setLoading(true);
         try {
             const tvSeriesId = isTV ? Number(seriesId ?? mediaId) : null;
@@ -187,7 +201,7 @@ export default function RatingModal({
                 ? (seasons || []).filter((s) => s && typeof s.season_number === "number" && s.season_number > 0).length
                 : null;
 
-            await mediaService.rateMedia(user, mediaId, mediaType, rating, { title, poster_path }, review.trim(), {
+            await mediaService.rateMedia(user, mediaId, mediaType, normalizedRating, { title, poster_path }, review.trim(), {
                 watchedDate,
                 liked,
                 viewCount,
@@ -367,7 +381,7 @@ export default function RatingModal({
                                         <select
                                             value={selectedSeason}
                                             onChange={(e) => { setSelectedSeason(e.target.value); setSelectedEpisode("all"); }}
-                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all [color-scheme:dark]"
                                         >
                                             <option value="all">All Seasons</option>
                                             {(seasons || [])
@@ -395,7 +409,7 @@ export default function RatingModal({
                                             <select
                                                 value={selectedEpisode}
                                                 onChange={(e) => setSelectedEpisode(e.target.value)}
-                                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
+                                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all [color-scheme:dark]"
                                             >
                                                 <option value="all">All Episodes</option>
                                                 {(() => {

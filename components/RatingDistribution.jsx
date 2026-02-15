@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { db } from "@/lib/firebase";
-import { useAuth } from "@/context/AuthContext";
-import { doc, onSnapshot, runTransaction, serverTimestamp } from "firebase/firestore";
-import { Eye, Heart, MessageSquare, Star } from "lucide-react";
+import { doc, onSnapshot, collection, query, where, getDocs, setDoc, serverTimestamp } from "firebase/firestore";
+import { Clock, Eye, Heart, Star } from "lucide-react";
+import eventBus from "@/lib/eventBus";
 
 function bucketFromRating(rating) {
     if (rating == null) return null;
@@ -16,9 +16,82 @@ function bucketFromRating(rating) {
 }
 
 const BUCKETS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+const BAR_MAX_PX = 112; // h-28 = 7rem = 112px
+
+/**
+ * Aggregates rating data from user_ratings for a given media,
+ * then writes the result into the media_stats doc so onSnapshot fires.
+ */
+export async function aggregateAndWriteStats(mediaId, mediaType) {
+    if (!mediaId || !mediaType) return null;
+    const statsKey = `${mediaType}_${String(mediaId)}`;
+
+    try {
+        const ratingsQ = query(
+            collection(db, "user_ratings"),
+            where("mediaId", "==", Number(mediaId))
+        );
+        const ratingsSnap = await getDocs(ratingsQ);
+
+        const ratingBuckets = Object.fromEntries(BUCKETS.map((b) => [String(b), 0]));
+        let totalRatings = 0;
+        let totalReviews = 0;
+        let totalLikes = 0;
+
+        ratingsSnap.docs.forEach((d) => {
+            const data = d.data();
+            if (data.mediaType !== mediaType) return;
+
+            const r = Number(data.rating);
+            if (!Number.isFinite(r) || r <= 0 || r > 5) return; // Reject zero and invalid ratings
+
+            const bucket = bucketFromRating(r);
+            if (bucket !== null) {
+                ratingBuckets[String(bucket)] = (ratingBuckets[String(bucket)] || 0) + 1;
+                totalRatings++;
+            }
+            if (data.review && data.review.trim().length > 0) {
+                totalReviews++;
+            }
+            if (data.liked === true) {
+                totalLikes++;
+            }
+        });
+
+        const watchedQ = query(
+            collection(db, "user_watched"),
+            where("mediaId", "==", Number(mediaId))
+        );
+        const watchedSnap = await getDocs(watchedQ);
+        const totalWatchers = watchedSnap.docs.filter((d) => d.data().mediaType === mediaType).length;
+
+        const statsData = {
+            ratingBuckets,
+            totalRatings,
+            totalReviews,
+            totalWatchers,
+            totalLikes,
+            lastUpdated: serverTimestamp(),
+        };
+
+        const statsRef = doc(db, "media_stats", statsKey);
+        await setDoc(statsRef, statsData, { merge: true });
+
+        if (process.env.NODE_ENV === "development") {
+            console.log(`[RatingDistribution] Stats refreshed for ${statsKey}:`, {
+                totalRatings, totalReviews, totalWatchers, totalLikes,
+                buckets: ratingBuckets,
+            });
+        }
+
+        return statsData;
+    } catch (error) {
+        console.error(`[RatingDistribution] Error aggregating stats:`, error);
+        return null;
+    }
+}
 
 export default function RatingDistribution({ mediaId, mediaType = null, statsId = null }) {
-    const { user } = useAuth();
     const [loading, setLoading] = useState(true);
     const [counts, setCounts] = useState(() => Object.fromEntries(BUCKETS.map((b) => [String(b), 0])));
     const [totalRatings, setTotalRatings] = useState(0);
@@ -26,158 +99,122 @@ export default function RatingDistribution({ mediaId, mediaType = null, statsId 
     const [totalWatchers, setTotalWatchers] = useState(0);
     const [hoverBucket, setHoverBucket] = useState(null);
     const [totalLikes, setTotalLikes] = useState(0);
-    const [liked, setLiked] = useState(false);
-    const [likeLoading, setLikeLoading] = useState(false);
+    const aggregatedRef = useRef(false);
 
     const statsKey = useMemo(() => {
         if (statsId) return String(statsId);
-        if (!mediaType || mediaId == null) return null;
-        if (mediaType === "movie") return `movie_${Number(mediaId)}`;
-        if (mediaType === "tv") return `tv_${Number(mediaId)}`;
+        if (mediaType && mediaId != null) return `${mediaType}_${String(mediaId)}`;
         return null;
-    }, [mediaId, mediaType, statsId]);
+    }, [statsId, mediaType, mediaId]);
 
-    const statsRef = useMemo(() => {
-        return statsKey ? doc(db, "media_stats", statsKey) : null;
-    }, [statsKey]);
+    const applyStatsData = useCallback((data) => {
+        const next = Object.fromEntries(BUCKETS.map((b) => [String(b), 0]));
+        const buckets = data.ratingBuckets || data.buckets || {};
+        for (const b of BUCKETS) {
+            const key = String(b);
+            next[key] = Number(buckets[key] || 0);
+        }
+        setCounts(next);
+        setTotalRatings(Number(data.totalRatings || 0));
+        setTotalReviews(Number(data.totalReviews || 0));
+        setTotalWatchers(Number(data.totalWatchers || 0));
+        setTotalLikes(Number(data.totalLikes || 0));
+    }, []);
 
-    const likeRef = useMemo(() => {
-        if (!user?.uid || !statsKey) return null;
-        return doc(db, "user_media_likes", `${user.uid}_${statsKey}`);
-    }, [user?.uid, statsKey]);
+    const resetStats = useCallback(() => {
+        setCounts(Object.fromEntries(BUCKETS.map((b) => [String(b), 0])));
+        setTotalRatings(0);
+        setTotalReviews(0);
+        setTotalWatchers(0);
+        setTotalLikes(0);
+    }, []);
 
+    // Listen to media_stats in real time
     useEffect(() => {
         if (!statsKey) {
-            setCounts(Object.fromEntries(BUCKETS.map((b) => [String(b), 0])));
-            setTotalRatings(0);
-            setTotalReviews(0);
-            setTotalWatchers(0);
-            setTotalLikes(0);
+            resetStats();
             setLoading(false);
             return;
         }
 
         setLoading(true);
-        if (!statsRef) {
-            setCounts(Object.fromEntries(BUCKETS.map((b) => [String(b), 0])));
-            setTotalRatings(0);
-            setTotalReviews(0);
-            setTotalWatchers(0);
-            setTotalLikes(0);
-            setLoading(false);
-            return;
-        }
+        aggregatedRef.current = false;
+        const statsRef = doc(db, "media_stats", statsKey);
 
-        const unsub = onSnapshot(statsRef, (statsSnap) => {
-            if (statsSnap.exists()) {
-                const data = statsSnap.data() || {};
-                const next = Object.fromEntries(BUCKETS.map((b) => [String(b), 0]));
+        const unsub = onSnapshot(statsRef, (snap) => {
+            if (snap.exists()) {
+                const data = snap.data() || {};
+                applyStatsData(data);
+
+                // If ratingBuckets missing or empty, trigger one-time aggregation
                 const buckets = data.ratingBuckets || data.buckets || {};
-                for (const b of BUCKETS) {
-                    const key = String(b);
-                    next[key] = Number(buckets[key] || 0);
+                const hasData = BUCKETS.some((b) => Number(buckets[String(b)] || 0) > 0);
+                if (!hasData && !aggregatedRef.current && mediaId && mediaType) {
+                    aggregatedRef.current = true;
+                    aggregateAndWriteStats(mediaId, mediaType);
                 }
-                setCounts(next);
-                setTotalRatings(Number(data.totalRatings || 0));
-                setTotalReviews(Number(data.totalReviews || 0));
-                setTotalWatchers(Number(data.totalWatchers || 0));
-                setTotalLikes(Number(data.totalLikes || 0));
             } else {
-                setCounts(Object.fromEntries(BUCKETS.map((b) => [String(b), 0])));
-                setTotalRatings(0);
-                setTotalReviews(0);
-                setTotalWatchers(0);
-                setTotalLikes(0);
+                resetStats();
+                // No stats doc — seed it via aggregation
+                if (!aggregatedRef.current && mediaId && mediaType) {
+                    aggregatedRef.current = true;
+                    aggregateAndWriteStats(mediaId, mediaType);
+                }
             }
             setLoading(false);
         }, () => {
-            setCounts(Object.fromEntries(BUCKETS.map((b) => [String(b), 0])));
-            setTotalRatings(0);
-            setTotalReviews(0);
-            setTotalWatchers(0);
-            setTotalLikes(0);
+            resetStats();
             setLoading(false);
         });
 
         return () => {
             try { unsub(); } catch (_) {}
         };
-    }, [statsKey, statsRef]);
+    }, [statsKey, mediaId, mediaType, applyStatsData, resetStats]);
 
+    // Re-aggregate whenever a rating or status change event fires for this media
     useEffect(() => {
-        if (!likeRef) {
-            setLiked(false);
-            return;
-        }
+        if (!mediaId || !mediaType) return;
 
-        const unsub = onSnapshot(likeRef, (snap) => {
-            setLiked(snap.exists());
-        }, () => {
-            setLiked(false);
-        });
-
-        return () => {
-            try { unsub(); } catch (_) {}
+        const handleUpdate = (data) => {
+            if (String(data.mediaId) === String(mediaId) && data.mediaType === mediaType) {
+                aggregateAndWriteStats(mediaId, mediaType);
+            }
         };
-    }, [likeRef]);
 
-    const handleToggleLike = async () => {
-        if (!user?.uid || !statsRef || !likeRef || !statsKey) return;
-        if (likeLoading) return;
+        eventBus.on("MEDIA_UPDATED", handleUpdate);
+        return () => eventBus.off("MEDIA_UPDATED", handleUpdate);
+    }, [mediaId, mediaType]);
 
-        setLikeLoading(true);
-        try {
-            await runTransaction(db, async (tx) => {
-                const likeSnap = await tx.get(likeRef);
-                const statsSnap = await tx.get(statsRef);
-                const statsData = statsSnap.exists() ? (statsSnap.data() || {}) : {};
-                const prevLikes = Number(statsData.totalLikes || 0);
-
-                if (likeSnap.exists()) {
-                    tx.delete(likeRef);
-                    tx.set(
-                        statsRef,
-                        { totalLikes: Math.max(0, prevLikes - 1) },
-                        { merge: true }
-                    );
-                    return;
-                }
-
-                tx.set(
-                    likeRef,
-                    {
-                        userId: user.uid,
-                        statsId: statsKey,
-                        mediaId: mediaId != null ? Number(mediaId) : null,
-                        mediaType: mediaType || null,
-                        createdAt: serverTimestamp(),
-                    },
-                    { merge: true }
-                );
-                tx.set(statsRef, { totalLikes: prevLikes + 1 }, { merge: true });
-            });
-        } finally {
-            setLikeLoading(false);
-        }
-    };
-
+    // Compute bar heights in pixels so they always render correctly
     const bars = useMemo(() => {
         const max = Math.max(1, ...BUCKETS.map((b) => counts[String(b)] || 0));
         return BUCKETS.map((bucket) => {
             const count = counts[String(bucket)] || 0;
-            const rawPct = Math.round((count / max) * 100);
-            const heightPct = count === 0 ? 0 : Math.max(4, rawPct);
-            return { bucket, count, heightPct };
+            const ratio = count / max;
+            const heightPx = count === 0 ? 0 : Math.max(6, Math.round(ratio * BAR_MAX_PX));
+            return { bucket, count, heightPx };
         });
+    }, [counts]);
+
+    const avgRating = useMemo(() => {
+        let sum = 0;
+        let total = 0;
+        for (const b of BUCKETS) {
+            const c = counts[String(b)] || 0;
+            sum += b * c;
+            total += c;
+        }
+        return total > 0 ? (sum / total).toFixed(1) : null;
     }, [counts]);
 
     if (loading) {
         return (
             <div className="bg-secondary rounded-xl border border-white/5 p-5">
-                <div className="h-5 w-40 bg-white/10 rounded mb-4" />
+                <div className="h-5 w-40 bg-white/10 rounded mb-4 animate-pulse" />
                 <div className="space-y-2">
                     {[1, 2, 3, 4, 5].map((i) => (
-                        <div key={i} className="h-3 bg-white/10 rounded" />
+                        <div key={i} className="h-3 bg-white/10 rounded animate-pulse" />
                     ))}
                 </div>
             </div>
@@ -186,57 +223,65 @@ export default function RatingDistribution({ mediaId, mediaType = null, statsId 
 
     return (
         <div className="bg-secondary rounded-xl border border-white/5 p-5">
-            <div className="text-lg font-bold text-white">Ratings</div>
+            <div className="flex items-center justify-between">
+                <div className="text-lg font-bold text-white">Ratings</div>
+                {avgRating && (
+                    <div className="flex items-center gap-1.5 text-sm">
+                        <Star size={14} className="text-accent" fill="currentColor" />
+                        <span className="font-semibold text-white tabular-nums">{avgRating}</span>
+                    </div>
+                )}
+            </div>
 
-            <div className="mt-4 relative">
-                <div className="h-28 flex items-end gap-2">
+            {/* Histogram bars — pixel-based heights for reliable rendering */}
+            <div className="mt-4">
+                <div className="h-28 flex items-end gap-1.5">
                     {bars.map((b) => (
                         <div
                             key={b.bucket}
-                            className="relative flex-1 h-full"
+                            className="flex-1 relative group cursor-pointer"
                             onMouseEnter={() => setHoverBucket(b.bucket)}
                             onMouseLeave={() => setHoverBucket(null)}
                         >
-                            {hoverBucket === b.bucket ? (
-                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-black/90 border border-white/10 px-2 py-1 text-xs text-white z-10">
+                            {/* Tooltip */}
+                            {hoverBucket === b.bucket && b.count > 0 && (
+                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-black/90 border border-white/10 px-2.5 py-1 text-xs text-white z-10 pointer-events-none">
                                     <span className="font-semibold tabular-nums">{b.bucket}★</span>
                                     <span className="text-white/70"> • </span>
                                     <span className="tabular-nums">{b.count}</span>
                                 </div>
-                            ) : null}
-                            <div className="w-full h-full rounded-md bg-white/10" style={{ minHeight: "1px" }}>
-                                <div
-                                    className="w-full bg-accent rounded-md"
-                                    style={{ height: b.heightPct > 0 ? `${b.heightPct}%` : "0%", minHeight: b.count > 0 ? "8px" : "0px" }}
-                                />
-                            </div>
+                            )}
+                            {/* Background track — only show when bucket has ratings */}
+                            {b.count > 0 && (
+                                <>
+                                    <div
+                                        className="w-full rounded-sm bg-white/[0.06]"
+                                        style={{ height: `${BAR_MAX_PX}px` }}
+                                    />
+                                    {/* Filled bar anchored to bottom */}
+                                    <div
+                                        className="absolute bottom-0 left-0 right-0 rounded-sm transition-all duration-300 bg-accent group-hover:bg-accent/90"
+                                        style={{ height: `${b.heightPx}px` }}
+                                    />
+                                </>
+                            )}
                         </div>
                     ))}
                 </div>
             </div>
 
+            {/* Stats row — Eye, Heart, Clock, Star all in one aligned row */}
             <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-textSecondary">
                     <Eye size={16} />
                     <span className="tabular-nums">{totalWatchers}</span>
                 </div>
-                <button
-                    type="button"
-                    onClick={handleToggleLike}
-                    disabled={!user?.uid || likeLoading}
-                    className="flex items-center gap-2 text-sm text-textSecondary hover:text-white transition-colors disabled:opacity-60"
-                    aria-label={liked ? "Unlike" : "Like"}
-                    title={liked ? "Unlike" : "Like"}
-                >
-                    <Heart
-                        size={16}
-                        className={liked ? "text-red-400" : "text-white/50"}
-                        fill={liked ? "currentColor" : "none"}
-                    />
-                    <span className="tabular-nums">{totalLikes}</span>
-                </button>
                 <div className="flex items-center gap-2 text-sm text-textSecondary">
-                    <MessageSquare size={16} />
+                    <Heart size={16} className={totalLikes > 0 ? "text-red-400" : ""} fill={totalLikes > 0 ? "currentColor" : "none"} />
+                    <span className="tabular-nums">{totalLikes}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-textSecondary">
+                    <Clock size={16} />
                     <span className="tabular-nums">{totalReviews}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-textSecondary">

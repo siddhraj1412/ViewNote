@@ -16,14 +16,12 @@ import MediaSection from "@/components/MediaSection";
 import ReviewsForMedia from "@/components/ReviewsForMedia";
 import SectionTabs from "@/components/SectionTabs";
 import { useMediaCustomization } from "@/hooks/useMediaCustomization";
+import ExpandableText from "@/components/ExpandableText";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { Eye, EyeOff, Star } from "lucide-react";
 import showToast from "@/lib/toast";
-import TmdbRatingBadge from "@/components/TmdbRatingBadge";
-import { mediaService } from "@/services/mediaService";
-import StreamingAvailability from "@/components/StreamingAvailability";
 
 const RatingModal = dynamic(() => import("@/components/RatingModal"), { ssr: false, loading: () => null });
 
@@ -106,18 +104,42 @@ export default function SeasonPage() {
 
     const handleToggleEpisodeWatched = useCallback(async (epNum) => {
         if (!user) { showToast.info("Please sign in"); return; }
+        const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(tvId)}`);
         try {
-            const seriesData = { name: tv?.name || tv?.title || "", title: tv?.name || tv?.title || "", poster_path: tv?.poster_path || "" };
-            if (watchedEpisodes.has(epNum)) {
-                await mediaService.unwatchTVEpisode(user, tvId, seasonNumber, epNum, seasonEpisodeCountMap);
+            const snap = await getDoc(progressRef);
+            const data = snap.exists() ? snap.data() : {};
+            const epMap = data.watchedEpisodes || {};
+            const current = Array.isArray(epMap[String(seasonNumber)]) ? epMap[String(seasonNumber)].map(Number) : [];
+            const currentSet = new Set(current);
+            if (currentSet.has(epNum)) {
+                currentSet.delete(epNum);
+                showToast.success(`Episode ${epNum} unmarked`);
             } else {
-                await mediaService.markTVEpisodeWatched(user, tvId, seriesData, seasonNumber, epNum, seasonEpisodeCountMap, {});
+                currentSet.add(epNum);
+                showToast.success(`Episode ${epNum} marked as watched`);
             }
+            const newEpMap = { ...epMap, [String(seasonNumber)]: Array.from(currentSet).sort((a, b) => a - b) };
+
+            // Auto-mark season if all episodes watched
+            const totalEps = episodes.length;
+            const watchedSeasons = Array.isArray(data.watchedSeasons) ? new Set(data.watchedSeasons.map(Number)) : new Set();
+            if (currentSet.size >= totalEps && totalEps > 0) {
+                watchedSeasons.add(seasonNumber);
+            } else {
+                watchedSeasons.delete(seasonNumber);
+            }
+
+            await setDoc(progressRef, {
+                watchedEpisodes: newEpMap,
+                watchedSeasons: Array.from(watchedSeasons),
+                userId: user.uid,
+                seriesId: Number(tvId),
+            }, { merge: true });
         } catch (err) {
             console.error("Error toggling episode watched:", err);
             showToast.error("Failed to update");
         }
-    }, [user, tvId, seasonNumber, tv, watchedEpisodes, seasonEpisodeCountMap]);
+    }, [user, tvId, seasonNumber, episodes.length]);
 
     const handleQuickRateEpisode = useCallback((epNum) => {
         if (!user) { showToast.info("Please sign in"); return; }
@@ -172,9 +194,11 @@ export default function SeasonPage() {
                         </div>
 
                         {season.overview ? (
-                            <p className="text-base md:text-lg text-textSecondary leading-relaxed">
-                                {season.overview}
-                            </p>
+                            <ExpandableText
+                                text={season.overview}
+                                maxLines={4}
+                                className="text-base md:text-lg text-textSecondary leading-relaxed"
+                            />
                         ) : null}
 
                         <ActionBar
@@ -215,8 +239,11 @@ export default function SeasonPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                     <div className="lg:col-span-4 space-y-6">
                         <RatingDistribution mediaId={tvId} mediaType="tv" statsId={seasonStatsId} />
-                        <TmdbRatingBadge value={season.vote_average} />
-                        <StreamingAvailability mediaType="tv" mediaId={tvId} />
+                        {season.vote_average > 0 && (
+                            <div className="text-xs text-textSecondary">
+                                TMDB Rating: {Number(season.vote_average || 0).toFixed(1)} / 10
+                            </div>
+                        )}
                     </div>
 
                     <div className="lg:col-span-8">

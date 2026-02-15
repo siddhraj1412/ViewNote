@@ -45,7 +45,7 @@ export default function Modal({ isOpen, onClose, children, title, maxWidth = "80
 
             {/* Modal Container - flex column with overflow hidden for sticky footer */}
             <div
-                className="relative bg-secondary border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+                className="relative bg-secondary border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-visible"
                 style={{ maxWidth, width: "100%", maxHeight: "85vh" }}
                 onClick={(e) => e.stopPropagation()}
             >
@@ -62,7 +62,7 @@ export default function Modal({ isOpen, onClose, children, title, maxWidth = "80
                 </div>
 
                 {/* Content - Scrollable middle section */}
-                <div className="flex-1 overflow-y-auto min-h-0">
+                <div className="flex-1 overflow-y-auto min-h-0 overflow-x-visible">
                     {children}
                 </div>
             </div>

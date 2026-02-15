@@ -7,11 +7,15 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { getMediaUrl } from "@/lib/slugify";
+import { useParams } from "next/navigation";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w300";
+const PREVIEW_SIZE = 24;
 
 export default function LikesSection({ userId }) {
     const { user } = useAuth();
+    const params = useParams();
+    const usernameParam = params?.username;
     const ownerId = userId || user?.uid;
     const [likes, setLikes] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -43,7 +47,7 @@ export default function LikesSection({ userId }) {
 
     if (loading) {
         return (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                 {Array.from({ length: 12 }).map((_, i) => (
                     <div key={i} className="aspect-[2/3] rounded-xl bg-white/5 animate-pulse" />
                 ))}
@@ -71,8 +75,17 @@ export default function LikesSection({ userId }) {
                     <span className="text-sm text-textSecondary">{likes.length} liked</span>
                 </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {likes.map((item) => {
+
+            {likes.length > PREVIEW_SIZE && usernameParam ? (
+                <div className="flex justify-end mb-4">
+                    <Link href={`/${encodeURIComponent(usernameParam)}/likes`} className="text-sm text-accent hover:underline">
+                        See all
+                    </Link>
+                </div>
+            ) : null}
+
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+                {likes.slice(0, PREVIEW_SIZE).map((item) => {
                     const url = getMediaUrl(
                         { id: item.mediaId, title: item.title, name: item.title },
                         item.mediaType
@@ -84,7 +97,7 @@ export default function LikesSection({ userId }) {
                                     <img
                                         src={`${TMDB_IMG}${item.poster_path}`}
                                         alt={item.title}
-                                        className="w-full h-full object-contain object-center"
+                                        className="w-full h-full object-cover"
                                     />
                                 </div>
                             ) : (
