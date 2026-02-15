@@ -62,11 +62,6 @@ export default function WatchedSectionTab() {
     }, [profileUserId]);
 
     const filteredItems = watchedItems.filter((item) => {
-        if (item?.mediaType === "tv") {
-            const t = item?.targetType || "series";
-            if (t !== "series") return false;
-            if (item?.seasonNumber != null || item?.episodeNumber != null) return false;
-        }
         if (filter === "all") return true;
         if (filter === "movies") return item.mediaType === "movie";
         if (filter === "series") return item.mediaType === "tv";

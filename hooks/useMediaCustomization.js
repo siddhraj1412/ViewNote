@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { useStore } from "@/store/useStore";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import eventBus from "@/lib/eventBus";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 
 /**
  * Hook for media detail pages to get and subscribe to live customization updates.
@@ -31,38 +30,42 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
             return;
         }
 
+        // Seed immediately (store or one-time fetch) while snapshot spins up.
         loadCustomization();
 
-        // Subscribe to live updates using eventBus
-        const handleUpdate = (data) => {
-            if (!data || !eventBus) return;
+        const prefRef = doc(db, "user_media_preferences", `${ownerId}_${mediaType}_${mediaId}`);
+        const unsub = onSnapshot(prefRef, (snap) => {
+            if (snap.exists()) {
+                const data = snap.data() || {};
+                setCustomPoster(data.customPoster || defaultPoster);
+                setCustomBanner(data.customBanner || defaultBanner);
 
-            if (data.mediaId === mediaId && data.mediaType === mediaType) {
-                // If it's the current user updating their own, read from store
                 if (user?.uid === ownerId) {
-                    const customization = store.getCustomization(mediaId, mediaType);
-                    if (customization) {
-                        setCustomPoster(customization.customPoster || defaultPoster);
-                        setCustomBanner(customization.customBanner || defaultBanner);
-                    } else {
-                        setCustomPoster(defaultPoster);
-                        setCustomBanner(defaultBanner);
-                    }
-                } else {
-                    // Re-fetch from Firestore for cross-user
-                    loadCustomization();
+                    store.setCustomization(mediaId, mediaType, {
+                        customPoster: data.customPoster,
+                        customBanner: data.customBanner,
+                    });
+                }
+            } else {
+                setCustomPoster(defaultPoster);
+                setCustomBanner(defaultBanner);
+                if (user?.uid === ownerId) {
+                    store.setCustomization(mediaId, mediaType, {
+                        customPoster: null,
+                        customBanner: null,
+                    });
                 }
             }
-        };
-
-        if (eventBus && typeof eventBus.on === "function") {
-            eventBus.on("CUSTOMIZATION_UPDATED", handleUpdate);
-        }
+            setLoading(false);
+        }, (error) => {
+            console.error("Customization snapshot error:", error);
+            setCustomPoster(defaultPoster);
+            setCustomBanner(defaultBanner);
+            setLoading(false);
+        });
 
         return () => {
-            if (eventBus && typeof eventBus.off === "function") {
-                eventBus.off("CUSTOMIZATION_UPDATED", handleUpdate);
-            }
+            try { unsub(); } catch (_) {}
         };
     }, [ownerId, mediaId, mediaType, defaultPoster, defaultBanner]);
 
@@ -106,6 +109,7 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
             setCustomPoster(defaultPoster);
             setCustomBanner(defaultBanner);
         } finally {
+            // Loading will also be ended by the snapshot; keep this as fallback.
             setLoading(false);
         }
     };

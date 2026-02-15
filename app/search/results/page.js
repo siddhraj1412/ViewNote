@@ -83,8 +83,6 @@ function ResultsContent() {
                             </h3>
                             <div className="flex items-center gap-2 text-textSecondary text-sm">
                                 <span>{(item.release_date || item.first_air_date || "").split("-")[0]}</span>
-                                <span>•</span>
-                                <span className="text-accent font-bold">★ {item.vote_average?.toFixed(1)}</span>
                             </div>
                         </Link>
                     ))}

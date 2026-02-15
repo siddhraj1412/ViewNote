@@ -44,7 +44,7 @@ export default function Footer() {
                 <div className="mt-10 pt-6 border-t border-white/10 space-y-2">
                     <div className="text-xs text-textSecondary">Data provided by TMDB.</div>
                     <div className="text-xs text-textSecondary/70">
-                        This product uses the TMDB API but is not endorsed or certified by TMDB.
+                        This product uses the <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" className="text-accent hover:underline">TMDB</a> API but is not endorsed or certified by TMDB.
                     </div>
                     <div className="text-xs text-textSecondary/70">© {year} ViewNote. All rights reserved.</div>
                 </div>

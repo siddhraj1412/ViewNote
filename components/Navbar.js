@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
     Search, User, Film, Settings, LogOut,
-    BookOpen, List, Star, Clock
+    BookOpen, List, Star, Bookmark
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import SearchOverlay from "./SearchOverlay";
@@ -73,7 +73,7 @@ function NavbarContent() {
         const profileIdentifier = user.username || user.uid;
         return [
             { label: "Profile", icon: User, href: getProfileUrl(profileIdentifier) },
-            { label: "Watchlist", icon: Clock, href: getProfileUrl(profileIdentifier, 'watchlist') },
+            { label: "Watchlist", icon: Bookmark, href: getProfileUrl(profileIdentifier, 'watchlist') },
             { label: "Reviews", icon: Star, href: getProfileUrl(profileIdentifier, 'reviews') },
             { label: "Diary", icon: BookOpen, href: getProfileUrl(profileIdentifier, 'diary') },
             { label: "Lists", icon: List, href: getProfileUrl(profileIdentifier, 'lists') },

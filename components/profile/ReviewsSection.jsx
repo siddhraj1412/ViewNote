@@ -1,14 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { MessageSquare, Heart, Calendar, ThumbsUp } from "lucide-react";
-import Link from "next/link";
+import { useMemo, useState, useEffect, useCallback } from "react";
+import { MessageSquare } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import StarRating from "@/components/StarRating";
-import { reviewService } from "@/services/reviewService";
-
-const TMDB_IMG = "https://image.tmdb.org/t/p";
+import { collection, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import ReviewCard from "@/components/ReviewCard";
 
 function generateSlugFromTitle(text) {
     if (!text) return "";
@@ -26,7 +22,9 @@ function generateSlugFromTitle(text) {
 export default function ReviewsSection({ userId, username }) {
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [socialCounts, setSocialCounts] = useState({}); // { [reviewId]: { likes: N, comments: N } }
+    const [sortMode, setSortMode] = useState("recent");
+    const [likeCounts, setLikeCounts] = useState({});
+    const [commentCounts, setCommentCounts] = useState({});
 
     const fetchReviews = useCallback(async () => {
         if (!userId) return;
@@ -42,21 +40,6 @@ export default function ReviewsSection({ userId, username }) {
                 .filter((r) => r.review && r.review.trim().length > 0)
                 .sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
             setReviews(items);
-
-            // Fetch like and comment counts for each review
-            const counts = {};
-            await Promise.all(items.map(async (item) => {
-                try {
-                    const [likeCount, comments] = await Promise.all([
-                        reviewService.getLikeCount(item.id),
-                        reviewService.getComments(item.id),
-                    ]);
-                    counts[item.id] = { likes: likeCount, comments: comments.length };
-                } catch {
-                    counts[item.id] = { likes: 0, comments: 0 };
-                }
-            }));
-            setSocialCounts(counts);
         } catch (error) {
             console.error("Error loading reviews:", error);
         } finally {
@@ -68,10 +51,91 @@ export default function ReviewsSection({ userId, username }) {
         fetchReviews();
     }, [fetchReviews]);
 
+    useEffect(() => {
+        const ids = reviews.map((r) => r.id).filter(Boolean);
+        if (ids.length === 0) {
+            setLikeCounts({});
+            setCommentCounts({});
+            return;
+        }
+
+        const chunks = [];
+        for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
+
+        const unsubs = [];
+        const likesAgg = {};
+        const commentsAgg = {};
+
+        const recompute = () => {
+            setLikeCounts({ ...likesAgg });
+            setCommentCounts({ ...commentsAgg });
+        };
+
+        for (const chunk of chunks) {
+            try {
+                const likesQ = query(collection(db, "review_likes"), where("reviewDocId", "in", chunk));
+                const unsubLikes = onSnapshot(likesQ, (snap) => {
+                    // reset only keys in this chunk
+                    for (const rid of chunk) likesAgg[rid] = 0;
+                    snap.docs.forEach((d) => {
+                        const data = d.data() || {};
+                        const rid = data.reviewDocId;
+                        if (!rid) return;
+                        likesAgg[rid] = Number(likesAgg[rid] || 0) + 1;
+                    });
+                    recompute();
+                }, () => {
+                    for (const rid of chunk) likesAgg[rid] = 0;
+                    recompute();
+                });
+                unsubs.push(unsubLikes);
+            } catch (_) {}
+
+            try {
+                const commentsQ = query(collection(db, "review_comments"), where("reviewDocId", "in", chunk));
+                const unsubComments = onSnapshot(commentsQ, (snap) => {
+                    for (const rid of chunk) commentsAgg[rid] = 0;
+                    snap.docs.forEach((d) => {
+                        const data = d.data() || {};
+                        const rid = data.reviewDocId;
+                        if (!rid) return;
+                        commentsAgg[rid] = Number(commentsAgg[rid] || 0) + 1;
+                    });
+                    recompute();
+                }, () => {
+                    for (const rid of chunk) commentsAgg[rid] = 0;
+                    recompute();
+                });
+                unsubs.push(unsubComments);
+            } catch (_) {}
+        }
+
+        return () => {
+            unsubs.forEach((u) => {
+                try { u(); } catch (_) {}
+            });
+        };
+    }, [reviews]);
+
+    const sortedReviews = useMemo(() => {
+        const copy = [...reviews];
+        if (sortMode === "popular") {
+            copy.sort((a, b) => {
+                const aScore = Number(likeCounts[a.id] || 0) + Number(commentCounts[a.id] || 0);
+                const bScore = Number(likeCounts[b.id] || 0) + Number(commentCounts[b.id] || 0);
+                if (bScore !== aScore) return bScore - aScore;
+                return (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0);
+            });
+            return copy;
+        }
+        copy.sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
+        return copy;
+    }, [reviews, sortMode, likeCounts, commentCounts]);
+
     const getReviewLink = (item) => {
         if (username) {
             const slug = generateSlugFromTitle(item.title);
-            return `/${username}/${slug}-${item.mediaId}`;
+            return `/${username}/${slug}-${item.id}`;
         }
         // Fallback to media page
         if (item.mediaType === "tv") return `/tv/${item.mediaId}`;
@@ -127,77 +191,32 @@ export default function ReviewsSection({ userId, username }) {
         <section>
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold">Reviews</h2>
-                <span className="text-sm text-textSecondary">{reviews.length} review{reviews.length !== 1 ? "s" : ""}</span>
+                <div className="flex items-center gap-3">
+                    <div className="flex gap-1.5">
+                        {[
+                            { id: "recent", label: "Most Recent" },
+                            { id: "popular", label: "Popular" },
+                        ].map((f) => (
+                            <button
+                                key={f.id}
+                                onClick={() => setSortMode(f.id)}
+                                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                    sortMode === f.id
+                                        ? "bg-accent text-white"
+                                        : "bg-white/5 text-textSecondary hover:text-white"
+                                }`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+                    <span className="text-sm text-textSecondary">{reviews.length} review{reviews.length !== 1 ? "s" : ""}</span>
+                </div>
             </div>
 
             <div className="space-y-4">
-                {reviews.map((item) => (
-                    <Link key={item.id} href={getReviewLink(item)} className="block">
-                        <div className="bg-secondary rounded-xl p-5 border border-white/5 hover:border-white/10 transition-all">
-                            <div className="flex gap-4">
-                                <div className="shrink-0">
-                                    {item.poster_path ? (
-                                        <img
-                                            src={`${TMDB_IMG}/w154${item.poster_path}`}
-                                            alt={item.title}
-                                            className="w-16 h-24 rounded-lg object-cover"
-                                        />
-                                    ) : (
-                                        <div className="w-16 h-24 rounded-lg bg-white/10 flex items-center justify-center">
-                                            <MessageSquare size={16} className="text-white/20" />
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="font-bold text-white text-lg leading-tight hover:text-accent transition-colors">{item.title}</h3>
-                                    <div className="flex flex-wrap items-center gap-3 mt-1.5">
-                                        {item.rating > 0 && (
-                                            <StarRating value={item.rating} size={14} readonly showHalfStars />
-                                        )}
-                                        {item.liked && (
-                                            <Heart size={14} className="text-red-400" fill="currentColor" />
-                                        )}
-                                        <span className="text-xs text-textSecondary capitalize">{item.mediaType}</span>
-                                        {item.ratedAt && (
-                                            <span className="text-xs text-textSecondary">{formatDate(item.ratedAt)}</span>
-                                        )}
-                                    </div>
-                                    <p className="text-sm text-textSecondary mt-3 whitespace-pre-wrap leading-relaxed line-clamp-3">
-                                        {item.review}
-                                    </p>
-                                    {item.tags && item.tags.length > 0 && (
-                                        <div className="flex flex-wrap gap-1.5 mt-2">
-                                            {item.tags.slice(0, 5).map((tag, i) => (
-                                                <span key={i} className="bg-accent/10 text-accent text-[10px] font-medium px-2 py-0.5 rounded-full">
-                                                    {tag}
-                                                </span>
-                                            ))}
-                                            {item.tags.length > 5 && (
-                                                <span className="text-[10px] text-textSecondary">+{item.tags.length - 5}</span>
-                                            )}
-                                        </div>
-                                    )}
-                                    {/* Social counts */}
-                                    {(socialCounts[item.id]?.likes > 0 || socialCounts[item.id]?.comments > 0) && (
-                                        <div className="flex items-center gap-3 mt-2.5 pt-2 border-t border-white/5">
-                                            {socialCounts[item.id]?.likes > 0 && (
-                                                <div className="flex items-center gap-1 text-xs text-textSecondary">
-                                                    <ThumbsUp size={12} />
-                                                    <span>{socialCounts[item.id].likes}</span>
-                                                </div>
-                                            )}
-                                            {socialCounts[item.id]?.comments > 0 && (
-                                                <div className="flex items-center gap-1 text-xs text-textSecondary">
-                                                    <MessageSquare size={12} />
-                                                    <span>{socialCounts[item.id].comments}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </Link>
+                {sortedReviews.map((item) => (
+                    <ReviewCard key={item.id} review={item} href={getReviewLink(item)} showPoster={false} showUser={false} />
                 ))}
             </div>
         </section>

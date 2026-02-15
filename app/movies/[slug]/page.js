@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -13,11 +13,13 @@ import RatingDistribution from "@/components/RatingDistribution";
 import MediaSection from "@/components/MediaSection";
 import ReviewsForMedia from "@/components/ReviewsForMedia";
 import SectionTabs from "@/components/SectionTabs";
-import { Calendar, Clock, Star } from "lucide-react";
+import TmdbRatingBadge from "@/components/TmdbRatingBadge";
+import StreamingAvailability from "@/components/StreamingAvailability";
+import { Calendar, Timer } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useRatings } from "@/hooks/useRatings";
 import { useMediaCustomization } from "@/hooks/useMediaCustomization";
-import { parseSlugId, getMovieUrl } from "@/lib/slugify";
+import { parseSlugId, getMovieUrl, getShowUrl } from "@/lib/slugify";
 
 export default function MovieSlugPage() {
     const params = useParams();
@@ -27,6 +29,8 @@ export default function MovieSlugPage() {
 
     const [movie, setMovie] = useState(null);
     const [stronglyRelated, setStronglyRelated] = useState([]);
+    const [mixedSimilar, setMixedSimilar] = useState([]);
+    const [similarFilter, setSimilarFilter] = useState("all");
     const [mediaImages, setMediaImages] = useState({ posters: [], backdrops: [] });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -80,6 +84,18 @@ export default function MovieSlugPage() {
                     console.warn("Failed to fetch related movies", e);
                 }
 
+                // Fetch mixed-type similar candidates (movie + tv) once; filter in-memory.
+                try {
+                    const multi = await tmdb.searchMulti(data.title);
+                    const results = Array.isArray(multi?.results) ? multi.results : [];
+                    const filtered = results
+                        .filter((r) => r && (r.media_type === "movie" || r.media_type === "tv") && r.id)
+                        .filter((r) => !(r.media_type === "movie" && String(r.id) === String(movieId)));
+                    setMixedSimilar(filtered);
+                } catch (_) {
+                    setMixedSimilar([]);
+                }
+
                 // Fetch images for Media section (single fetch)
                 try {
                     const images = await tmdb.getMovieImages(movieId);
@@ -97,6 +113,37 @@ export default function MovieSlugPage() {
 
         fetchMovie();
     }, [movieId]);
+
+    const similarItemsAll = useMemo(() => {
+        const items = [];
+        (Array.isArray(stronglyRelated) ? stronglyRelated : []).forEach((r) => {
+            if (!r || !r.id) return;
+            items.push({
+                ...r,
+                media_type: "movie",
+            });
+        });
+
+        (Array.isArray(mixedSimilar) ? mixedSimilar : []).forEach((r) => {
+            if (!r || !r.id) return;
+            items.push(r);
+        });
+
+        const unique = new Map();
+        items.forEach((item) => {
+            const t = item.media_type || "movie";
+            const key = `${t}_${item.id}`;
+            if (!unique.has(key)) unique.set(key, item);
+        });
+        return Array.from(unique.values());
+    }, [stronglyRelated, mixedSimilar]);
+
+    const filteredSimilar = useMemo(() => {
+        if (similarFilter === "all") return similarItemsAll;
+        if (similarFilter === "movie") return similarItemsAll.filter((i) => (i.media_type || "movie") === "movie");
+        if (similarFilter === "series") return similarItemsAll.filter((i) => i.media_type === "tv");
+        return similarItemsAll;
+    }, [similarItemsAll, similarFilter]);
 
     if (loading) {
         return (
@@ -182,16 +229,10 @@ export default function MovieSlugPage() {
                                 )}
                                 {movie.runtime && (
                                     <div className="flex items-center gap-2">
-                                        <Clock size={20} className="text-accent" />
+                                        <Timer size={20} className="text-accent" />
                                         <span className="font-medium">
                                             {Math.floor(movie.runtime / 60)}h {movie.runtime % 60}m
                                         </span>
-                                    </div>
-                                )}
-                                {movie.vote_average > 0 && (
-                                    <div className="flex items-center gap-2">
-                                        <Star size={20} className="text-accent" fill="currentColor" />
-                                        <span className="font-medium">{movie.vote_average.toFixed(1)}</span>
                                     </div>
                                 )}
                             </div>
@@ -215,6 +256,12 @@ export default function MovieSlugPage() {
                                 </p>
                             )}
 
+                            {Array.isArray(movie.production_countries) && movie.production_countries.length > 0 && (
+                                <div className="text-sm text-textSecondary">
+                                    Location: {movie.production_countries.map((c) => c?.name).filter(Boolean).join(", ")}
+                                </div>
+                            )}
+
                             <ActionBar
                                 mediaId={movieId}
                                 mediaType="movie"
@@ -234,6 +281,8 @@ export default function MovieSlugPage() {
                     {/* Left column (below poster area) */}
                     <div className="lg:col-span-4 space-y-6">
                         <RatingDistribution mediaId={movieId} mediaType="movie" />
+                        <TmdbRatingBadge value={movie.vote_average} />
+                        <StreamingAvailability mediaType="movie" mediaId={movieId} />
                     </div>
 
                     {/* Right column */}
@@ -245,6 +294,7 @@ export default function MovieSlugPage() {
                                 { id: "production", label: "Production" },
                                 { id: "reviews", label: "Reviews" },
                                 { id: "media", label: "Media" },
+                                { id: "similar", label: "Similar" },
                             ]}
                             activeTab={activeTab}
                             onChange={setActiveTab}
@@ -274,32 +324,70 @@ export default function MovieSlugPage() {
                             )}
 
                             {activeTab === "media" && (
-                                <MediaSection title="Media" posters={mediaImages.posters} backdrops={mediaImages.backdrops} />
+                                <MediaSection
+                                    title="Media"
+                                    posters={mediaImages.posters}
+                                    backdrops={mediaImages.backdrops}
+                                    videos={movie.videos?.results || []}
+                                />
                             )}
 
-                            {stronglyRelated.length > 0 && (
+                            {activeTab === "similar" && (
                                 <section>
-                                    <h2 className="text-3xl font-bold mb-6">Strongly Related</h2>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                        {stronglyRelated.map((related) => (
-                                            <Link key={related.id} href={getMovieUrl(related)} className="group">
-                                                <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
-                                                    <Image
-                                                        src={tmdb.getImageUrl(related.poster_path)}
-                                                        alt={related.title}
-                                                        fill
-                                                        className="object-cover"
-                                                    />
-                                                    {related.similarityScore && (
-                                                        <div className="absolute top-2 right-2 bg-accent text-background px-2 py-1 rounded text-xs font-bold">
-                                                            {related.similarityScore}%
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <h3 className="font-medium text-sm line-clamp-2">{related.title}</h3>
-                                            </Link>
-                                        ))}
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                                        <h2 className="text-3xl font-bold">Similar</h2>
+                                        <div className="flex gap-2 flex-wrap">
+                                            {[
+                                                { id: "all", label: "All" },
+                                                { id: "movie", label: "Movie" },
+                                                { id: "series", label: "Series" },
+                                            ].map((f) => (
+                                                <button
+                                                    key={f.id}
+                                                    onClick={() => setSimilarFilter(f.id)}
+                                                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                                        similarFilter === f.id
+                                                            ? "bg-accent text-white"
+                                                            : "bg-white/5 text-textSecondary hover:text-white"
+                                                    }`}
+                                                >
+                                                    {f.label}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
+                                    {filteredSimilar.length > 0 ? (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                            {filteredSimilar.map((related) => {
+                                                const isTv = related.media_type === "tv";
+                                                const href = isTv ? getShowUrl(related) : getMovieUrl(related);
+                                                const relatedTitle = related.title || related.name;
+                                                const poster = related.poster_path;
+                                                return (
+                                                    <Link key={`${related.media_type || "movie"}_${related.id}`} href={href} className="group">
+                                                        <div className="relative aspect-[2/3] rounded-lg overflow-hidden mb-2 bg-secondary">
+                                                            <Image
+                                                                src={tmdb.getImageUrl(poster)}
+                                                                alt={relatedTitle}
+                                                                fill
+                                                                className="object-cover"
+                                                            />
+                                                            {related.similarityScore && (
+                                                                <div className="absolute top-2 right-2 bg-accent text-background px-2 py-1 rounded text-xs font-bold">
+                                                                    {related.similarityScore}%
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <h3 className="font-medium text-sm line-clamp-2">{relatedTitle}</h3>
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-secondary rounded-xl border border-white/5 p-6">
+                                            <div className="text-sm text-textSecondary">No similar items found for this filter.</div>
+                                        </div>
+                                    )}
                                 </section>
                             )}
                         </div>

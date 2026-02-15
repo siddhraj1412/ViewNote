@@ -1,30 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, limit, query, where } from "firebase/firestore";
-import StarRating from "@/components/StarRating";
-import { Heart, MessageSquare } from "lucide-react";
-
-const TMDB_IMG = "https://image.tmdb.org/t/p";
-
-function generateSlugFromTitle(text) {
-    if (!text) return "";
-    return text
-        .toLowerCase()
-        .replace(/['']/g, "")
-        .replace(/[&]/g, "and")
-        .replace(/[^\w\s-]/g, "")
-        .replace(/\s+/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "")
-        .substring(0, 80);
-}
+import { collection, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import ReviewCard from "@/components/ReviewCard";
 
 export default function ReviewsForMedia({ mediaId, mediaType, title }) {
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [reviewSort, setReviewSort] = useState("popular");
+    const [likeCounts, setLikeCounts] = useState({});
 
     const fetchReviews = useCallback(async () => {
         if (!mediaId) return;
@@ -32,18 +17,12 @@ export default function ReviewsForMedia({ mediaId, mediaType, title }) {
         try {
             const q = query(
                 collection(db, "user_ratings"),
-                where("mediaId", "==", Number(mediaId)),
-                limit(500)
+                where("mediaId", "==", Number(mediaId))
             );
             const snap = await getDocs(q);
             const items = snap.docs
                 .map((d) => ({ id: d.id, ...d.data() }))
-                .filter((r) => r.review && r.review.trim().length > 0 && (!mediaType || r.mediaType === mediaType))
-                .sort((a, b) => {
-                    const aTime = a.createdAt?.seconds || a.ratedAt?.seconds || 0;
-                    const bTime = b.createdAt?.seconds || b.ratedAt?.seconds || 0;
-                    return bTime - aTime;
-                });
+                .filter((r) => r.review && r.review.trim().length > 0 && (!mediaType || r.mediaType === mediaType));
             setReviews(items);
         } catch {
             setReviews([]);
@@ -55,6 +34,58 @@ export default function ReviewsForMedia({ mediaId, mediaType, title }) {
     useEffect(() => {
         fetchReviews();
     }, [fetchReviews]);
+
+    useEffect(() => {
+        if (!mediaId) {
+            setLikeCounts({});
+            return;
+        }
+
+        const ids = reviews.map((r) => r.id).filter(Boolean).slice(0, 30);
+        if (ids.length === 0) {
+            setLikeCounts({});
+            return;
+        }
+
+        const likesQ = query(collection(db, "review_likes"), where("reviewDocId", "in", ids));
+
+        // Firestore "in" supports max 30 items. Good enough for initial render.
+        const unsub = onSnapshot(likesQ, (snap) => {
+            const next = {};
+            snap.docs.forEach((d) => {
+                const data = d.data() || {};
+                const rid = data.reviewDocId;
+                if (!rid) return;
+                next[rid] = Number(next[rid] || 0) + 1;
+            });
+            setLikeCounts(next);
+        }, () => setLikeCounts({}));
+
+        return () => {
+            try { unsub(); } catch (_) {}
+        };
+    }, [mediaId, reviews]);
+
+    const sortedReviews = useMemo(() => {
+        const copy = [...reviews];
+        if (reviewSort === "popular") {
+            copy.sort((a, b) => {
+                const aLikes = Number(likeCounts[a.id] || 0);
+                const bLikes = Number(likeCounts[b.id] || 0);
+                if (bLikes !== aLikes) return bLikes - aLikes;
+                const aTime = a.createdAt?.seconds || a.ratedAt?.seconds || 0;
+                const bTime = b.createdAt?.seconds || b.ratedAt?.seconds || 0;
+                return bTime - aTime;
+            });
+        } else {
+            copy.sort((a, b) => {
+                const aTime = a.createdAt?.seconds || a.ratedAt?.seconds || 0;
+                const bTime = b.createdAt?.seconds || b.ratedAt?.seconds || 0;
+                return bTime - aTime;
+            });
+        }
+        return copy;
+    }, [reviews, reviewSort, likeCounts]);
 
     if (loading) {
         return (
@@ -93,57 +124,33 @@ export default function ReviewsForMedia({ mediaId, mediaType, title }) {
         <section>
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold">Reviews</h2>
-                <div className="text-sm text-textSecondary">{reviews.length} review{reviews.length !== 1 ? "s" : ""}</div>
+                <div className="flex items-center gap-3">
+                    <div className="flex gap-1.5">
+                        {[
+                            { id: "recent", label: "Most Recent" },
+                            { id: "popular", label: "Popular" },
+                        ].map((f) => (
+                            <button
+                                key={f.id}
+                                onClick={() => setReviewSort(f.id)}
+                                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                    reviewSort === f.id
+                                        ? "bg-accent text-white"
+                                        : "bg-white/5 text-textSecondary hover:text-white"
+                                }`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="text-sm text-textSecondary">{reviews.length} review{reviews.length !== 1 ? "s" : ""}</div>
+                </div>
             </div>
 
             <div className="space-y-4">
-                {reviews.map((r) => {
-                    const slug = generateSlugFromTitle(r.title);
-                    const username = r.username || r.userId;
-                    const href = `/${encodeURIComponent(username)}/${slug}-${r.mediaId}`;
-
+                {sortedReviews.map((r) => {
                     return (
-                        <Link key={r.id} href={href} className="block">
-                            <div className="bg-secondary rounded-xl p-5 border border-white/5 hover:border-white/10 transition-all">
-                                <div className="flex gap-4">
-                                    <div className="shrink-0">
-                                        {r.poster_path ? (
-                                            <img
-                                                src={`${TMDB_IMG}/w154${r.poster_path}`}
-                                                alt={r.title}
-                                                className="w-16 h-24 rounded-lg object-cover"
-                                            />
-                                        ) : (
-                                            <div className="w-16 h-24 rounded-lg bg-white/10 flex items-center justify-center">
-                                                <MessageSquare size={16} className="text-white/20" />
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-baseline justify-between gap-4">
-                                            <div className="min-w-0">
-                                                <div className="font-bold text-white text-lg leading-tight truncate">{r.title}</div>
-                                                <div className="text-xs text-textSecondary mt-0.5">@{r.username || "user"}</div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-wrap items-center gap-3 mt-2">
-                                            {r.rating > 0 && (
-                                                <StarRating value={r.rating} size={14} readonly showHalfStars />
-                                            )}
-                                            {r.liked && (
-                                                <Heart size={14} className="text-red-400" fill="currentColor" />
-                                            )}
-                                        </div>
-
-                                        <p className="text-sm text-textSecondary mt-3 whitespace-pre-wrap leading-relaxed line-clamp-3">
-                                            {r.review}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </Link>
+                        <ReviewCard key={r.id} review={r} showPoster={false} showUser />
                     );
                 })}
             </div>

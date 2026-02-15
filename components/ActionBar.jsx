@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/context/AuthContext";
 import showToast from "@/lib/toast";
 import { mediaService } from "@/services/mediaService";
 import eventBus from "@/lib/eventBus";
 import { useMediaCustomization } from "@/hooks/useMediaCustomization";
+import Modal from "@/components/ui/Modal";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import {
     Eye,
     Star,
@@ -47,9 +50,25 @@ export default function ActionBar({
     mediaType,
     title,
     posterPath,
+    bannerPath = null,
     currentRating = 0,
     releaseYear = "",
     seasons = [],
+    tvTargetType = "series",
+    tvSeasonNumber = null,
+    tvEpisodeNumber = null,
+    seasonEpisodeCounts = null,
+    disableCustomization = false,
+    allowPosterCustomization = true,
+    allowBannerCustomization = true,
+    customizationMediaId = null,
+    customizationMediaType = null,
+    customizationPosterPath = null,
+    customizationBannerPath = null,
+    posterTmdbEndpoint = null,
+    bannerTmdbEndpoint = null,
+    initialSeasonNumber = null,
+    initialEpisodeNumber = null,
 }) {
     const { user } = useAuth();
 
@@ -73,6 +92,11 @@ export default function ActionBar({
     const [showBannerSelector, setShowBannerSelector] = useState(false);
     const [showAddToList, setShowAddToList] = useState(false);
 
+    const [showSeriesWatchModal, setShowSeriesWatchModal] = useState(false);
+    const [selectedSeasonNumbers, setSelectedSeasonNumbers] = useState([]);
+    const [includeSpecials, setIncludeSpecials] = useState(false);
+    const [watchHover, setWatchHover] = useState(false);
+
     // Initial load of status
     useEffect(() => {
         const loadStatus = async () => {
@@ -80,17 +104,82 @@ export default function ActionBar({
                 setLoading(false);
                 return;
             }
-            const s = await mediaService.getMediaStatus(user, mediaId, mediaType);
+            const s = await mediaService.getMediaStatus(
+                user,
+                mediaId,
+                mediaType,
+                mediaType === "tv"
+                    ? {
+                        targetType: tvTargetType,
+                        seasonNumber: tvSeasonNumber,
+                        episodeNumber: tvEpisodeNumber,
+                        seasonEpisodeCounts: seasonEpisodeCounts,
+                    }
+                    : {}
+            );
             setStatus(prev => ({ ...prev, ...s }));
             setLoading(false);
         };
         loadStatus();
-    }, [user, mediaId, mediaType]);
+    }, [user, mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber, seasonEpisodeCounts]);
 
-    const { customPoster, customBanner } = useMediaCustomization(mediaId, mediaType, posterPath, null);
+    // Real-time sync for watched/progress so series edits update season/episode pages instantly.
+    useEffect(() => {
+        if (!user || !mediaId || !mediaType) return;
+
+        const refresh = async () => {
+            const s = await mediaService.getMediaStatus(
+                user,
+                mediaId,
+                mediaType,
+                mediaType === "tv"
+                    ? {
+                        targetType: tvTargetType,
+                        seasonNumber: tvSeasonNumber,
+                        episodeNumber: tvEpisodeNumber,
+                        seasonEpisodeCounts: seasonEpisodeCounts,
+                    }
+                    : {}
+            );
+            setStatus((prev) => ({ ...prev, ...s }));
+        };
+
+        const unsubscribers = [];
+
+        if (mediaType === "tv") {
+            const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(mediaId)}`);
+            unsubscribers.push(onSnapshot(progressRef, () => { refresh(); }));
+            const watchedSeriesRef = doc(db, "user_watched", `${user.uid}_tv_${Number(mediaId)}`);
+            unsubscribers.push(onSnapshot(watchedSeriesRef, () => { refresh(); }));
+        } else {
+            const watchedRef = doc(db, "user_watched", `${user.uid}_${mediaType}_${Number(mediaId)}`);
+            unsubscribers.push(onSnapshot(watchedRef, () => { refresh(); }));
+        }
+
+        return () => {
+            unsubscribers.forEach((u) => {
+                try { u(); } catch (_) {}
+            });
+        };
+    }, [user, mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber, seasonEpisodeCounts]);
+
+    const customizationId = customizationMediaId ?? mediaId;
+    const customizationType = customizationMediaType ?? mediaType;
+    const customizationPosterBase = customizationPosterPath ?? posterPath;
+    const customizationBannerBase = customizationBannerPath ?? bannerPath ?? posterPath;
+
+    const { customPoster, customBanner } = useMediaCustomization(
+        customizationId,
+        customizationType,
+        customizationPosterBase,
+        customizationBannerBase
+    );
+
+    const canChangePoster = !disableCustomization && allowPosterCustomization;
+    const canChangeBanner = !disableCustomization && allowBannerCustomization;
 
     // Determine if customized
-    const isPosterCustomized = customPoster && customPoster !== posterPath;
+    const isPosterCustomized = customPoster && customPoster !== customizationPosterBase;
     const isBannerCustomized = !!customBanner;
 
     // Listen for global updates
@@ -98,13 +187,91 @@ export default function ActionBar({
         const handleUpdate = (data) => {
             if (String(data.mediaId) === String(mediaId) && data.mediaType === mediaType) {
                 if (user) {
-                    mediaService.getMediaStatus(user, mediaId, mediaType).then(s => setStatus(prev => ({ ...prev, ...s })));
+                    mediaService.getMediaStatus(
+                        user,
+                        mediaId,
+                        mediaType,
+                        mediaType === "tv"
+                            ? {
+                                targetType: tvTargetType,
+                                seasonNumber: tvSeasonNumber,
+                                episodeNumber: tvEpisodeNumber,
+                                seasonEpisodeCounts: seasonEpisodeCounts,
+                            }
+                            : {}
+                    ).then(s => setStatus(prev => ({ ...prev, ...s })));
                 }
             }
         };
         eventBus.on("MEDIA_UPDATED", handleUpdate);
         return () => eventBus.off("MEDIA_UPDATED", handleUpdate);
-    }, [user, mediaId, mediaType]);
+    }, [user, mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber, seasonEpisodeCounts]);
+
+    const tvSeasonEpisodeCounts = useMemo(() => {
+        if (seasonEpisodeCounts && typeof seasonEpisodeCounts === "object") return seasonEpisodeCounts;
+        if (!Array.isArray(seasons) || seasons.length === 0) return {};
+        const out = {};
+        for (const s of seasons) {
+            if (s?.season_number == null) continue;
+            const sn = Number(s.season_number);
+            const ec = Number(s.episode_count || 0);
+            if (!Number.isFinite(sn) || sn < 0) continue;
+            if (!Number.isFinite(ec) || ec < 0) continue;
+            out[String(sn)] = ec;
+        }
+        return out;
+    }, [seasonEpisodeCounts, seasons]);
+
+    useEffect(() => {
+        if (!showSeriesWatchModal) return;
+        let isMounted = true;
+
+        const seedFromProgressOrDefaults = async () => {
+            if (!user || mediaType !== "tv" || tvTargetType !== "series") return;
+
+            const progress = await mediaService.getSeriesProgress(user, mediaId);
+            if (!isMounted) return;
+
+            const fromProgress = Array.isArray(progress?.watchedSeasons)
+                ? progress.watchedSeasons.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+                : [];
+
+            if (fromProgress.length > 0) {
+                setSelectedSeasonNumbers(Array.from(new Set(fromProgress)).sort((a, b) => a - b));
+                setIncludeSpecials(fromProgress.includes(0));
+                return;
+            }
+
+            const list = Array.isArray(seasons)
+                ? seasons.map((s) => Number(s?.season_number)).filter((n) => Number.isFinite(n))
+                : [];
+            setSelectedSeasonNumbers(list.filter((n) => n > 0));
+            setIncludeSpecials(list.includes(0));
+        };
+
+        seedFromProgressOrDefaults();
+        return () => { isMounted = false; };
+    }, [showSeriesWatchModal, seasons]);
+
+    // Keep series watch button in sync with saved progress
+    useEffect(() => {
+        if (!user?.uid || mediaType !== "tv" || tvTargetType !== "series" || !mediaId) return;
+        const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(mediaId)}`);
+        const unsub = onSnapshot(progressRef, (snap) => {
+            if (snap.exists()) {
+                const data = snap.data() || {};
+                const ws = Array.isArray(data.watchedSeasons) ? data.watchedSeasons : [];
+                const we = data.watchedEpisodes && typeof data.watchedEpisodes === "object" ? data.watchedEpisodes : {};
+                const hasAny = ws.length > 0 || Object.keys(we).length > 0;
+                setStatus((prev) => ({ ...prev, isWatched: Boolean(hasAny) }));
+            } else {
+                setStatus((prev) => ({ ...prev, isWatched: false }));
+            }
+        }, () => {
+            setStatus((prev) => ({ ...prev, isWatched: false }));
+        });
+        return () => { try { unsub(); } catch (_) {} };
+    }, [user?.uid, mediaType, tvTargetType, mediaId]);
 
 
     const handleWatchedToggle = async () => {
@@ -112,23 +279,152 @@ export default function ActionBar({
         setLoading(true);
 
         if (mediaType === "tv") {
-            setRatingMode(status.hasEntry ? "edit" : "normal");
-            setShowRatingModal(true);
-            setLoading(false);
+            if (tvTargetType === "series") {
+                setShowSeriesWatchModal(true);
+                setLoading(false);
+                return;
+            }
+
+            if (status.isWatched) {
+                try {
+                    let ok = false;
+                    if (tvTargetType === "season" && tvSeasonNumber != null) {
+                        ok = await mediaService.unwatchTVSeason(user, mediaId, tvSeasonNumber, tvSeasonEpisodeCounts);
+                    }
+                    if (tvTargetType === "episode" && tvSeasonNumber != null && tvEpisodeNumber != null) {
+                        ok = await mediaService.unwatchTVEpisode(user, mediaId, tvSeasonNumber, tvEpisodeNumber, tvSeasonEpisodeCounts);
+                    }
+                    if (ok) {
+                        setStatus((prev) => ({ ...prev, isWatched: false }));
+                    }
+                } finally {
+                    setLoading(false);
+                }
+                return;
+            }
+
+            try {
+                const seriesData = { name: title, title, poster_path: posterPath };
+                let ok = false;
+                if (tvTargetType === "season" && tvSeasonNumber != null) {
+                    ok = await mediaService.markTVSeasonWatched(
+                        user,
+                        mediaId,
+                        seriesData,
+                        tvSeasonNumber,
+                        tvSeasonEpisodeCounts,
+                        {}
+                    );
+                }
+                if (tvTargetType === "episode" && tvSeasonNumber != null && tvEpisodeNumber != null) {
+                    ok = await mediaService.markTVEpisodeWatched(
+                        user,
+                        mediaId,
+                        seriesData,
+                        tvSeasonNumber,
+                        tvEpisodeNumber,
+                        tvSeasonEpisodeCounts,
+                        {}
+                    );
+                }
+                if (ok) {
+                    setStatus(prev => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
+                }
+            } finally {
+                setLoading(false);
+            }
             return;
         }
 
-        if (status.isWatched) {
-            showToast.info("Already watched");
-            setLoading(false);
-            return;
-        }
+        try {
+            if (status.isWatched) {
+                const ok = await mediaService.unwatchMovie(user, mediaId);
+                if (ok) {
+                    setStatus(prev => ({ ...prev, isWatched: false }));
+                }
+                return;
+            }
 
-        const success = await mediaService.markAsWatched(user, mediaId, mediaType, { title, poster_path: posterPath });
-        if (success) {
-            setStatus(prev => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
+            const success = await mediaService.markAsWatched(user, mediaId, mediaType, { title, poster_path: posterPath });
+            if (success) {
+                setStatus(prev => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
+            }
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
+    };
+
+    const toggleSeasonSelected = (seasonNum) => {
+        setSelectedSeasonNumbers((prev) => {
+            const set = new Set(prev);
+            if (set.has(seasonNum)) set.delete(seasonNum);
+            else set.add(seasonNum);
+            return Array.from(set).sort((a, b) => a - b);
+        });
+    };
+
+    const handleAddAllRegularSeasons = () => {
+        const list = Array.isArray(seasons)
+            ? seasons.map((s) => Number(s?.season_number)).filter((n) => Number.isFinite(n) && n > 0)
+            : [];
+        setSelectedSeasonNumbers(Array.from(new Set(list)).sort((a, b) => a - b));
+    };
+
+    const handleToggleIncludeSpecials = () => {
+        const hasSpecials = Array.isArray(seasons) && seasons.some((s) => Number(s?.season_number) === 0);
+        if (!hasSpecials) return;
+        setIncludeSpecials((v) => !v);
+        setSelectedSeasonNumbers((prev) => {
+            const set = new Set(prev);
+            if (!includeSpecials) set.add(0);
+            else set.delete(0);
+            return Array.from(set).sort((a, b) => a - b);
+        });
+    };
+
+    const handleConfirmSeriesWatch = async () => {
+        if (!user) return;
+        const seriesData = { name: title, title, poster_path: posterPath };
+        setLoading(true);
+        try {
+            const normalized = Array.from(new Set(selectedSeasonNumbers.map((n) => Number(n)).filter((n) => Number.isFinite(n)))).sort((a, b) => a - b);
+            const toMark = includeSpecials
+                ? normalized
+                : normalized.filter((n) => n > 0);
+
+            if (toMark.length === 0) {
+                const okReset = await mediaService.resetTVWatchProgress(user, mediaId);
+                if (okReset) setShowSeriesWatchModal(false);
+                return;
+            }
+
+            const ok = await mediaService.markTVSeasonsWatchedBulk(
+                user,
+                mediaId,
+                seriesData,
+                toMark,
+                tvSeasonEpisodeCounts,
+                { includeSpecialsInCompletion: includeSpecials }
+            );
+            if (ok) setShowSeriesWatchModal(false);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResetSeriesWatch = async () => {
+        if (!user) return;
+        setLoading(true);
+        try {
+            const ok = await mediaService.resetTVWatchProgress(user, mediaId);
+            if (ok) {
+                setSelectedSeasonNumbers([]);
+                setIncludeSpecials(false);
+                setShowSeriesWatchModal(false);
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleWatchingToggle = async () => {
@@ -201,11 +497,13 @@ export default function ActionBar({
                 <Button
                     variant={status.isWatched ? "glass" : "secondary"}
                     onClick={handleWatchedToggle}
-                    disabled={loading || status.isWatched}
+                    disabled={loading}
                     className={`flex items-center gap-2 ${status.isWatched ? "btn-primary-glass" : ""}`}
+                    onMouseEnter={() => setWatchHover(true)}
+                    onMouseLeave={() => setWatchHover(false)}
                 >
                     {status.isWatched ? <Check size={18} /> : <Eye size={18} />}
-                    {status.isWatched ? "Watched" : "Mark Watched"}
+                    {status.isWatched ? (watchHover ? "Watch" : "Watched") : "Watch"}
                 </Button>
 
                 {mediaType === "tv" && (
@@ -216,7 +514,7 @@ export default function ActionBar({
                         className={`flex items-center gap-2 ${status.isWatching ? "btn-primary-glass" : ""}`}
                     >
                         <Tv size={18} />
-                        {status.isWatching ? "Watching" : "Currently Watching"}
+                        {status.isWatching ? "Watching" : "Watching"}
                     </Button>
                 )}
 
@@ -270,7 +568,7 @@ export default function ActionBar({
                     className={`flex items-center gap-2 ${status.isWatchlist ? "btn-primary-glass" : ""}`}
                 >
                     <Bookmark size={18} fill={status.isWatchlist ? "currentColor" : "none"} />
-                    {status.isWatchlist ? "In Watchlist" : "Add to Watchlist"}
+                    {status.isWatchlist ? "In Watchlist" : "Watchlist"}
                 </Button>
 
                 <div className="relative">
@@ -303,26 +601,30 @@ export default function ActionBar({
                                     <ListPlus size={16} />
                                     Add to List
                                 </button>
-                                <button
-                                    onClick={() => { setShowPosterSelector(true); setShowMoreMenu(false); }}
-                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
-                                >
-                                    <ImageIcon size={16} className={isPosterCustomized ? "text-accent" : ""} />
-                                    <div className="flex flex-col items-start">
-                                        <span>Change Poster</span>
-                                        {isPosterCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
-                                    </div>
-                                </button>
-                                <button
-                                    onClick={() => { setShowBannerSelector(true); setShowMoreMenu(false); }}
-                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
-                                >
-                                    <ImageIcon size={16} className={isBannerCustomized ? "text-accent" : ""} />
-                                    <div className="flex flex-col items-start">
-                                        <span>Change Banner</span>
-                                        {isBannerCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
-                                    </div>
-                                </button>
+                                {canChangePoster && (
+                                    <button
+                                        onClick={() => { setShowPosterSelector(true); setShowMoreMenu(false); }}
+                                        className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
+                                    >
+                                        <ImageIcon size={16} className={isPosterCustomized ? "text-accent" : ""} />
+                                        <div className="flex flex-col items-start">
+                                            <span>Change Poster</span>
+                                            {isPosterCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
+                                        </div>
+                                    </button>
+                                )}
+                                {canChangeBanner && (
+                                    <button
+                                        onClick={() => { setShowBannerSelector(true); setShowMoreMenu(false); }}
+                                        className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
+                                    >
+                                        <ImageIcon size={16} className={isBannerCustomized ? "text-accent" : ""} />
+                                        <div className="flex flex-col items-start">
+                                            <span>Change Banner</span>
+                                            {isBannerCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
+                                        </div>
+                                    </button>
+                                )}
                                 <button
                                     onClick={handlePause}
                                     className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm border-t border-white/5"
@@ -355,7 +657,7 @@ export default function ActionBar({
                 <div className="site-container flex items-center justify-around">
                     <button
                         onClick={handleWatchedToggle}
-                        disabled={loading || status.isWatched}
+                        disabled={loading}
                         className={`flex flex-col items-center gap-1 text-xs font-semibold transition-all ${
                             status.isWatched ? "text-accent" : "text-textSecondary"
                         }`}
@@ -416,26 +718,30 @@ export default function ActionBar({
                                 <ListPlus size={18} />
                                 Add to List
                             </button>
-                            <button
-                                onClick={() => { setShowPosterSelector(true); setShowMoreMenu(false); }}
-                                className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
-                            >
-                                <ImageIcon size={18} className={isPosterCustomized ? "text-accent" : ""} />
-                                <div className="flex flex-col items-start">
-                                    <span>Change Poster</span>
-                                    {isPosterCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
-                                </div>
-                            </button>
-                            <button
-                                onClick={() => { setShowBannerSelector(true); setShowMoreMenu(false); }}
-                                className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
-                            >
-                                <ImageIcon size={18} className={isBannerCustomized ? "text-accent" : ""} />
-                                <div className="flex flex-col items-start">
-                                    <span>Change Banner</span>
-                                    {isBannerCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
-                                </div>
-                            </button>
+                            {canChangePoster && (
+                                <button
+                                    onClick={() => { setShowPosterSelector(true); setShowMoreMenu(false); }}
+                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
+                                >
+                                    <ImageIcon size={18} className={isPosterCustomized ? "text-accent" : ""} />
+                                    <div className="flex flex-col items-start">
+                                        <span>Change Poster</span>
+                                        {isPosterCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
+                                    </div>
+                                </button>
+                            )}
+                            {canChangeBanner && (
+                                <button
+                                    onClick={() => { setShowBannerSelector(true); setShowMoreMenu(false); }}
+                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
+                                >
+                                    <ImageIcon size={18} className={isBannerCustomized ? "text-accent" : ""} />
+                                    <div className="flex flex-col items-start">
+                                        <span>Change Banner</span>
+                                        {isBannerCustomized && <span className="text-[10px] text-accent uppercase font-bold tracking-wider">Customized</span>}
+                                    </div>
+                                </button>
+                            )}
                             <button
                                 onClick={handlePause}
                                 className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 border-t border-white/5"
@@ -462,6 +768,99 @@ export default function ActionBar({
                 )}
             </div>
 
+            {showSeriesWatchModal && (
+                <Modal
+                    isOpen={showSeriesWatchModal}
+                    onClose={() => setShowSeriesWatchModal(false)}
+                    title="Mark Seasons as Watched"
+                    maxWidth="720px"
+                >
+                    <div className="p-6 space-y-6">
+                        <div className="flex flex-wrap gap-3">
+                            <button
+                                onClick={handleAddAllRegularSeasons}
+                                className="px-4 py-2 text-sm font-semibold rounded-full border transition-colors bg-white/5 text-textSecondary border-white/10 hover:text-white"
+                            >
+                                Add All Regular Seasons
+                            </button>
+                            <button
+                                onClick={handleToggleIncludeSpecials}
+                                className={`px-4 py-2 text-sm font-semibold rounded-full border transition-colors ${
+                                    includeSpecials
+                                        ? "bg-accent/20 text-white border-accent/40"
+                                        : "bg-white/5 text-textSecondary border-white/10 hover:text-white"
+                                }`}
+                            >
+                                Include Specials
+                            </button>
+                        </div>
+
+                        <div className="space-y-2">
+                            {Array.isArray(seasons)
+                                ? seasons
+                                    .map((s) => ({
+                                        seasonNumber: Number(s?.season_number),
+                                        name: s?.name,
+                                    }))
+                                    .filter((s) => Number.isFinite(s.seasonNumber))
+                                    .sort((a, b) => {
+                                        const an = Number(a?.seasonNumber ?? 0);
+                                        const bn = Number(b?.seasonNumber ?? 0);
+                                        const aIsSpecial = an === 0;
+                                        const bIsSpecial = bn === 0;
+                                        if (aIsSpecial && !bIsSpecial) return 1;
+                                        if (!aIsSpecial && bIsSpecial) return -1;
+                                        return an - bn;
+                                    })
+                                    .map((s) => {
+                                        const checked = selectedSeasonNumbers.includes(s.seasonNumber);
+                                        const label = s.seasonNumber === 0
+                                            ? "Specials"
+                                            : (s.name || `Season ${s.seasonNumber}`);
+                                        return (
+                                            <label
+                                                key={s.seasonNumber}
+                                                className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 transition cursor-pointer"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={checked}
+                                                    onChange={() => toggleSeasonSelected(s.seasonNumber)}
+                                                    className="h-4 w-4"
+                                                />
+                                                <span className="text-sm font-semibold text-white">{label}</span>
+                                            </label>
+                                        );
+                                    })
+                                : null}
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-2">
+                            <button
+                                onClick={() => setShowSeriesWatchModal(false)}
+                                className="px-6 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleResetSeriesWatch}
+                                disabled={loading}
+                                className="px-6 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition font-medium disabled:opacity-50"
+                            >
+                                Reset
+                            </button>
+                            <button
+                                onClick={handleConfirmSeriesWatch}
+                                disabled={loading || selectedSeasonNumbers.length === 0}
+                                className="px-6 py-2 bg-accent hover:bg-accent/90 rounded-lg transition font-medium disabled:opacity-50"
+                            >
+                                Mark Watched
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
             {showRatingModal && (
                 <RatingModal
                     isOpen={showRatingModal}
@@ -475,24 +874,32 @@ export default function ActionBar({
                     mode={ratingMode}
                     seasons={seasons}
                     seriesId={mediaType === "tv" ? mediaId : null}
+                    initialSeasonNumber={initialSeasonNumber}
+                    initialEpisodeNumber={initialEpisodeNumber}
                 />
             )}
 
-            <PosterSelector
-                isOpen={showPosterSelector}
-                onClose={() => setShowPosterSelector(false)}
-                mediaId={mediaId}
-                mediaType={mediaType}
-                defaultPoster={posterPath}
-            />
+            {canChangePoster && (
+                <PosterSelector
+                    isOpen={showPosterSelector}
+                    onClose={() => setShowPosterSelector(false)}
+                    mediaId={customizationId}
+                    mediaType={customizationType}
+                    defaultPoster={customizationPosterBase}
+                    tmdbEndpoint={posterTmdbEndpoint}
+                />
+            )}
 
-            <BannerSelector
-                isOpen={showBannerSelector}
-                onClose={() => setShowBannerSelector(false)}
-                mediaId={mediaId}
-                mediaType={mediaType}
-                defaultBanner={posterPath}
-            />
+            {canChangeBanner && (
+                <BannerSelector
+                    isOpen={showBannerSelector}
+                    onClose={() => setShowBannerSelector(false)}
+                    mediaId={customizationId}
+                    mediaType={customizationType}
+                    defaultBanner={customizationBannerBase}
+                    tmdbEndpoint={bannerTmdbEndpoint}
+                />
+            )}
 
             {showAddToList && (
                 <AddToListModal

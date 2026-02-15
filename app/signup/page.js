@@ -136,15 +136,14 @@ export default function SignupPage() {
 
     return (
         <main className="min-h-screen flex items-center justify-center pt-24 bg-background">
-            <div className="site-container w-full">
-                <div className="w-full">
-                    <div className="bg-secondary p-6 md:p-8 rounded-3xl border border-white/5 shadow-2xl">
-                        <h1 className="text-3xl md:text-4xl font-black mb-2 text-center text-accent">
-                            JOIN VIEWNOTE
-                        </h1>
-                        <p className="text-textSecondary text-center mb-6 md:mb-8">
-                            Start your cinematic journey today.
-                        </p>
+            <div className="w-full max-w-md mx-auto px-6 py-10">
+                <div className="bg-secondary p-6 md:p-8 rounded-3xl border border-white/5 shadow-2xl">
+                    <h1 className="text-3xl md:text-4xl font-black mb-2 text-center text-accent">
+                        JOIN VIEWNOTE
+                    </h1>
+                    <p className="text-textSecondary text-center mb-6 md:mb-8">
+                        Start your cinematic journey today.
+                    </p>
 
                         <form onSubmit={handleSignup} className="space-y-4">
                             {/* Username Field */}
@@ -245,16 +244,15 @@ export default function SignupPage() {
                             {googleLoading ? "Signing up..." : "Google"}
                         </Button>
 
-                        <p className="mt-6 md:mt-8 text-center text-textSecondary text-sm md:text-base">
-                            Already have an account?{" "}
-                            <Link
-                                href="/login"
-                                className="text-accent font-bold hover:underline"
-                            >
-                                Sign In
-                            </Link>
-                        </p>
-                    </div>
+                    <p className="mt-6 md:mt-8 text-center text-textSecondary text-sm md:text-base">
+                        Already have an account?{" "}
+                        <Link
+                            href="/login"
+                            className="text-accent font-bold hover:underline"
+                        >
+                            Sign In
+                        </Link>
+                    </p>
                 </div>
             </div>
         </main>

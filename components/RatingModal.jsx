@@ -34,13 +34,15 @@ export default function RatingModal({
     onClose,
     mediaId,
     mediaType,
-    seriesId = null,
-    seasons = [],
     title,
     poster_path,
-    currentRating = 0,
-    releaseYear = "",
-    mode = "normal", // "normal" | "edit" | "rateAgain"
+    currentRating,
+    releaseYear,
+    mode = "normal",
+    seasons = [],
+    seriesId = null,
+    initialSeasonNumber = null,
+    initialEpisodeNumber = null,
 }) {
     const [rating, setRating] = useState(currentRating);
     const [review, setReview] = useState("");
@@ -54,6 +56,8 @@ export default function RatingModal({
     const [hasExisting, setHasExisting] = useState(false);
     const [selectedSeason, setSelectedSeason] = useState("all");
     const [selectedEpisode, setSelectedEpisode] = useState("all");
+    const [showWatchingPrompt, setShowWatchingPrompt] = useState(false);
+    const [pendingWatchingPayload, setPendingWatchingPayload] = useState(null);
     const { user } = useAuth();
 
     const isTV = mediaType === "tv";
@@ -114,6 +118,24 @@ export default function RatingModal({
     useEffect(() => {
         if (!isOpen) setTagInput("");
     }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        if (isTV) {
+            if (initialSeasonNumber == null) {
+                setSelectedSeason("all");
+                setSelectedEpisode("all");
+            } else {
+                setSelectedSeason(String(initialSeasonNumber));
+                if (initialEpisodeNumber == null) {
+                    setSelectedEpisode("all");
+                } else {
+                    setSelectedEpisode(String(initialEpisodeNumber));
+                }
+            }
+        }
+    }, [isOpen, isTV, initialSeasonNumber, initialEpisodeNumber]);
 
     const handleAddTag = useCallback(() => {
         const t = tagInput.trim().toLowerCase();
@@ -183,24 +205,51 @@ export default function RatingModal({
                 try {
                     const watching = await mediaService.isWatching(user, tvSeriesId);
                     if (!watching) {
-                        const ok = window.confirm("Add this series to Currently Watching?");
-                        if (ok) {
-                            await mediaService.addToWatching(user, tvSeriesId, {
+                        setPendingWatchingPayload({
+                            seriesId: tvSeriesId,
+                            data: {
                                 title,
                                 poster_path,
                                 currentSeason: seasonNumber,
                                 currentEpisode: targetType === "episode" ? episodeNumber : null,
-                            });
-                        }
+                            },
+                        });
+                        setShowWatchingPrompt(true);
                     }
                 } catch (_) {}
             }
-            onClose();
+            if (!(isTV && (targetType === "season" || targetType === "episode"))) {
+                onClose();
+            }
         } catch (err) {
             // Error handling in service
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleConfirmAddWatching = async () => {
+        if (!user || !pendingWatchingPayload?.seriesId) {
+            setShowWatchingPrompt(false);
+            setPendingWatchingPayload(null);
+            onClose();
+            return;
+        }
+        try {
+            await mediaService.addToWatching(user, pendingWatchingPayload.seriesId, pendingWatchingPayload.data);
+        } catch (_) {
+            // ignore
+        } finally {
+            setShowWatchingPrompt(false);
+            setPendingWatchingPayload(null);
+            onClose();
+        }
+    };
+
+    const handleDeclineAddWatching = () => {
+        setShowWatchingPrompt(false);
+        setPendingWatchingPayload(null);
+        onClose();
     };
 
     const handleRemove = async () => {
@@ -250,110 +299,119 @@ export default function RatingModal({
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={mode === "rateAgain" ? "Rate Again" : mode === "edit" ? "Edit Review" : "I watched..."} maxWidth="700px">
-            <div className="p-6">
-                <div className="flex flex-col md:flex-row gap-6">
-                    {/* Left – Poster */}
-                    {poster_path && (
-                        <div className="flex-shrink-0 mx-auto md:mx-0">
-                            <img
-                                src={`${TMDB_IMG}${poster_path}`}
-                                alt={title}
-                                className="w-[140px] md:w-[180px] rounded-xl object-cover shadow-lg"
-                            />
-                        </div>
-                    )}
-
-                    {/* Right – Form */}
-                    <div className="flex-1 space-y-5 min-w-0">
-                        {/* Title + Year */}
-                        <div>
-                            <h3 className="text-xl font-bold text-white leading-tight">
-                                {title}
-                                {releaseYear && (
-                                    <span className="text-textSecondary font-normal ml-2">({releaseYear})</span>
-                                )}
-                            </h3>
-                        </div>
-
-                        {/* Watched Date */}
-                        <div>
-                            <label className="flex items-center gap-2 text-sm text-textSecondary mb-1.5">
-                                <Calendar size={14} />
-                                Watched on
-                            </label>
-                            <input
-                                type="date"
-                                value={watchedDate}
-                                onChange={(e) => setWatchedDate(e.target.value)}
-                                max={formatDateForInput(new Date())}
-                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all [color-scheme:dark]"
-                            />
-                        </div>
-
-                        {/* Review */}
-                        <div>
-                            <label className="block text-sm text-textSecondary mb-1.5">
-                                Review <span className="text-textSecondary/50">(optional)</span>
-                            </label>
-                            <textarea
-                                value={review}
-                                onChange={(e) => setReview(e.target.value)}
-                                placeholder="Share your thoughts..."
-                                rows={3}
-                                maxLength={2000}
-                                disabled={loadingExisting}
-                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-textSecondary/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 resize-none transition-all"
-                            />
-                            <p className="text-xs text-textSecondary/50 mt-0.5 text-right">
-                                {review.length}/2000
-                            </p>
-                        </div>
-
-                        {isTV && (seasons || []).length > 0 && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-sm text-textSecondary mb-1.5">Season</label>
-                                    <select
-                                        value={selectedSeason}
-                                        onChange={(e) => { setSelectedSeason(e.target.value); setSelectedEpisode("all"); }}
-                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
-                                    >
-                                        <option value="all">All Seasons</option>
-                                        {(seasons || [])
-                                            .filter((s) => s && typeof s.season_number === "number" && s.season_number > 0)
-                                            .sort((a, b) => a.season_number - b.season_number)
-                                            .map((s) => (
-                                                <option key={s.season_number} value={String(s.season_number)}>
-                                                    Season {s.season_number}
-                                                </option>
-                                            ))}
-                                    </select>
-                                </div>
-
-                                {selectedSeason !== "all" && (
-                                    <div>
-                                        <label className="block text-sm text-textSecondary mb-1.5">Episode</label>
-                                        <select
-                                            value={selectedEpisode}
-                                            onChange={(e) => setSelectedEpisode(e.target.value)}
-                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
-                                        >
-                                            <option value="all">All Episodes</option>
-                                            {(() => {
-                                                const seasonObj = (seasons || []).find((s) => String(s.season_number) === String(selectedSeason));
-                                                const epCount = Number(seasonObj?.episode_count || 0);
-                                                return Array.from({ length: epCount }, (_, i) => i + 1).map((n) => (
-                                                    <option key={n} value={String(n)}>
-                                                        Episode {n}
-                                                    </option>
-                                                ));
-                                            })()}
-                                        </select>
-                                    </div>
-                                )}
+        <>
+            <Modal isOpen={isOpen} onClose={onClose} title={mode === "rateAgain" ? "Rate Again" : mode === "edit" ? "Edit Review" : "I watched..."} maxWidth="700px">
+                <div className="p-6">
+                    <div className="flex flex-col md:flex-row gap-6">
+                        {/* Left – Poster */}
+                        {poster_path && (
+                            <div className="flex-shrink-0 mx-auto md:mx-0">
+                                <img
+                                    src={`${TMDB_IMG}${poster_path}`}
+                                    alt={title}
+                                    className="w-[140px] md:w-[180px] rounded-xl object-cover shadow-lg"
+                                />
                             </div>
                         )}
+
+                        {/* Right – Form */}
+                        <div className="flex-1 space-y-5 min-w-0">
+                            {/* Title + Year */}
+                            <div>
+                                <h3 className="text-xl font-bold text-white leading-tight">
+                                    {title}
+                                    {releaseYear && (
+                                        <span className="text-textSecondary font-normal ml-2">({releaseYear})</span>
+                                    )}
+                                </h3>
+                            </div>
+
+                            {/* Watched Date */}
+                            <div>
+                                <label className="flex items-center gap-2 text-sm text-textSecondary mb-1.5">
+                                    <Calendar size={14} />
+                                    Watched on
+                                </label>
+                                <input
+                                    type="date"
+                                    value={watchedDate}
+                                    onChange={(e) => setWatchedDate(e.target.value)}
+                                    max={formatDateForInput(new Date())}
+                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all [color-scheme:dark]"
+                                />
+                            </div>
+
+                            {/* Review */}
+                            <div>
+                                <label className="block text-sm text-textSecondary mb-1.5">
+                                    Review <span className="text-textSecondary/50">(optional)</span>
+                                </label>
+                                <textarea
+                                    value={review}
+                                    onChange={(e) => setReview(e.target.value)}
+                                    placeholder="Share your thoughts..."
+                                    rows={3}
+                                    maxLength={2000}
+                                    disabled={loadingExisting}
+                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-textSecondary/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 resize-none transition-all"
+                                />
+                                <p className="text-xs text-textSecondary/50 mt-0.5 text-right">
+                                    {review.length}/2000
+                                </p>
+                            </div>
+
+                            {isTV && (seasons || []).length > 0 && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm text-textSecondary mb-1.5">Season</label>
+                                        <select
+                                            value={selectedSeason}
+                                            onChange={(e) => { setSelectedSeason(e.target.value); setSelectedEpisode("all"); }}
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
+                                        >
+                                            <option value="all">All Seasons</option>
+                                            {(seasons || [])
+                                                .filter((s) => s && typeof s.season_number === "number" && s.season_number >= 0)
+                                                .sort((a, b) => {
+                                                    const an = Number(a?.season_number ?? 0);
+                                                    const bn = Number(b?.season_number ?? 0);
+                                                    const aIsSpecial = an === 0;
+                                                    const bIsSpecial = bn === 0;
+                                                    if (aIsSpecial && !bIsSpecial) return 1;
+                                                    if (!aIsSpecial && bIsSpecial) return -1;
+                                                    return an - bn;
+                                                })
+                                                .map((s) => (
+                                                    <option key={s.season_number} value={String(s.season_number)}>
+                                                        Season {s.season_number}
+                                                    </option>
+                                                ))}
+                                        </select>
+                                    </div>
+
+                                    {selectedSeason !== "all" && (
+                                        <div>
+                                            <label className="block text-sm text-textSecondary mb-1.5">Episode</label>
+                                            <select
+                                                value={selectedEpisode}
+                                                onChange={(e) => setSelectedEpisode(e.target.value)}
+                                                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 transition-all"
+                                            >
+                                                <option value="all">All Episodes</option>
+                                                {(() => {
+                                                    const seasonObj = (seasons || []).find((s) => String(s.season_number) === String(selectedSeason));
+                                                    const epCount = Number(seasonObj?.episode_count || 0);
+                                                    return Array.from({ length: epCount }, (_, i) => i + 1).map((n) => (
+                                                        <option key={n} value={String(n)}>
+                                                            Episode {n}
+                                                        </option>
+                                                    ));
+                                                })()}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                         {/* Tags */}
                         <div>
@@ -444,9 +502,34 @@ export default function RatingModal({
                                 Remove Rating
                             </button>
                         )}
+                        </div>
                     </div>
                 </div>
-            </div>
-        </Modal>
+            </Modal>
+
+            <Modal isOpen={showWatchingPrompt} onClose={handleDeclineAddWatching} title="Add to Watching?" maxWidth="520px">
+                <div className="p-6 space-y-5">
+                    <p className="text-textSecondary">
+                        You rated a season/episode. Do you want to add this series to <span className="text-white font-semibold">Watching</span>?
+                    </p>
+                    <div className="flex gap-3 justify-end">
+                        <button
+                            type="button"
+                            onClick={handleDeclineAddWatching}
+                            className="px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-textSecondary hover:text-white transition"
+                        >
+                            Not now
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleConfirmAddWatching}
+                            className="px-4 py-2 rounded-lg bg-accent text-black font-semibold hover:opacity-90 transition"
+                        >
+                            Add
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+        </>
     );
 }

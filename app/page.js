@@ -66,11 +66,10 @@ const MediaCard = memo(function MediaCard({ item, type }) {
     const href = getMediaUrl(item, type);
     const title = item.title || item.name;
     const year = (item.release_date || item.first_air_date || "").split("-")[0];
-    const rating = item.vote_average?.toFixed(1);
 
     return (
         <Link href={href} className="group">
-            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
+            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
                 <Image
                     src={tmdb.getImageUrl(item.poster_path)}
                     alt={title || "Poster"}
@@ -79,14 +78,15 @@ const MediaCard = memo(function MediaCard({ item, type }) {
                     loading="lazy"
                     sizes="(max-width: 768px) 50vw, (max-width: 1024px) 25vw, 20vw"
                 />
-            </div>
-            <h3 className="text-base md:text-lg font-semibold line-clamp-1 group-hover:text-accent transition-colors">
-                {title}
-            </h3>
-            <div className="flex items-center gap-2 text-textSecondary text-sm">
-                <span>{year}</span>
-                <span>•</span>
-                <span className="text-accent font-bold">★ {rating}</span>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-x-0 bottom-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="text-sm font-semibold text-white line-clamp-2">
+                        {title}
+                    </div>
+                    {year ? (
+                        <div className="text-xs text-white/70">{year}</div>
+                    ) : null}
+                </div>
             </div>
         </Link>
     );
@@ -371,10 +371,9 @@ export default function HomePage() {
 async function fetchTMDBPage(endpoint) {
     const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
     try {
-        const isBrowser = typeof window !== "undefined";
-        const url = isBrowser
-            ? `/api/tmdb?endpoint=${encodeURIComponent(endpoint)}`
-            : `https://api.themoviedb.org/3/${endpoint}${endpoint.includes("?") ? "&" : "?"}api_key=${TMDB_API_KEY}`;
+        const url = `https://api.themoviedb.org/3/${endpoint}${
+            endpoint.includes("?") ? "&" : "?"
+        }api_key=${TMDB_API_KEY}`;
         const res = await fetch(url);
         if (!res.ok) return [];
         const data = await res.json();

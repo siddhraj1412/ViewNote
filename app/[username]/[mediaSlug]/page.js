@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, onSnapshot, orderBy } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import StarRating from "@/components/StarRating";
 import { Heart, Calendar, Eye, ArrowLeft, Tag, MessageCircle, Send, Trash2, ThumbsUp, Edit3 } from "lucide-react";
@@ -71,6 +71,17 @@ export default function ReviewDetailPage() {
                 const ratingsSnap = await getDocs(ratingsQuery);
 
                 let matchedReview = null;
+                const docIdSuffix = mediaSlug.split("-").pop();
+                if (docIdSuffix) {
+                    for (const d of ratingsSnap.docs) {
+                        if (d.id === docIdSuffix) {
+                            matchedReview = { id: d.id, ...d.data() };
+                            break;
+                        }
+                    }
+                }
+
+                if (!matchedReview) {
                 for (const doc of ratingsSnap.docs) {
                     const data = doc.data();
                     const titleSlug = generateSlugFromTitle(data.title || "");
@@ -79,6 +90,7 @@ export default function ReviewDetailPage() {
                         matchedReview = { id: doc.id, ...data };
                         break;
                     }
+                }
                 }
 
                 if (!matchedReview) {
@@ -121,6 +133,45 @@ export default function ReviewDetailPage() {
             setLikeCount(count);
         });
         reviewService.getComments(review.id).then(setComments);
+
+        const likesQ = query(collection(db, "review_likes"), where("reviewDocId", "==", review.id));
+
+        // Prefer ordered query; fallback if index missing
+        let commentsQ;
+        try {
+            commentsQ = query(
+                collection(db, "review_comments"),
+                where("reviewDocId", "==", review.id),
+                orderBy("createdAt", "desc")
+            );
+        } catch {
+            commentsQ = query(collection(db, "review_comments"), where("reviewDocId", "==", review.id));
+        }
+
+        const unsubLikes = onSnapshot(likesQ, (snap) => {
+            setLikeCount(snap.size);
+        }, () => setLikeCount(0));
+
+        const unsubComments = onSnapshot(commentsQ, (snap) => {
+            const next = snap.docs.map((d) => {
+                const data = d.data() || {};
+                return {
+                    id: d.id,
+                    ...data,
+                    createdAt: data.createdAt?.toDate?.() || new Date(),
+                };
+            });
+            // If we had to fallback to an unordered query, sort client-side.
+            next.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            setComments(next);
+        }, () => {
+            setComments([]);
+        });
+
+        return () => {
+            try { unsubLikes(); } catch (_) {}
+            try { unsubComments(); } catch (_) {}
+        };
     }, [review?.id, user?.uid]);
 
     const handleToggleLike = useCallback(async () => {
@@ -258,6 +309,26 @@ export default function ReviewDetailPage() {
                             )}
                         </div>
 
+                        <div className="flex items-center gap-4 pt-2 border-t border-white/10">
+                            <button
+                                onClick={handleToggleLike}
+                                disabled={likeLoading}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${liked
+                                    ? "bg-accent/20 text-accent border border-accent/30"
+                                    : "bg-white/5 text-textSecondary hover:text-white border border-white/10 hover:border-white/20"
+                                    }`}
+                            >
+                                <ThumbsUp size={16} fill={liked ? "currentColor" : "none"} />
+                                <span className="tabular-nums">{likeCount}</span>
+                                <span>{liked ? "Liked" : "Like"}</span>
+                            </button>
+                            <div className="flex items-center gap-2 text-sm text-textSecondary">
+                                <MessageCircle size={16} />
+                                <span className="tabular-nums">{comments.length}</span>
+                                <span>Comment{comments.length !== 1 ? "s" : ""}</span>
+                            </div>
+                        </div>
+
                         <div className="flex flex-wrap items-center gap-4">
                             {review.rating > 0 && (
                                 <div className="flex items-center gap-2">
@@ -284,7 +355,7 @@ export default function ReviewDetailPage() {
                         )}
 
                         {review.review && (
-                            <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                            <div>
                                 <p className="text-white leading-relaxed whitespace-pre-wrap">{review.review}</p>
                             </div>
                         )}
@@ -302,25 +373,6 @@ export default function ReviewDetailPage() {
                                 ))}
                             </div>
                         )}
-
-                        {/* Like button */}
-                        <div className="flex items-center gap-4 pt-2 border-t border-white/10">
-                            <button
-                                onClick={handleToggleLike}
-                                disabled={likeLoading}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${liked
-                                    ? "bg-accent/20 text-accent border border-accent/30"
-                                    : "bg-white/5 text-textSecondary hover:text-white border border-white/10 hover:border-white/20"
-                                    }`}
-                            >
-                                <ThumbsUp size={16} fill={liked ? "currentColor" : "none"} />
-                                <span>{likeCount > 0 ? likeCount : ""} {liked ? "Liked" : "Like"}</span>
-                            </button>
-                            <div className="flex items-center gap-1.5 text-sm text-textSecondary">
-                                <MessageCircle size={16} />
-                                <span>{comments.length} comment{comments.length !== 1 ? "s" : ""}</span>
-                            </div>
-                        </div>
 
                         {/* Comments section */}
                         <div className="space-y-4 pt-2">

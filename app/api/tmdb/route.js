@@ -51,6 +51,11 @@ export async function GET(request) {
         const normalized = endpoint.replace(/^\/+/, "");
         const cacheKey = `tmdb:${normalized}`;
 
+        // Rate limiting should not block cache hits, but we still want a stable header value.
+        // Compute it up-front so we never reference it before initialization.
+        const clientId = getClientId(request);
+        const rateLimitResult = tmdbRateLimiter.check(clientId);
+
         // Serve from cache immediately (including stale) to reduce TMDB traffic
         const cached = tmdbCache.get(cacheKey);
         if (cached) {
@@ -59,7 +64,7 @@ export async function GET(request) {
                 headers: {
                     "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
                     "X-Cache": cached.isStale ? "STALE" : "HIT",
-                    "X-RateLimit-Remaining": rateLimitResult.remaining.toString(),
+                    "X-RateLimit-Remaining": String(rateLimitResult.remaining),
                 },
             });
         }
@@ -77,8 +82,6 @@ export async function GET(request) {
         }
 
         // Rate limiting only on cache-miss (upstream fetch) so cache hits never 429
-        const clientId = getClientId(request);
-        const rateLimitResult = tmdbRateLimiter.check(clientId);
         if (!rateLimitResult.allowed) {
             return NextResponse.json(
                 {

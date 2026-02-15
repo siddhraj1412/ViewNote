@@ -10,7 +10,7 @@ import showToast from "@/lib/toast";
 import Modal from "@/components/ui/Modal";
 import { tmdb } from "@/lib/tmdb";
 
-export default function BannerSelector({ isOpen, onClose, mediaId, mediaType, defaultBanner }) {
+export default function BannerSelector({ isOpen, onClose, mediaId, mediaType, defaultBanner, tmdbEndpoint = null, resultKey = "backdrops" }) {
     const [banners, setBanners] = useState([]);
     const [selectedBanner, setSelectedBanner] = useState(defaultBanner);
     const [loading, setLoading] = useState(true);
@@ -37,15 +37,20 @@ export default function BannerSelector({ isOpen, onClose, mediaId, mediaType, de
     const fetchBanners = async () => {
         try {
             setLoading(true);
-            const tmdbEndpoint = mediaType === "movie"
-                ? `movie/${mediaId}/images`
-                : `tv/${mediaId}/images`;
+            const endpoint = tmdbEndpoint
+                ? tmdbEndpoint
+                : (mediaType === "movie"
+                    ? `movie/${mediaId}/images`
+                    : `tv/${mediaId}/images`);
 
             const response = await fetch(
-                `/api/tmdb?endpoint=${encodeURIComponent(tmdbEndpoint)}`
+                `/api/tmdb?endpoint=${encodeURIComponent(endpoint)}`
             );
             const data = await response.json();
-            setBanners(data.backdrops || []);
+            const list = (data && Array.isArray(data[resultKey]))
+                ? data[resultKey]
+                : (Array.isArray(data?.backdrops) ? data.backdrops : Array.isArray(data?.stills) ? data.stills : []);
+            setBanners(list);
         } catch (err) {
             console.error("Error fetching banners:", err);
             showToast.error("Failed to load banners");

@@ -10,7 +10,7 @@ import showToast from "@/lib/toast";
 import Modal from "@/components/ui/Modal";
 import { tmdb } from "@/lib/tmdb";
 
-export default function PosterSelector({ isOpen, onClose, mediaId, mediaType, defaultPoster }) {
+export default function PosterSelector({ isOpen, onClose, mediaId, mediaType, defaultPoster, tmdbEndpoint = null }) {
     const [posters, setPosters] = useState([]);
     const [selectedPoster, setSelectedPoster] = useState(defaultPoster);
     const [loading, setLoading] = useState(true);
@@ -37,12 +37,14 @@ export default function PosterSelector({ isOpen, onClose, mediaId, mediaType, de
     const fetchPosters = async () => {
         try {
             setLoading(true);
-            const tmdbEndpoint = mediaType === "movie"
-                ? `movie/${mediaId}/images`
-                : `tv/${mediaId}/images`;
+            const endpoint = tmdbEndpoint
+                ? tmdbEndpoint
+                : (mediaType === "movie"
+                    ? `movie/${mediaId}/images`
+                    : `tv/${mediaId}/images`);
 
             const response = await fetch(
-                `/api/tmdb?endpoint=${encodeURIComponent(tmdbEndpoint)}`
+                `/api/tmdb?endpoint=${encodeURIComponent(endpoint)}`
             );
             const data = await response.json();
             setPosters(data.posters || []);

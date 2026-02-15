@@ -7,10 +7,10 @@ import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { getMediaUrl } from "@/lib/slugify";
+import { tmdb } from "@/lib/tmdb";
 import StarRating from "@/components/StarRating";
 import eventBus from "@/lib/eventBus";
 
-const TMDB_IMG = "https://image.tmdb.org/t/p/w154";
 const PAGE_SIZE = 50;
 
 export default function DiarySection({ userId }) {
@@ -88,34 +88,6 @@ export default function DiarySection({ userId }) {
         return "";
     };
 
-    const getTVTargetBadge = (item) => {
-        if (item?.mediaType !== "tv") return null;
-        const t = item?.targetType || "series";
-        const s = item?.seasonNumber;
-        const e = item?.episodeNumber;
-        if (t === "episode" && Number.isFinite(Number(s)) && Number.isFinite(Number(e))) {
-            return `S${Number(s)}E${Number(e)}`;
-        }
-        if (t === "season" && Number.isFinite(Number(s))) {
-            return `S${Number(s)}`;
-        }
-        return null;
-    };
-
-    const getDisplayTitle = (item) => {
-        if (item?.mediaType !== "tv") return item?.title || "";
-        const t = item?.targetType || "series";
-        const s = item?.seasonNumber;
-        const e = item?.episodeNumber;
-        if (t === "episode" && Number.isFinite(Number(s)) && Number.isFinite(Number(e))) {
-            return `${item.title} (S${Number(s)}E${Number(e)})`;
-        }
-        if (t === "season" && Number.isFinite(Number(s))) {
-            return `${item.title} (S${Number(s)})`;
-        }
-        return item?.title || "";
-    };
-
     if (loading) {
         return (
             <div className="space-y-3">
@@ -156,15 +128,13 @@ export default function DiarySection({ userId }) {
                         { id: item.mediaId, title: item.title, name: item.title },
                         item.mediaType
                     );
-                    const badge = getTVTargetBadge(item);
-                    const displayTitle = getDisplayTitle(item);
                     return (
                         <Link key={item.id} href={url} className="block">
                             <div className="flex items-center gap-4 p-3 md:p-4 bg-secondary rounded-xl border border-white/5 hover:border-white/10 transition-all">
                                 <div className="shrink-0">
                                     {item.poster_path ? (
                                         <img
-                                            src={`${TMDB_IMG}${item.poster_path}`}
+                                            src={tmdb.getImageUrl(item.poster_path, "w154", "poster")}
                                             alt={item.title}
                                             className="w-10 h-[60px] rounded-lg object-cover"
                                         />
@@ -173,18 +143,11 @@ export default function DiarySection({ userId }) {
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <h3 className="font-semibold text-white text-sm md:text-base truncate">{displayTitle}</h3>
-                                        {badge && (
-                                            <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent/20 text-accent">
-                                                {badge}
-                                            </span>
-                                        )}
-                                    </div>
+                                    <h3 className="font-semibold text-white text-sm md:text-base truncate">{item.title}</h3>
                                     <div className="flex flex-wrap items-center gap-2 mt-1">
                                         <span className="text-xs text-textSecondary">{formatDate(item)}</span>
-                                        {item.rating > 0 && (
-                                            <StarRating value={item.rating} size={12} readonly showHalfStars />
+                                        {Number(item.rating || 0) > 0 && (
+                                            <StarRating value={Number(item.rating || 0)} size={12} readonly showHalfStars />
                                         )}
                                         {item.liked && (
                                             <Heart size={12} className="text-red-400" fill="currentColor" />
