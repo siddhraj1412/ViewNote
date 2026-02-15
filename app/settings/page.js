@@ -5,9 +5,10 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, deleteDoc, writeBatch } from "firebase/firestore";
-import { User, FileText, Film, Tv, Play, Palette, Trash2, AlertTriangle } from "lucide-react";
+import { User, FileText, Film, Tv, Play, Palette, Trash2, AlertTriangle, Camera, LogOut, Image as ImageIcon, ChevronRight, Pencil } from "lucide-react";
 import showToast from "@/lib/toast";
 import FavoritesEditDialog from "@/components/settings/FavoritesEditDialog";
+import FavoriteEpisodesDialog from "@/components/settings/FavoriteEpisodesDialog";
 import BannerSelectionModal from "@/components/settings/BannerSelectionModal";
 import DeleteAccountModal from "@/components/settings/DeleteAccountModal";
 import AvatarUploadModal from "@/components/AvatarUploadModal";
@@ -29,10 +30,10 @@ export default function SettingsPage() {
     // Favorites state
     const [favMovies, setFavMovies] = useState([]);
     const [favShows, setFavShows] = useState([]);
+    const [favEpisodes, setFavEpisodes] = useState([]);
     const [favMoviesDialogOpen, setFavMoviesDialogOpen] = useState(false);
     const [favShowsDialogOpen, setFavShowsDialogOpen] = useState(false);
-
-
+    const [favEpisodesDialogOpen, setFavEpisodesDialogOpen] = useState(false);
 
     // Delete account state
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -71,9 +72,10 @@ export default function SettingsPage() {
 
     const loadFavorites = async () => {
         try {
-            const [moviesSnap, showsSnap] = await Promise.all([
+            const [moviesSnap, showsSnap, episodesSnap] = await Promise.all([
                 getDocs(query(collection(db, "favorites_movies"), where("userId", "==", user.uid))),
                 getDocs(query(collection(db, "favorites_shows"), where("userId", "==", user.uid))),
+                getDocs(query(collection(db, "favorites_episodes"), where("userId", "==", user.uid))),
             ]);
 
             const moviesData = moviesSnap.docs
@@ -82,9 +84,13 @@ export default function SettingsPage() {
             const showsData = showsSnap.docs
                 .map(d => ({ id: d.id, ...d.data() }))
                 .sort((a, b) => (a.order || 0) - (b.order || 0));
+            const episodesData = episodesSnap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
 
             setFavMovies(moviesData);
             setFavShows(showsData);
+            setFavEpisodes(episodesData);
         } catch (error) {
             console.error("Error loading favorites:", error);
         }
@@ -125,7 +131,7 @@ export default function SettingsPage() {
 
     // Save favorites to Firebase
     const saveFavorites = useCallback(async (type, items) => {
-        const collectionName = type === "movie" ? "favorites_movies" : "favorites_shows";
+        const collectionName = type === "movie" ? "favorites_movies" : type === "episode" ? "favorites_episodes" : "favorites_shows";
 
         try {
             // Delete all existing
@@ -146,8 +152,17 @@ export default function SettingsPage() {
                     mediaId: item.mediaId,
                     mediaType: item.mediaType || type,
                     title: item.title,
-                    poster_path: item.poster_path,
-                    release_date: item.release_date,
+                    poster_path: item.poster_path || null,
+                    ...(item.release_date ? { release_date: item.release_date } : {}),
+                    ...(item.air_date ? { air_date: item.air_date } : {}),
+                    ...(type === "episode" ? {
+                        seriesId: item.seriesId || null,
+                        seasonNumber: item.seasonNumber || null,
+                        episodeNumber: item.episodeNumber || null,
+                        episodeName: item.episodeName || null,
+                        series_name: item.series_name || null,
+                        still_path: item.still_path || null,
+                    } : {}),
                     order: index,
                     createdAt: new Date().toISOString(),
                 });
@@ -158,6 +173,8 @@ export default function SettingsPage() {
             // Update local state
             if (type === "movie") {
                 setFavMovies(items.map((item, i) => ({ ...item, order: i, id: `${user.uid}_${item.mediaId}` })));
+            } else if (type === "episode") {
+                setFavEpisodes(items.map((item, i) => ({ ...item, order: i, id: `${user.uid}_${item.mediaId}` })));
             } else {
                 setFavShows(items.map((item, i) => ({ ...item, order: i, id: `${user.uid}_${item.mediaId}` })));
             }
@@ -165,7 +182,8 @@ export default function SettingsPage() {
             // Emit event for profile to re-render
             eventBus.emit("FAVORITES_UPDATED", { type });
 
-            showToast.success(`Favorite ${type === "movie" ? "movies" : "series"} saved`);
+            const label = type === "movie" ? "movies" : type === "episode" ? "episodes" : "series";
+            showToast.success(`Favorite ${label} saved`);
         } catch (error) {
             console.error("Error saving favorites:", error);
             showToast.error("Failed to save favorites");
@@ -201,149 +219,157 @@ export default function SettingsPage() {
 
     return (
         <main className="min-h-screen bg-background">
-            <div className="site-container py-12">
-                <h1 className="text-4xl font-bold mb-8">Settings</h1>
+            <div className="site-container py-10 max-w-3xl mx-auto px-4">
+                {/* Page Header */}
+                <div className="mb-10">
+                    <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+                    <p className="text-textSecondary text-sm mt-1">Manage your profile, favorites, and account</p>
+                </div>
 
-                {/* Profile Picture */}
-                <section className="mb-8 p-6 bg-secondary rounded-xl">
-                    <div className="flex items-center gap-4 mb-4">
-                        <User className="text-accent" size={24} />
-                        <h2 className="text-2xl font-bold">Profile Picture</h2>
-                    </div>
-                    <div className="flex items-center gap-6">
-                        <div className="w-24 h-24 rounded-full bg-background flex items-center justify-center text-4xl font-bold overflow-hidden">
-                            {profile.profile_picture_url ? (
-                                <img src={profile.profile_picture_url} alt="Profile" className="w-full h-full object-cover"
-                                    onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; e.target.parentElement.textContent = (user.username?.[0] || 'U').toUpperCase(); }} />
-                            ) : (
-                                (user.username?.[0] || user.email?.[0] || "U").toUpperCase()
-                            )}
+                {/* ─── Profile Section ─── */}
+                <section className="mb-10">
+                    <SectionLabel icon={User} title="Profile" />
+
+                    {/* Avatar + Bio card */}
+                    <div className="bg-secondary rounded-2xl overflow-hidden">
+                        {/* Banner preview (if set) */}
+                        {profile.profile_banner_url && (
+                            <div className="relative h-28 w-full">
+                                <img src={profile.profile_banner_url} alt="Banner" className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-secondary/90 to-transparent" />
+                            </div>
+                        )}
+
+                        <div className={`p-6 ${profile.profile_banner_url ? "-mt-10 relative z-10" : ""}`}>
+                            {/* Avatar row */}
+                            <div className="flex items-center gap-5 mb-6">
+                                <button
+                                    onClick={() => setAvatarModalOpen(true)}
+                                    className="relative group flex-shrink-0"
+                                >
+                                    <div className="w-20 h-20 rounded-full bg-background border-2 border-white/10 flex items-center justify-center text-3xl font-bold overflow-hidden
+                                                    group-hover:border-accent transition-colors">
+                                        {profile.profile_picture_url ? (
+                                            <img
+                                                src={profile.profile_picture_url}
+                                                alt="Profile"
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; e.target.parentElement.textContent = (user.username?.[0] || "U").toUpperCase(); }}
+                                            />
+                                        ) : (
+                                            (user.username?.[0] || user.email?.[0] || "U").toUpperCase()
+                                        )}
+                                    </div>
+                                    <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Camera size={18} className="text-white" />
+                                    </div>
+                                </button>
+                                <div className="min-w-0">
+                                    <h2 className="text-lg font-semibold truncate">{user.username || user.email}</h2>
+                                    <p className="text-xs text-textSecondary mt-0.5">{user.email}</p>
+                                </div>
+                            </div>
+
+                            {/* Bio */}
+                            <div>
+                                <label className="text-xs font-medium text-textSecondary uppercase tracking-wider mb-2 block">Bio</label>
+                                <textarea
+                                    value={profile.bio || ""}
+                                    onChange={handleBioChange}
+                                    placeholder="Tell us about yourself..."
+                                    className="w-full p-3 bg-background/60 border border-white/5 rounded-xl text-sm focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition resize-none"
+                                    rows={3}
+                                />
+                                <div className="flex items-center justify-between mt-2">
+                                    <span className="text-xs text-textSecondary">{(profile.bio || "").length}/500</span>
+                                    <button
+                                        onClick={handleBioSave}
+                                        disabled={saving}
+                                        className="px-4 py-1.5 text-xs font-medium bg-accent text-white rounded-lg hover:bg-accent/85 transition disabled:opacity-50"
+                                    >
+                                        {saving ? "Saving…" : "Save Bio"}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                        <button
-                            className="px-4 py-2 bg-accent text-background rounded-lg hover:bg-accent/90 transition"
-                            onClick={() => setAvatarModalOpen(true)}
-                        >
-                            Upload Picture
-                        </button>
                     </div>
-                </section>
 
-
-
-                {/* Bio */}
-                <section className="mb-8 p-6 bg-secondary rounded-xl">
-                    <div className="flex items-center gap-4 mb-4">
-                        <FileText className="text-accent" size={24} />
-                        <h2 className="text-2xl font-bold">Bio</h2>
-                    </div>
-                    <textarea
-                        value={profile.bio || ""}
-                        onChange={handleBioChange}
-                        placeholder="Tell us about yourself..."
-                        className="w-full p-4 bg-background border border-white/10 rounded-lg focus:outline-none focus:border-accent transition resize-none"
-                        rows={4}
-                    />
-                    <div className="flex items-center justify-between mt-2">
-                        <span className="text-sm text-textSecondary">{(profile.bio || "").length}/500 characters</span>
-                        <button
-                            onClick={handleBioSave}
-                            disabled={saving}
-                            className="px-4 py-2 bg-accent text-background rounded-lg hover:bg-accent/90 transition disabled:opacity-50"
-                        >
-                            {saving ? "Saving..." : "Save Bio"}
-                        </button>
-                    </div>
-                </section>
-
-                {/* Favorite Movies — 5-slot editor */}
-                <section className="mb-8 p-6 bg-secondary rounded-xl">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-4">
-                            <Film className="text-accent" size={24} />
-                            <h2 className="text-2xl font-bold">Favorite Movies</h2>
-                        </div>
-                        <button
-                            onClick={() => setFavMoviesDialogOpen(true)}
-                            className="px-4 py-2 bg-accent text-background rounded-lg hover:bg-accent/90 transition text-sm font-medium"
-                        >
-                            Edit Favorites
-                        </button>
-                    </div>
-                    {/* Preview of current favorites */}
-                    <FavoritesPreview items={favMovies} type="movie" />
-                </section>
-
-                {/* Favorite Series — 5-slot editor */}
-                <section className="mb-8 p-6 bg-secondary rounded-xl">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-4">
-                            <Tv className="text-accent" size={24} />
-                            <h2 className="text-2xl font-bold">Favorite Series</h2>
-                        </div>
-                        <button
-                            onClick={() => setFavShowsDialogOpen(true)}
-                            className="px-4 py-2 bg-accent text-background rounded-lg hover:bg-accent/90 transition text-sm font-medium"
-                        >
-                            Edit Favorites
-                        </button>
-                    </div>
-                    <FavoritesPreview items={favShows} type="tv" />
-                </section>
-
-                {/* Favorite Episodes — Coming Soon */}
-                <section className="mb-8 p-6 bg-secondary rounded-xl">
-                    <div className="flex items-center gap-4 mb-4">
-                        <Play className="text-accent" size={24} />
-                        <h2 className="text-2xl font-bold">Favorite Episodes</h2>
-                    </div>
-                    <p className="text-textSecondary text-sm">Episode selection coming soon.</p>
-                </section>
-
-                {/* Profile Banner */}
-                <section className="mb-8 p-6 bg-secondary rounded-xl">
-                    <div className="flex items-center gap-4 mb-4">
-                        <Palette className="text-accent" size={24} />
-                        <h2 className="text-2xl font-bold">Profile Banner</h2>
-                    </div>
+                    {/* Banner picker row */}
                     <button
                         onClick={() => setBannerModalOpen(true)}
-                        className="px-4 py-2 bg-accent text-background rounded-lg hover:bg-accent/90 transition"
+                        className="mt-3 w-full flex items-center justify-between p-4 bg-secondary rounded-xl hover:bg-secondary/80 transition group"
                     >
-                        Change Banner
-                    </button>
-                    {profile.profile_banner_url && (
-                        <div className="mt-4 relative aspect-[3/1] rounded-lg overflow-hidden">
-                            <img src={profile.profile_banner_url} alt="Profile Banner" className="w-full h-full object-cover" />
+                        <div className="flex items-center gap-3">
+                            <ImageIcon size={18} className="text-accent" />
+                            <span className="text-sm font-medium">Profile Banner</span>
                         </div>
-                    )}
+                        <ChevronRight size={16} className="text-textSecondary group-hover:text-accent transition-colors" />
+                    </button>
                 </section>
 
-                {/* Logout */}
-                <section className="mb-8 p-6 bg-secondary rounded-xl">
+                {/* ─── Favorites Section ─── */}
+                <section className="mb-10">
+                    <SectionLabel icon={Film} title="Favorites" />
+
+                    {/* Favorite Movies */}
+                    <FavoritesCard
+                        icon={Film}
+                        label="Movies"
+                        items={favMovies}
+                        onEdit={() => setFavMoviesDialogOpen(true)}
+                        previewType="poster"
+                    />
+
+                    {/* Favorite Series */}
+                    <FavoritesCard
+                        icon={Tv}
+                        label="Series"
+                        items={favShows}
+                        onEdit={() => setFavShowsDialogOpen(true)}
+                        previewType="poster"
+                        className="mt-3"
+                    />
+
+                    {/* Favorite Episodes */}
+                    <FavoritesCard
+                        icon={Play}
+                        label="Episodes"
+                        items={favEpisodes}
+                        onEdit={() => setFavEpisodesDialogOpen(true)}
+                        previewType="landscape"
+                        className="mt-3"
+                    />
+                </section>
+
+                {/* ─── Account Section ─── */}
+                <section className="mb-10">
+                    <SectionLabel icon={User} title="Account" />
+
                     <button
                         onClick={handleLogout}
-                        className="px-6 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition font-medium"
+                        className="w-full flex items-center gap-3 p-4 bg-secondary rounded-xl hover:bg-secondary/80 transition group"
                     >
-                        Logout
+                        <LogOut size={18} className="text-textSecondary group-hover:text-accent" />
+                        <span className="text-sm font-medium">Log Out</span>
                     </button>
-                </section>
 
-                {/* Danger Zone — Delete Account */}
-                <section className="mb-8 p-6 bg-secondary rounded-xl border border-red-500/20">
-                    <div className="flex items-center gap-4 mb-4">
-                        <AlertTriangle className="text-red-500" size={24} />
-                        <h2 className="text-2xl font-bold text-red-400">Danger Zone</h2>
+                    {/* Danger Zone */}
+                    <div className="mt-3 p-4 bg-secondary rounded-xl border border-red-500/10">
+                        <div className="flex items-center gap-3 mb-2">
+                            <AlertTriangle size={16} className="text-red-400" />
+                            <h3 className="text-sm font-semibold text-red-400">Danger Zone</h3>
+                        </div>
+                        <p className="text-xs text-textSecondary mb-3 ml-7">
+                            Permanently delete your account and all associated data. This action cannot be undone.
+                        </p>
+                        <button
+                            onClick={() => setDeleteModalOpen(true)}
+                            className="ml-7 px-4 py-1.5 text-xs font-medium bg-red-500/15 text-red-400 rounded-lg hover:bg-red-500/25 transition flex items-center gap-2"
+                        >
+                            <Trash2 size={14} />
+                            Delete Account
+                        </button>
                     </div>
-                    <p className="text-textSecondary text-sm mb-4">
-                        Permanently delete your account and all associated data. This action cannot be undone.
-                    </p>
-                    <button
-                        onClick={() => setDeleteModalOpen(true)}
-                        className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium flex items-center gap-2"
-                    >
-                        <Trash2 size={16} />
-                        Delete Account
-                    </button>
                 </section>
             </div>
 
@@ -362,6 +388,13 @@ export default function SettingsPage() {
                 onSave={(items) => saveFavorites("tv", items)}
                 type="tv"
                 currentFavorites={favShows}
+            />
+
+            <FavoriteEpisodesDialog
+                isOpen={favEpisodesDialogOpen}
+                onClose={() => setFavEpisodesDialogOpen(false)}
+                onSave={(items) => saveFavorites("episode", items)}
+                currentFavorites={favEpisodes}
             />
 
             {/* Banner Selection Modal */}
@@ -395,33 +428,85 @@ export default function SettingsPage() {
     );
 }
 
-// Inline preview component for settings
-function FavoritesPreview({ items, type }) {
+// Section label with icon
+function SectionLabel({ icon: Icon, title }) {
+    return (
+        <div className="flex items-center gap-2 mb-3">
+            <Icon size={14} className="text-accent" />
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-textSecondary">{title}</h2>
+        </div>
+    );
+}
 
-    if (items.length === 0) {
-        return <p className="text-sm text-textSecondary">No favorites set. Click &quot;Edit Favorites&quot; to add up to 5.</p>;
-    }
+// Collapsible favorites card
+function FavoritesCard({ icon: Icon, label, items, onEdit, previewType, className = "" }) {
+    const hasItems = items && items.length > 0;
 
     return (
-        <div className="grid grid-cols-5 gap-3">
-            {items.slice(0, 5).map((item) => (
-                <div key={item.id} className="text-center">
-                    <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-background">
-                        {item.poster_path ? (
-                            <img
-                                src={`https://image.tmdb.org/t/p/w185${item.poster_path}`}
-                                alt={item.title || "Poster"}
-                                className="w-full h-full object-cover"
-                            />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center text-white/20">
-                                <Film size={18} />
-                            </div>
-                        )}
-                    </div>
-                    <p className="mt-1 text-xs text-textSecondary line-clamp-1">{item.title}</p>
+        <div className={`bg-secondary rounded-xl overflow-hidden ${className}`}>
+            <button
+                onClick={onEdit}
+                className="w-full flex items-center justify-between p-4 hover:bg-white/[0.02] transition group"
+            >
+                <div className="flex items-center gap-3">
+                    <Icon size={18} className="text-accent" />
+                    <span className="text-sm font-medium">{label}</span>
+                    <span className="text-xs text-textSecondary bg-background/50 px-2 py-0.5 rounded-full">
+                        {items.length}/5
+                    </span>
                 </div>
-            ))}
+                <div className="flex items-center gap-2">
+                    <Pencil size={14} className="text-textSecondary group-hover:text-accent transition-colors" />
+                </div>
+            </button>
+
+            {hasItems && (
+                <div className="px-4 pb-4">
+                    {previewType === "landscape" ? (
+                        <div className="grid grid-cols-5 gap-2">
+                            {items.slice(0, 5).map((item) => (
+                                <div key={item.id} className="group/card">
+                                    <div className="relative aspect-video rounded-lg overflow-hidden bg-background">
+                                        {(item.still_path || item.poster_path) ? (
+                                            <img
+                                                src={`https://image.tmdb.org/t/p/w300${item.still_path || item.poster_path}`}
+                                                alt={item.title || "Episode"}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-white/15">
+                                                <Play size={16} />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-textSecondary line-clamp-1">{item.episodeName || item.title}</p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-5 gap-2">
+                            {items.slice(0, 5).map((item) => (
+                                <div key={item.id} className="group/card">
+                                    <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-background">
+                                        {item.poster_path ? (
+                                            <img
+                                                src={`https://image.tmdb.org/t/p/w185${item.poster_path}`}
+                                                alt={item.title || "Poster"}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-white/15">
+                                                <Film size={16} />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-textSecondary line-clamp-1">{item.title}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

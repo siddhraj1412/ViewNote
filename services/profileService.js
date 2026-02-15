@@ -64,11 +64,12 @@ export const profileService = {
     },
 
     async getFavorites(userId) {
-        if (!userId) return { movies: [], shows: [] };
+        if (!userId) return { movies: [], shows: [], episodes: [] };
         try {
-            const [moviesSnap, showsSnap, customizationsMap] = await Promise.all([
+            const [moviesSnap, showsSnap, episodesSnap, customizationsMap] = await Promise.all([
                 getDocs(query(collection(db, "favorites_movies"), where("userId", "==", userId))),
                 getDocs(query(collection(db, "favorites_shows"), where("userId", "==", userId))),
+                getDocs(query(collection(db, "favorites_episodes"), where("userId", "==", userId))),
                 this.getCustomizationsMap(userId)
             ]);
             const movies = moviesSnap.docs
@@ -77,13 +78,17 @@ export const profileService = {
             const shows = showsSnap.docs
                 .map(doc => ({ id: doc.id, ...doc.data(), mediaType: "tv" }))
                 .sort((a, b) => (a.order || 0) - (b.order || 0));
+            const episodes = episodesSnap.docs
+                .map(doc => ({ id: doc.id, ...doc.data(), mediaType: "episode" }))
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
             return {
                 movies: this.applyCustomizations(movies, customizationsMap),
-                shows: this.applyCustomizations(shows, customizationsMap)
+                shows: this.applyCustomizations(shows, customizationsMap),
+                episodes,
             };
         } catch (error) {
             console.error("Error fetching favorites:", error);
-            return { movies: [], shows: [] };
+            return { movies: [], shows: [], episodes: [] };
         }
     },
 

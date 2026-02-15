@@ -9,7 +9,20 @@ import { db } from "@/lib/firebase";
 import { tmdb } from "@/lib/tmdb";
 import { getMediaUrl } from "@/lib/slugify";
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 18;
+
+const SORT_OPTIONS = [
+    { id: "newest", label: "Newest" },
+    { id: "oldest", label: "Oldest" },
+    { id: "a-z", label: "A → Z" },
+    { id: "z-a", label: "Z → A" },
+];
+
+const FILTER_OPTIONS = [
+    { id: "all", label: "All" },
+    { id: "movie", label: "Movies" },
+    { id: "tv", label: "Shows" },
+];
 
 async function resolveUsernameToUid(username) {
     if (!username) return null;
@@ -23,12 +36,37 @@ async function resolveUsernameToUid(username) {
     }
 }
 
+function sortItems(items, sortBy) {
+    const copy = [...items];
+    switch (sortBy) {
+        case "oldest":
+            return copy.sort((a, b) => {
+                const aT = a.pausedAt?.seconds || a.addedAt?.seconds || 0;
+                const bT = b.pausedAt?.seconds || b.addedAt?.seconds || 0;
+                return aT - bT;
+            });
+        case "a-z":
+            return copy.sort((a, b) => (a.title || a.name || "").localeCompare(b.title || b.name || ""));
+        case "z-a":
+            return copy.sort((a, b) => (b.title || b.name || "").localeCompare(a.title || a.name || ""));
+        case "newest":
+        default:
+            return copy.sort((a, b) => {
+                const aT = a.pausedAt?.seconds || a.addedAt?.seconds || 0;
+                const bT = b.pausedAt?.seconds || b.addedAt?.seconds || 0;
+                return bT - aT;
+            });
+    }
+}
+
 export default function PausedAllPage() {
     const params = useParams();
     const username = params?.username ? decodeURIComponent(params.username) : "";
 
     const [uid, setUid] = useState(null);
     const [loadingUser, setLoadingUser] = useState(true);
+    const [sortBy, setSortBy] = useState("newest");
+    const [filterType, setFilterType] = useState("all");
 
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -107,6 +145,14 @@ export default function PausedAllPage() {
         return username ? `/${encodeURIComponent(username)}?tab=paused` : "/";
     }, [username]);
 
+    const displayItems = useMemo(() => {
+        let filtered = items;
+        if (filterType !== "all") {
+            filtered = items.filter((item) => item.mediaType === filterType);
+        }
+        return sortItems(filtered, sortBy);
+    }, [items, sortBy, filterType]);
+
     if (loadingUser) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center pt-16">
@@ -139,15 +185,38 @@ export default function PausedAllPage() {
                     </Link>
                 </div>
 
+                {/* Sort & Filter Controls */}
+                <div className="flex flex-wrap items-center gap-3 mb-6">
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="bg-background text-white border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                    >
+                        {SORT_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
+                    </select>
+                    <select
+                        value={filterType}
+                        onChange={(e) => setFilterType(e.target.value)}
+                        className="bg-background text-white border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                    >
+                        {FILTER_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
+                    </select>
+                    <span className="text-xs text-textSecondary ml-auto">{displayItems.length} item{displayItems.length !== 1 ? "s" : ""}</span>
+                </div>
+
                 {loading ? (
                     <div className="text-center py-12 text-textSecondary">Loading paused...</div>
-                ) : items.length === 0 ? (
+                ) : displayItems.length === 0 ? (
                     <div className="bg-secondary rounded-xl border border-white/5 p-6">
                         <div className="text-sm text-textSecondary">No paused items.</div>
                     </div>
                 ) : (
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-                        {items.map((item) => (
+                        {displayItems.map((item) => (
                             <Link key={item.id} href={getMediaUrl(item, item.mediaType)} className="group">
                                 <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-all bg-secondary">
                                     <Image

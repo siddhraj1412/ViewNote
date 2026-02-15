@@ -14,6 +14,7 @@ import { getMediaUrl } from "@/lib/slugify";
  * Session cache key
  */
 const SESSION_CACHE_KEY = "vn_discovery_cache";
+const ROTATION_KEY = "vn_shown_ids";
 
 function getSessionCache() {
     if (typeof window === "undefined") return null;
@@ -47,6 +48,33 @@ function clearSessionCache() {
     } catch (_) {}
 }
 
+/** Rotation pool: track shown IDs in localStorage so refreshes show fresh content */
+function getShownIds() {
+    if (typeof window === "undefined") return new Set();
+    try {
+        const raw = localStorage.getItem(ROTATION_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed.ids) && Date.now() - (parsed.ts || 0) < 24 * 60 * 60 * 1000) {
+                return new Set(parsed.ids);
+            }
+        }
+    } catch (_) {}
+    return new Set();
+}
+
+function saveShownIds(ids) {
+    if (typeof window === "undefined") return;
+    try {
+        const arr = [...ids].slice(-500); // keep last 500
+        localStorage.setItem(ROTATION_KEY, JSON.stringify({ ids: arr, ts: Date.now() }));
+    } catch (_) {}
+}
+
+function randomPage(max = 5) {
+    return Math.floor(Math.random() * max) + 1;
+}
+
 const MediaCard = memo(function MediaCard({ item, type }) {
     const href = getMediaUrl(item, type);
     const title = item.title || item.name;
@@ -78,7 +106,7 @@ const MediaCard = memo(function MediaCard({ item, type }) {
 });
 
 export default function HomePage() {
-    const [sections, setSections] = useState({
+    const emptySections = {
         trendingMovies: [],
         trendingTV: [],
         newEpisodes: [],
@@ -86,40 +114,83 @@ export default function HomePage() {
         popularMovies: [],
         comingSoon: [],
         mostAnticipated: [],
+    };
+
+    // Detect hard refresh before state init so we never serve stale cache on reload
+    const isHardRefresh = useRef(false);
+    if (typeof window !== "undefined") {
+        try {
+            const navEntries = performance.getEntriesByType("navigation");
+            if (navEntries.length > 0 && navEntries[0].type === "reload") {
+                clearSessionCache();
+                isHardRefresh.current = true;
+            }
+        } catch (_) {}
+    }
+
+    const [sections, setSections] = useState(() => {
+        if (typeof window !== "undefined" && !isHardRefresh.current) {
+            const cached = getSessionCache();
+            if (cached?.sections) return cached.sections;
+        }
+        return emptySections;
     });
-    const [heroCategory, setHeroCategory] = useState("trending");
-    const [loading, setLoading] = useState(true);
-    const { user } = useAuth();
+    const [heroCategory, setHeroCategory] = useState(() => {
+        if (typeof window !== "undefined" && !isHardRefresh.current) {
+            const cached = getSessionCache();
+            if (cached?.heroCategory) return cached.heroCategory;
+        }
+        return "trending";
+    });
+    const [loading, setLoading] = useState(() => {
+        if (typeof window !== "undefined" && !isHardRefresh.current) {
+            return !getSessionCache();
+        }
+        return true;
+    });
+    const { user, loading: authLoading } = useAuth();
     const fetchedRef = useRef(false);
 
     useEffect(() => {
+        // Wait for auth to settle before fetching — prevents double fetch
+        if (authLoading) return;
+
+        // Already fetched this mount (e.g. from cache path) — skip
+        if (fetchedRef.current) return;
+
+        const controller = new AbortController();
+
         const fetchContent = async () => {
+            // Check cache first (soft navigations)
             const cached = getSessionCache();
-            if (cached && !fetchedRef.current) {
-                setSections(cached.sections || {});
+            if (cached) {
+                setSections(cached.sections || emptySections);
                 setHeroCategory(cached.heroCategory || "trending");
                 setLoading(false);
                 fetchedRef.current = true;
                 return;
             }
 
+            setLoading(true);
             try {
-                // Future date for "most anticipated"
                 const today = new Date();
                 const futureDate = new Date(today);
                 futureDate.setMonth(futureDate.getMonth() + 2);
                 const futureDateStr = futureDate.toISOString().split("T")[0];
                 const todayStr = today.toISOString().split("T")[0];
 
+                const pg = randomPage;
                 const results = await Promise.allSettled([
-                    tmdb.getTrendingMovies("week"),                          // 0
-                    tmdb.getTrendingTV("week"),                               // 1
-                    fetchTMDBPage("tv/on_the_air?page=1"),                    // 2 - New episodes
-                    fetchTMDBPage("movie/now_playing?page=1"),                // 3 - In theatres
-                    fetchTMDBPage("movie/popular?page=1"),                    // 4 - Popular movies
-                    fetchTMDBPage("movie/upcoming?page=1"),                   // 5 - Coming soon
-                    fetchTMDBPage(`discover/movie?primary_release_date.gte=${todayStr}&primary_release_date.lte=${futureDateStr}&sort_by=popularity.desc`), // 6 - Most anticipated
+                    tmdb.getTrendingMovies("week"),
+                    tmdb.getTrendingTV("week"),
+                    fetchTMDBPage(`tv/on_the_air?page=${pg(3)}`),
+                    fetchTMDBPage(`movie/now_playing?page=${pg(3)}`),
+                    fetchTMDBPage(`movie/popular?page=${pg(5)}`),
+                    fetchTMDBPage(`movie/upcoming?page=${pg(3)}`),
+                    fetchTMDBPage(`discover/movie?primary_release_date.gte=${todayStr}&primary_release_date.lte=${futureDateStr}&sort_by=popularity.desc&page=${pg(3)}`),
                 ]);
+
+                if (controller.signal.aborted) return;
 
                 const extract = (i) => (results[i].status === "fulfilled" ? results[i].value : []);
 
@@ -128,43 +199,51 @@ export default function HomePage() {
                     try { seenIds = await mediaService.getUserSeenMediaIds(user.uid); } catch {}
                 }
 
+                const shownIds = getShownIds();
                 const filterSeen = (arr) => arr.filter((m) => !seenIds.has(m.id));
+                const filterShown = (arr) => {
+                    const fresh = arr.filter((m) => !shownIds.has(m.id));
+                    return fresh.length >= 5 ? fresh : arr;
+                };
+                const pickSection = (arr) => filterShown(filterSeen(arr)).slice(0, 10);
 
                 const newSections = {
-                    trendingMovies: filterSeen(extract(0)).slice(0, 10),
-                    trendingTV: filterSeen(extract(1)).slice(0, 10),
-                    newEpisodes: filterSeen(extract(2)).slice(0, 10),
-                    inTheatres: filterSeen(extract(3)).slice(0, 10),
-                    popularMovies: filterSeen(extract(4)).slice(0, 10),
-                    comingSoon: filterSeen(extract(5)).slice(0, 10),
-                    mostAnticipated: filterSeen(extract(6)).slice(0, 10),
+                    trendingMovies: pickSection(extract(0)),
+                    trendingTV: pickSection(extract(1)),
+                    newEpisodes: pickSection(extract(2)),
+                    inTheatres: pickSection(extract(3)),
+                    popularMovies: pickSection(extract(4)),
+                    comingSoon: pickSection(extract(5)),
+                    mostAnticipated: pickSection(extract(6)),
                 };
 
-                setSections(newSections);
+                const allNewIds = new Set(shownIds);
+                Object.values(newSections).forEach((arr) => arr.forEach((m) => allNewIds.add(m.id)));
+                saveShownIds(allNewIds);
 
                 const categories = ["trending", "popular", "top_rated"];
                 const cat = categories[Math.floor(Math.random() * categories.length)];
-                setHeroCategory(cat);
 
-                setSessionCache({ sections: newSections, heroCategory: cat });
+                if (!controller.signal.aborted) {
+                    setSections(newSections);
+                    setHeroCategory(cat);
+                    setSessionCache({ sections: newSections, heroCategory: cat });
+                }
             } catch (error) {
-                console.error("Error fetching content:", error);
+                if (!controller.signal.aborted) {
+                    console.error("Error fetching content:", error);
+                }
             } finally {
-                setLoading(false);
-                fetchedRef.current = true;
+                if (!controller.signal.aborted) {
+                    setLoading(false);
+                    fetchedRef.current = true;
+                }
             }
         };
 
-        if (typeof window !== "undefined") {
-            const navEntries = performance.getEntriesByType("navigation");
-            if (navEntries.length > 0 && navEntries[0].type === "reload") {
-                clearSessionCache();
-                fetchedRef.current = false;
-            }
-        }
-
         fetchContent();
-    }, [user]);
+        return () => controller.abort();
+    }, [user, authLoading]);
 
     // Stable spotlight — picks from trending or popular pool
     const featuredMovie = (() => {
@@ -185,12 +264,36 @@ export default function HomePage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-background flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-10 h-10 border-3 border-accent border-t-transparent rounded-full animate-spin" />
-                    <p className="text-textSecondary">Loading...</p>
+            <main className="min-h-screen bg-background">
+                {/* Skeleton hero */}
+                <div className="relative w-full pt-16 min-h-[60vh]">
+                    <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent animate-pulse" />
+                    <div className="relative site-container flex items-end pb-12 min-h-[60vh]">
+                        <div className="max-w-2xl space-y-4 w-full">
+                            <div className="h-5 w-24 bg-white/10 rounded-full" />
+                            <div className="h-12 w-3/4 bg-white/10 rounded-xl" />
+                            <div className="h-4 w-full bg-white/10 rounded" />
+                            <div className="h-4 w-2/3 bg-white/10 rounded" />
+                            <div className="h-12 w-36 bg-white/10 rounded-xl" />
+                        </div>
+                    </div>
                 </div>
-            </div>
+                {/* Skeleton grid sections */}
+                {[0, 1].map((i) => (
+                    <section key={i} className="site-container py-16">
+                        <div className="h-8 w-64 bg-white/10 rounded-xl mb-8" />
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
+                            {Array.from({ length: 5 }).map((_, j) => (
+                                <div key={j} className="space-y-4">
+                                    <div className="aspect-[2/3] rounded-2xl bg-white/5 animate-pulse" />
+                                    <div className="h-4 w-3/4 bg-white/10 rounded" />
+                                    <div className="h-3 w-1/2 bg-white/10 rounded" />
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+                ))}
+            </main>
         );
     }
 

@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, doc, setDoc, deleteDoc, getDocs, query, where, updateDoc } from "firebase/firestore";
 import showToast from "@/lib/toast";
+import eventBus from "@/lib/eventBus";
 
 export function useFavorites() {
     const { user } = useAuth();
@@ -81,6 +82,7 @@ export function useFavorites() {
                 [type]: [...prev[type], { id: docRef.id, ...favoriteData }],
             }));
 
+            eventBus.emit("FAVORITES_UPDATED", { type });
             showToast.success(`Added to Favorite ${type.charAt(0).toUpperCase() + type.slice(1)}`);
         } catch (error) {
             console.error("Error adding favorite:", error);
@@ -102,6 +104,7 @@ export function useFavorites() {
                 [type]: prev[type].filter(item => item.id !== id),
             }));
 
+            eventBus.emit("FAVORITES_UPDATED", { type });
             showToast.success(`Removed from Favorite ${type.charAt(0).toUpperCase() + type.slice(1)}`);
         } catch (error) {
             console.error("Error removing favorite:", error);
@@ -128,6 +131,7 @@ export function useFavorites() {
                 [type]: newOrder.map((item, index) => ({ ...item, order: index })),
             }));
 
+            eventBus.emit("FAVORITES_UPDATED", { type });
             showToast.success("Reordered Favorites");
         } catch (error) {
             console.error("Error reordering favorites:", error);

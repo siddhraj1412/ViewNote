@@ -238,20 +238,33 @@ export default function EpisodePage() {
 
                         <div className="space-y-16">
                             {activeTab === "reviews" && (
-                                <ReviewsForMedia mediaId={tvId} mediaType="tv" title={tv.name} />
+                                <ReviewsForMedia mediaId={tvId} mediaType="tv" title={tv.name} tvTargetType="episode" tvSeasonNumber={seasonNumber} tvEpisodeNumber={episodeNumber} />
                             )}
 
-                            {activeTab === "cast" && episode.credits?.cast && episode.credits.cast.length > 0 && (
+                            {activeTab === "cast" && (
                                 <section>
                                     <h2 className="text-3xl font-bold mb-6">Cast</h2>
-                                    <CastGrid cast={episode.credits.cast} />
+                                    {episode.credits?.cast && episode.credits.cast.length > 0 ? (
+                                        <CastGrid cast={episode.credits.cast} />
+                                    ) : tv?.credits?.cast && tv.credits.cast.length > 0 ? (
+                                        <>
+                                            <p className="text-sm text-textSecondary mb-4">Showing series cast</p>
+                                            <CastGrid cast={tv.credits.cast} />
+                                        </>
+                                    ) : (
+                                        <p className="text-sm text-textSecondary">No cast information available for this episode.</p>
+                                    )}
                                 </section>
                             )}
 
-                            {activeTab === "crew" && episode.credits?.crew && episode.credits.crew.length > 0 && (
+                            {activeTab === "crew" && (
                                 <section>
                                     <h2 className="text-3xl font-bold mb-6">Crew</h2>
-                                    <CrewSection crew={episode.credits.crew} />
+                                    {episode.credits?.crew && episode.credits.crew.length > 0 ? (
+                                        <CrewSection crew={episode.credits.crew} />
+                                    ) : (
+                                        <p className="text-sm text-textSecondary">No crew information available for this episode.</p>
+                                    )}
                                 </section>
                             )}
 

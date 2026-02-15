@@ -10,7 +10,14 @@ import { tmdb } from "@/lib/tmdb";
 import { getMediaUrl } from "@/lib/slugify";
 import { Heart } from "lucide-react";
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 18;
+
+const SORT_OPTIONS = [
+    { id: "newest", label: "Newest" },
+    { id: "oldest", label: "Oldest" },
+    { id: "a-z", label: "A → Z" },
+    { id: "z-a", label: "Z → A" },
+];
 
 async function resolveUsernameToUid(username) {
     if (!username) return null;
@@ -31,6 +38,7 @@ export default function LikesAllPage() {
     const [uid, setUid] = useState(null);
     const [loadingUser, setLoadingUser] = useState(true);
     const [filter, setFilter] = useState("all"); // "all" | "movie" | "tv"
+    const [sortBy, setSortBy] = useState("newest");
 
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -114,6 +122,25 @@ export default function LikesAllPage() {
         return username ? `/${encodeURIComponent(username)}?tab=likes` : "/";
     }, [username]);
 
+    const displayItems = useMemo(() => {
+        const copy = [...items];
+        switch (sortBy) {
+            case "oldest":
+                return copy.sort((a, b) => {
+                    const aT = a.ratedAt?.seconds || 0;
+                    const bT = b.ratedAt?.seconds || 0;
+                    return aT - bT;
+                });
+            case "a-z":
+                return copy.sort((a, b) => (a.title || a.name || "").localeCompare(b.title || b.name || ""));
+            case "z-a":
+                return copy.sort((a, b) => (b.title || b.name || "").localeCompare(a.title || a.name || ""));
+            case "newest":
+            default:
+                return copy;
+        }
+    }, [items, sortBy]);
+
     if (loadingUser) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center pt-16">
@@ -146,36 +173,48 @@ export default function LikesAllPage() {
                     </Link>
                 </div>
 
-                {/* Filter buttons */}
-                <div className="flex gap-2 mb-6">
-                    {[
-                        { id: "all", label: "All" },
-                        { id: "movie", label: "Movies" },
-                        { id: "tv", label: "Shows" },
-                    ].map((f) => (
-                        <button
-                            key={f.id}
-                            onClick={() => setFilter(f.id)}
-                            className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${
-                                filter === f.id
-                                    ? "bg-accent text-white"
-                                    : "bg-white/5 text-textSecondary hover:text-white border border-white/10"
-                            }`}
-                        >
-                            {f.label}
-                        </button>
-                    ))}
+                {/* Filter & Sort Controls */}
+                <div className="flex flex-wrap items-center gap-3 mb-6">
+                    <div className="flex gap-2">
+                        {[
+                            { id: "all", label: "All" },
+                            { id: "movie", label: "Movies" },
+                            { id: "tv", label: "Shows" },
+                        ].map((f) => (
+                            <button
+                                key={f.id}
+                                onClick={() => setFilter(f.id)}
+                                className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${
+                                    filter === f.id
+                                        ? "bg-accent text-white"
+                                        : "bg-white/5 text-textSecondary hover:text-white border border-white/10"
+                                }`}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="bg-background text-white border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                    >
+                        {SORT_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
+                    </select>
+                    <span className="text-xs text-textSecondary ml-auto">{displayItems.length} item{displayItems.length !== 1 ? "s" : ""}</span>
                 </div>
 
                 {loading ? (
                     <div className="text-center py-12 text-textSecondary">Loading likes...</div>
-                ) : items.length === 0 ? (
+                ) : displayItems.length === 0 ? (
                     <div className="bg-secondary rounded-xl border border-white/5 p-6">
                         <div className="text-sm text-textSecondary">No likes yet.</div>
                     </div>
                 ) : (
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-                        {items.map((item) => {
+                        {displayItems.map((item) => {
                             const url = getMediaUrl({ id: item.mediaId, title: item.title, name: item.title }, item.mediaType);
                             return (
                                 <Link key={item.id} href={url} className="group relative">

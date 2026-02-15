@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import {
@@ -13,11 +13,32 @@ import {
     getDocs,
     serverTimestamp,
 } from "firebase/firestore";
+import eventBus from "@/lib/eventBus";
 
 export function useWatchlist() {
     const { user } = useAuth();
     const [watchlist, setWatchlist] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    const fetchWatchlist = useCallback(async () => {
+        if (!user) return;
+        try {
+            const q = query(
+                collection(db, "user_watchlist"),
+                where("userId", "==", user.uid)
+            );
+            const snapshot = await getDocs(q);
+            const items = snapshot.docs.map((d) => ({
+                id: d.id,
+                ...d.data(),
+            }));
+            setWatchlist(items);
+        } catch (error) {
+            console.error("Error fetching watchlist:", error);
+        } finally {
+            setLoading(false);
+        }
+    }, [user]);
 
     useEffect(() => {
         if (!user) {
@@ -26,27 +47,19 @@ export function useWatchlist() {
             return;
         }
 
-        const fetchWatchlist = async () => {
-            try {
-                const q = query(
-                    collection(db, "user_watchlist"),
-                    where("userId", "==", user.uid)
-                );
-                const snapshot = await getDocs(q);
-                const items = snapshot.docs.map((doc) => ({
-                    id: doc.id,
-                    ...doc.data(),
-                }));
-                setWatchlist(items);
-            } catch (error) {
-                console.error("Error fetching watchlist:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchWatchlist();
-    }, [user]);
+    }, [user, fetchWatchlist]);
+
+    // Re-fetch when watchlist changes externally
+    useEffect(() => {
+        const handler = () => fetchWatchlist();
+        eventBus.on("MEDIA_UPDATED", handler);
+        eventBus.on("WATCHLIST_SNAPSHOT", handler);
+        return () => {
+            eventBus.off("MEDIA_UPDATED", handler);
+            eventBus.off("WATCHLIST_SNAPSHOT", handler);
+        };
+    }, [fetchWatchlist]);
 
     const isInWatchlist = (mediaId) => {
         return watchlist.some((item) => item.mediaId === mediaId);

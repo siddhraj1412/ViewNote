@@ -38,6 +38,7 @@ export default function ShowSlugPage() {
     const [similarFilter, setSimilarFilter] = useState("all");
     const [mediaImages, setMediaImages] = useState({ posters: [], backdrops: [] });
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [activeTab, setActiveTab] = useState("seasons");
 
     const [aggregatedRating, setAggregatedRating] = useState(0);
@@ -95,6 +96,8 @@ export default function ShowSlugPage() {
                 }
             } catch (error) {
                 console.error("Error fetching TV show:", error);
+                setTv(null);
+                setError(error.message || "Failed to load TV show");
             } finally {
                 setLoading(false);
             }
@@ -187,21 +190,31 @@ export default function ShowSlugPage() {
         const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(tvId)}`);
         try {
             const snap = await getDoc(progressRef);
-            const current = snap.exists() ? (Array.isArray(snap.data().watchedSeasons) ? snap.data().watchedSeasons.map(Number) : []) : [];
+            const data = snap.exists() ? snap.data() : {};
+            const current = Array.isArray(data.watchedSeasons) ? data.watchedSeasons.map(Number) : [];
             const currentSet = new Set(current);
+            const existingEpMap = data.watchedEpisodes && typeof data.watchedEpisodes === "object" ? { ...data.watchedEpisodes } : {};
+
             if (currentSet.has(seasonNum)) {
+                // Unmark season — remove only the season flag, keep episode data
                 currentSet.delete(seasonNum);
                 showToast.success(`Season ${seasonNum} unmarked`);
             } else {
+                // Mark season as watched — also mark all episodes
                 currentSet.add(seasonNum);
+                const seasonMeta = Array.isArray(tv?.seasons) ? tv.seasons.find((s) => Number(s?.season_number) === seasonNum) : null;
+                const epCount = seasonMeta ? Number(seasonMeta.episode_count || 0) : 0;
+                if (epCount > 0) {
+                    existingEpMap[String(seasonNum)] = Array.from({ length: epCount }, (_, i) => i + 1);
+                }
                 showToast.success(`Season ${seasonNum} marked as watched`);
             }
-            await setDoc(progressRef, { watchedSeasons: Array.from(currentSet), userId: user.uid, seriesId: Number(tvId) }, { merge: true });
+            await setDoc(progressRef, { watchedSeasons: Array.from(currentSet), watchedEpisodes: existingEpMap, userId: user.uid, seriesId: Number(tvId) }, { merge: true });
         } catch (err) {
             console.error("Error toggling season watched:", err);
             showToast.error("Failed to update");
         }
-    }, [user, tvId]);
+    }, [user, tvId, tv?.seasons]);
 
     const handleQuickRateSeason = useCallback((seasonNum) => {
         if (!user) { showToast.info("Please sign in"); return; }
@@ -233,8 +246,19 @@ export default function ShowSlugPage() {
 
     if (!tv) {
         return (
-            <div className="min-h-screen bg-background flex items-center justify-center pt-16">
-                <div className="text-2xl text-textSecondary">TV show not found</div>
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center pt-16 gap-4">
+                <div className="text-2xl text-textSecondary">{error ? "Something went wrong" : "TV show not found"}</div>
+                {error && (
+                    <>
+                        <p className="text-sm text-textSecondary/70">{error}</p>
+                        <button
+                            onClick={() => { setError(null); setLoading(true); window.location.reload(); }}
+                            className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition text-sm"
+                        >
+                            Try Again
+                        </button>
+                    </>
+                )}
             </div>
         );
     }
@@ -433,7 +457,7 @@ export default function ShowSlugPage() {
                             )}
 
                             {activeTab === "reviews" && (
-                                <ReviewsForMedia mediaId={tvId} mediaType="tv" title={tv.name} />
+                                <ReviewsForMedia mediaId={tvId} mediaType="tv" title={tv.name} tvTargetType="series" />
                             )}
 
                             {activeTab === "media" && (

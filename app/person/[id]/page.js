@@ -156,7 +156,8 @@ export default function PersonPage() {
         { id: "a-z", label: "A → Z" },
         { id: "z-a", label: "Z → A" },
         { id: "popularity", label: "Popularity" },
-        { id: "rating", label: "Rating" },
+        { id: "rating", label: "Rating (High → Low)" },
+        { id: "rating-asc", label: "Rating (Low → High)" },
     ];
 
     const CreditGrid = ({ items, mediaType }) => {
@@ -186,6 +187,8 @@ export default function PersonPage() {
                     return copy.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
                 case "rating":
                     return copy.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+                case "rating-asc":
+                    return copy.sort((a, b) => (a.vote_average || 0) - (b.vote_average || 0));
                 default:
                     return copy;
             }
@@ -193,20 +196,17 @@ export default function PersonPage() {
 
         return (
             <div>
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                    {SORT_OPTIONS.map((opt) => (
-                        <button
-                            key={opt.id}
-                            onClick={() => setSortBy(opt.id)}
-                            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-                                sortBy === opt.id
-                                    ? "bg-accent text-white"
-                                    : "bg-white/5 text-textSecondary hover:text-white"
-                            }`}
-                        >
-                            {opt.label}
-                        </button>
-                    ))}
+                <div className="flex items-center gap-3 mb-4">
+                    <label className="text-sm text-textSecondary font-medium">Sort by</label>
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="bg-background text-white border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                    >
+                        {SORT_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
+                    </select>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 overflow-x-hidden">
                     {sortedItems.map((item, index) => (

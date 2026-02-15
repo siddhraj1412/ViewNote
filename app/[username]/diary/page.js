@@ -10,7 +10,7 @@ import { tmdb } from "@/lib/tmdb";
 import StarRating from "@/components/StarRating";
 import { Calendar, Heart } from "lucide-react";
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 18;
 
 async function resolveUsernameToUid(username) {
     if (!username) return null;

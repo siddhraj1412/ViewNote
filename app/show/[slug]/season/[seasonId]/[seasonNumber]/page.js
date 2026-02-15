@@ -120,14 +120,13 @@ export default function SeasonPage() {
             }
             const newEpMap = { ...epMap, [String(seasonNumber)]: Array.from(currentSet).sort((a, b) => a - b) };
 
-            // Auto-mark season if all episodes watched
+            // Auto-mark season if all episodes watched, but NEVER auto-unmark
             const totalEps = episodes.length;
             const watchedSeasons = Array.isArray(data.watchedSeasons) ? new Set(data.watchedSeasons.map(Number)) : new Set();
             if (currentSet.size >= totalEps && totalEps > 0) {
                 watchedSeasons.add(seasonNumber);
-            } else {
-                watchedSeasons.delete(seasonNumber);
             }
+            // Do NOT delete season from watchedSeasons when an episode is unchecked
 
             await setDoc(progressRef, {
                 watchedEpisodes: newEpMap,
@@ -323,17 +322,30 @@ export default function SeasonPage() {
                                 </section>
                             )}
 
-                            {activeTab === "cast" && season.credits?.cast && season.credits.cast.length > 0 && (
+                            {activeTab === "cast" && (
                                 <section>
                                     <h2 className="text-3xl font-bold mb-6">Cast</h2>
-                                    <CastGrid cast={season.credits.cast} />
+                                    {season.credits?.cast && season.credits.cast.length > 0 ? (
+                                        <CastGrid cast={season.credits.cast} />
+                                    ) : tv?.credits?.cast && tv.credits.cast.length > 0 ? (
+                                        <>
+                                            <p className="text-sm text-textSecondary mb-4">Showing series cast</p>
+                                            <CastGrid cast={tv.credits.cast} />
+                                        </>
+                                    ) : (
+                                        <p className="text-sm text-textSecondary">No cast information available for this season.</p>
+                                    )}
                                 </section>
                             )}
 
-                            {activeTab === "crew" && season.credits?.crew && season.credits.crew.length > 0 && (
+                            {activeTab === "crew" && (
                                 <section>
                                     <h2 className="text-3xl font-bold mb-6">Crew</h2>
-                                    <CrewSection crew={season.credits.crew} />
+                                    {season.credits?.crew && season.credits.crew.length > 0 ? (
+                                        <CrewSection crew={season.credits.crew} />
+                                    ) : (
+                                        <p className="text-sm text-textSecondary">No crew information available for this season.</p>
+                                    )}
                                 </section>
                             )}
 
@@ -342,7 +354,7 @@ export default function SeasonPage() {
                             )}
 
                             {activeTab === "reviews" && (
-                                <ReviewsForMedia mediaId={tvId} mediaType="tv" title={tv.name} />
+                                <ReviewsForMedia mediaId={tvId} mediaType="tv" title={tv.name} tvTargetType="season" tvSeasonNumber={seasonNumber} />
                             )}
 
                             {activeTab === "media" && (

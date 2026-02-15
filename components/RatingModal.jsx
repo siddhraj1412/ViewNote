@@ -236,7 +236,8 @@ export default function RatingModal({
                 onClose();
             }
         } catch (err) {
-            // Error handling in service
+            console.error("[RatingModal] Rating error:", err);
+            showToast.error("Failed to save rating");
         } finally {
             setLoading(false);
         }

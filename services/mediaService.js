@@ -39,6 +39,46 @@ function getUniqueId(userId, mediaType, mediaId) {
     return `${userId}_${mediaType}_${mediaId}`;
 }
 
+/**
+ * Build a scope-aware doc ID for TV ratings/reviews.
+ * - Series level: userId_tv_mediaId
+ * - Season level:  userId_tv_mediaId_season_N
+ * - Episode level: userId_tv_mediaId_sNeM
+ * - Movies:        userId_movie_mediaId
+ */
+function getScopedId(userId, mediaType, mediaId, extra = {}) {
+    const base = `${userId}_${mediaType}_${mediaId}`;
+    if (mediaType !== "tv" || !extra.targetType) return base;
+    if (extra.targetType === "season" && extra.seasonNumber != null) {
+        return `${base}_season_${extra.seasonNumber}`;
+    }
+    if (extra.targetType === "episode" && extra.seasonNumber != null && extra.episodeNumber != null) {
+        return `${base}_s${extra.seasonNumber}e${extra.episodeNumber}`;
+    }
+    return base;
+}
+
+/**
+ * Build a scope-aware stats doc key.
+ * - Series/movie: mediaType_mediaId
+ * - Season:       tv_mediaId_season_N
+ * - Episode:      tv_mediaId_sNeM
+ */
+function getScopedStatsId(mediaId, mediaType, extra = {}) {
+    const base = `${mediaType}_${String(mediaId)}`;
+    const targetType = extra.targetType || extra.tvTargetType || null;
+    const seasonNumber = extra.seasonNumber ?? extra.tvSeasonNumber ?? null;
+    const episodeNumber = extra.episodeNumber ?? extra.tvEpisodeNumber ?? null;
+    if (mediaType !== "tv" || !targetType || targetType === "series") return base;
+    if (targetType === "season" && seasonNumber != null) {
+        return `${base}_season_${seasonNumber}`;
+    }
+    if (targetType === "episode" && seasonNumber != null && episodeNumber != null) {
+        return `${base}_s${seasonNumber}e${episodeNumber}`;
+    }
+    return base;
+}
+
 function buildDocData(user, mediaId, mediaType, mediaData, timestampField) {
     return {
         userId: user.uid,
@@ -201,7 +241,9 @@ export const mediaService = {
 
     async rateMedia(user, mediaId, mediaType, rating, mediaData, reviewText = "", extra = {}) {
         if (!user) return false;
-        const uniqueId = getUniqueId(user.uid, mediaType, mediaId);
+        // Use scope-aware doc ID so series/season/episode ratings coexist
+        const scopedId = getScopedId(user.uid, mediaType, mediaId, extra);
+        const seriesBaseId = getUniqueId(user.uid, mediaType, mediaId);
         const isRateAgain = extra.rateAgain === true;
 
         const ratingDoc = {
@@ -222,6 +264,15 @@ export const mediaService = {
         if (typeof extra.viewCount === "number" && extra.viewCount > 0) ratingDoc.viewCount = extra.viewCount;
         if (Array.isArray(extra.tags)) ratingDoc.tags = extra.tags;
 
+        // Store TV target scope for season/episode-level reviews (accept both naming conventions)
+        const targetType = extra.targetType || extra.tvTargetType || null;
+        const seasonNumber = extra.seasonNumber ?? extra.tvSeasonNumber ?? null;
+        const episodeNumber = extra.episodeNumber ?? extra.tvEpisodeNumber ?? null;
+        if (targetType) ratingDoc.tvTargetType = targetType;
+        if (typeof seasonNumber === "number") ratingDoc.tvSeasonNumber = seasonNumber;
+        if (typeof episodeNumber === "number") ratingDoc.tvEpisodeNumber = episodeNumber;
+        if (extra.seriesId) ratingDoc.seriesId = Number(extra.seriesId);
+
         try {
             if (isRateAgain) {
                 // Rate Again: create a new doc with auto-generated ID
@@ -229,7 +280,7 @@ export const mediaService = {
                 ratingDoc.isRewatch = true;
                 await runTransaction(db, async (transaction) => {
                     // ── ALL READS FIRST ──
-                    const primaryRef = doc(db, "user_ratings", uniqueId);
+                    const primaryRef = doc(db, "user_ratings", scopedId);
                     const primarySnap = await transaction.get(primaryRef);
 
                     // ── ALL WRITES AFTER ──
@@ -240,20 +291,52 @@ export const mediaService = {
                     }
                 });
             } else {
-                // Normal rate or edit: use deterministic doc ID
+                // Normal rate or edit: use scope-aware deterministic doc ID
+                // Auto-mark as watched + clear conflicting statuses (always at series level)
+                const watchedDoc = {
+                    userId: user.uid,
+                    mediaId: Number(mediaId),
+                    mediaType,
+                    title: mediaData.title || mediaData.name || "",
+                    poster_path: mediaData.poster_path || "",
+                    addedAt: serverTimestamp(),
+                };
                 await runTransaction(db, async (transaction) => {
-                    // ── READ (needed for merge) ──
-                    await transaction.get(doc(db, "user_ratings", uniqueId));
+                    // ── READS ──
+                    await transaction.get(doc(db, "user_ratings", scopedId));
+                    await transaction.get(doc(db, "user_watched", seriesBaseId));
 
-                    // ── WRITE ──
-                    transaction.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
+                    // ── WRITES ──
+                    transaction.set(doc(db, "user_ratings", scopedId), ratingDoc, { merge: true });
+                    transaction.set(doc(db, "user_watched", seriesBaseId), watchedDoc, { merge: true });
+                    // Clear conflicting statuses
+                    transaction.delete(doc(db, "user_watchlist", seriesBaseId));
+                    transaction.delete(doc(db, "user_paused", seriesBaseId));
+                    transaction.delete(doc(db, "user_dropped", seriesBaseId));
                 });
             }
 
             eventBus.emit("MEDIA_UPDATED", { mediaId, mediaType, action: "RATED", userId: user.uid });
             eventBus.emit("PROFILE_DATA_INVALIDATED", { userId: user.uid });
-            // Refresh aggregated stats for the histogram
-            aggregateAndWriteStats(mediaId, mediaType).catch(() => {});
+            // Refresh aggregated stats for the histogram (scope-aware)
+            const statsId = getScopedStatsId(mediaId, mediaType, extra);
+            aggregateAndWriteStats(mediaId, mediaType, statsId, { targetType, seasonNumber, episodeNumber }).catch(() => {});
+
+            // Propagate watch state for TV series/season ratings
+            if (mediaType === "tv" && (!targetType || targetType === "series")) {
+                // Series-level rating → mark all seasons + episodes watched
+                this._propagateSeriesWatched(user, mediaId, mediaData).catch((err) => {
+                    console.error("[MediaService] Series watch propagation error:", err);
+                    showToast.error("Rating saved but failed to mark all episodes as watched");
+                });
+            } else if (mediaType === "tv" && targetType === "season" && seasonNumber != null) {
+                // Season-level rating → mark all episodes in that season as watched
+                this._propagateSeasonWatched(user, mediaId, mediaData, seasonNumber, extra.seasonEpisodeCounts).catch((err) => {
+                    console.error("[MediaService] Season watch propagation error:", err);
+                    showToast.error("Rating saved but failed to mark season episodes as watched");
+                });
+            }
+
             showToast.linked(`"${mediaData.title || mediaData.name || 'Item'}" rated — saved to your profile`, `/${user.username || user.uid}`);
             return true;
         } catch (error) {
@@ -264,12 +347,25 @@ export const mediaService = {
                     const newRatingRef = doc(collection(db, "user_ratings"));
                     batch.set(newRatingRef, ratingDoc);
                 } else {
-                    batch.set(doc(db, "user_ratings", uniqueId), ratingDoc, { merge: true });
+                    batch.set(doc(db, "user_ratings", scopedId), ratingDoc, { merge: true });
+                    // Auto-mark as watched + clear conflicting statuses
+                    batch.set(doc(db, "user_watched", seriesBaseId), {
+                        userId: user.uid,
+                        mediaId: Number(mediaId),
+                        mediaType,
+                        title: mediaData.title || mediaData.name || "",
+                        poster_path: mediaData.poster_path || "",
+                        addedAt: serverTimestamp(),
+                    }, { merge: true });
+                    batch.delete(doc(db, "user_watchlist", seriesBaseId));
+                    batch.delete(doc(db, "user_paused", seriesBaseId));
+                    batch.delete(doc(db, "user_dropped", seriesBaseId));
                 }
                 await batch.commit();
                 eventBus.emit("MEDIA_UPDATED", { mediaId, mediaType, action: "RATED", userId: user.uid });
                 eventBus.emit("PROFILE_DATA_INVALIDATED", { userId: user.uid });
-                aggregateAndWriteStats(mediaId, mediaType).catch(() => {});
+                const statsIdFallback = getScopedStatsId(mediaId, mediaType, extra);
+                aggregateAndWriteStats(mediaId, mediaType, statsIdFallback, { targetType, seasonNumber, episodeNumber }).catch(() => {});
                 showToast.linked(`"${mediaData.title || mediaData.name || 'Item'}" rated — saved to your profile`, `/${user.username || user.uid}`);
                 return true;
             } catch (retryError) {
@@ -282,13 +378,15 @@ export const mediaService = {
 
     async removeRating(user, mediaId, mediaType, options = {}) {
         if (!user) return false;
-        const uniqueId = getUniqueId(user.uid, mediaType, mediaId);
+        // Use scope-aware doc ID
+        const scopedId = getScopedId(user.uid, mediaType, mediaId, options);
+        const seriesBaseId = getUniqueId(user.uid, mediaType, mediaId);
         try {
             await runTransaction(db, async (transaction) => {
-                const ratingRef = doc(db, "user_ratings", uniqueId);
+                const ratingRef = doc(db, "user_ratings", scopedId);
                 const ratingSnap = await transaction.get(ratingRef);
 
-                const watchedRef = doc(db, "user_watched", uniqueId);
+                const watchedRef = doc(db, "user_watched", seriesBaseId);
                 await transaction.get(watchedRef);
 
                 if (ratingSnap.exists()) {
@@ -302,21 +400,23 @@ export const mediaService = {
 
             eventBus.emit("MEDIA_UPDATED", { mediaId, mediaType, action: "RATING_REMOVED", userId: user.uid });
             eventBus.emit("PROFILE_DATA_INVALIDATED", { userId: user.uid });
-            aggregateAndWriteStats(mediaId, mediaType).catch(() => {});
+            const statsId = getScopedStatsId(mediaId, mediaType, options);
+            aggregateAndWriteStats(mediaId, mediaType, statsId, options).catch(() => {});
             showToast.success("Rating removed");
             return true;
         } catch (error) {
             console.error("Error removing rating:", error);
             try {
                 const batch = writeBatch(db);
-                batch.delete(doc(db, "user_ratings", uniqueId));
+                batch.delete(doc(db, "user_ratings", scopedId));
                 if (options.keepWatchedIfNotCompleted === false) {
-                    batch.delete(doc(db, "user_watched", uniqueId));
+                    batch.delete(doc(db, "user_watched", seriesBaseId));
                 }
                 await batch.commit();
                 eventBus.emit("MEDIA_UPDATED", { mediaId, mediaType, action: "RATING_REMOVED", userId: user.uid });
                 eventBus.emit("PROFILE_DATA_INVALIDATED", { userId: user.uid });
-                aggregateAndWriteStats(mediaId, mediaType).catch(() => {});
+                const statsIdFb = getScopedStatsId(mediaId, mediaType, options);
+                aggregateAndWriteStats(mediaId, mediaType, statsIdFb, options).catch(() => {});
                 showToast.success("Rating removed");
                 return true;
             } catch (retryError) {
@@ -327,11 +427,12 @@ export const mediaService = {
         }
     },
 
-    async getReview(user, mediaId, mediaType) {
+    async getReview(user, mediaId, mediaType, scopeOpts = {}) {
         if (!user) return null;
-        const uniqueId = getUniqueId(user.uid, mediaType, mediaId);
+        // Use scope-aware doc ID for TV ratings
+        const scopedId = getScopedId(user.uid, mediaType, mediaId, scopeOpts);
         try {
-            const snap = await getDoc(doc(db, "user_ratings", uniqueId));
+            const snap = await getDoc(doc(db, "user_ratings", scopedId));
             if (snap.exists()) {
                 const data = snap.data();
                 return {
@@ -349,16 +450,18 @@ export const mediaService = {
         }
     },
 
-    async getMediaStatus(user, mediaId, mediaType) {
+    async getMediaStatus(user, mediaId, mediaType, scopeOpts = {}) {
         if (!user) return {};
-        const uniqueId = getUniqueId(user.uid, mediaType, mediaId);
+        const baseId = getUniqueId(user.uid, mediaType, mediaId);
+        // Rating uses scope-aware ID; watch status always at series level
+        const ratingId = getScopedId(user.uid, mediaType, mediaId, scopeOpts);
         try {
             const [watched, watchlist, paused, dropped, rating] = await Promise.all([
-                getDoc(doc(db, "user_watched", uniqueId)),
-                getDoc(doc(db, "user_watchlist", uniqueId)),
-                getDoc(doc(db, "user_paused", uniqueId)),
-                getDoc(doc(db, "user_dropped", uniqueId)),
-                getDoc(doc(db, "user_ratings", uniqueId)),
+                getDoc(doc(db, "user_watched", baseId)),
+                getDoc(doc(db, "user_watchlist", baseId)),
+                getDoc(doc(db, "user_paused", baseId)),
+                getDoc(doc(db, "user_dropped", baseId)),
+                getDoc(doc(db, "user_ratings", ratingId)),
             ]);
             return {
                 isWatched: watched.exists(),
@@ -387,6 +490,7 @@ export const mediaService = {
                 { name: "user_dropped", key: "dropped" },
                 { name: "user_watchlist", key: "watchlist" },
                 { name: "user_ratings", key: "ratings" },
+                { name: "user_watching", key: "watching" },
             ];
 
             for (const col of collections) {
@@ -409,7 +513,7 @@ export const mediaService = {
 
         // Wire up the onUpdate callback via eventBus
         const handlers = {};
-        const keys = ["watched", "paused", "dropped", "watchlist", "ratings"];
+        const keys = ["watched", "paused", "dropped", "watchlist", "ratings", "watching"];
         for (const key of keys) {
             const handler = (data) => {
                 if (data.userId === userId && onUpdate) {
@@ -704,8 +808,8 @@ export const mediaService = {
                     delete watchedEpisodes[seasonKey];
                 }
 
-                // Remove season from watchedSeasons if it was complete
-                const watchedSeasons = Array.isArray(existing.watchedSeasons) ? existing.watchedSeasons.filter((n) => Number(n) !== Number(seasonNumber)) : [];
+                // Preserve parent states — do NOT remove season or series watched status
+                const watchedSeasons = Array.isArray(existing.watchedSeasons) ? [...existing.watchedSeasons] : [];
 
                 transaction.set(progressRef, {
                     userId: user.uid,
@@ -772,6 +876,20 @@ export const mediaService = {
     },
 
     /**
+     * Check if a TV show is in "Currently Watching" list.
+     */
+    async isWatching(user, mediaId) {
+        if (!user?.uid || !mediaId) return false;
+        const watchingId = `${user.uid}_watching_${Number(mediaId)}`;
+        try {
+            const snap = await getDoc(doc(db, "user_watching", watchingId));
+            return snap.exists();
+        } catch {
+            return false;
+        }
+    },
+
+    /**
      * Add a TV show to "Currently Watching" list.
      */
     async addToWatching(user, mediaId, mediaData) {
@@ -789,7 +907,23 @@ export const mediaService = {
             });
             await batch.commit();
 
+            // Clean up conflicting statuses (dropped, paused, watchlist)
+            const cleanIds = [
+                `${user.uid}_tv_${Number(mediaId)}`,
+            ];
+            const cleanBatch = writeBatch(db);
+            let needsClean = false;
+            for (const coll of ["user_dropped", "user_paused", "user_watchlist"]) {
+                for (const cid of cleanIds) {
+                    const ref = doc(db, coll, cid);
+                    const snap = await getDoc(ref);
+                    if (snap.exists()) { cleanBatch.delete(ref); needsClean = true; }
+                }
+            }
+            if (needsClean) await cleanBatch.commit();
+
             eventBus.emit("MEDIA_UPDATED", { mediaId, mediaType: "tv", action: "WATCHING", userId: user.uid });
+            eventBus.emit("PROFILE_DATA_INVALIDATED", { userId: user.uid });
             showToast.success("Added to Currently Watching");
             return true;
         } catch (error) {
@@ -808,12 +942,73 @@ export const mediaService = {
         try {
             await deleteDoc(doc(db, "user_watching", watchingId));
             eventBus.emit("MEDIA_UPDATED", { mediaId, mediaType: "tv", action: "UNWATCHING", userId: user.uid });
+            eventBus.emit("PROFILE_DATA_INVALIDATED", { userId: user.uid });
             showToast.success("Removed from Currently Watching");
             return true;
         } catch (error) {
             console.error("[MediaService] removeFromWatching error:", error);
             showToast.error("Failed to remove from watching");
             return false;
+        }
+    },
+
+    /**
+     * Propagate series-level watched to all seasons + episodes.
+     * Fetches season details from TMDB to know episode counts.
+     */
+    async _propagateSeriesWatched(user, mediaId, mediaData) {
+        if (!user?.uid || !mediaId) return;
+        try {
+            const { tmdb: tmdbApi } = await import("@/lib/tmdb");
+            const tvDetails = await tmdbApi.getTVDetails(mediaId);
+            if (!tvDetails?.seasons) return;
+
+            const validSeasons = tvDetails.seasons.filter(
+                (s) => s && typeof s.season_number === "number" && s.episode_count > 0
+            );
+            if (validSeasons.length === 0) return;
+
+            const seasonNumbers = validSeasons.map((s) => s.season_number);
+            const seasonEpisodeCounts = {};
+            validSeasons.forEach((s) => {
+                seasonEpisodeCounts[String(s.season_number)] = s.episode_count;
+            });
+
+            await this.markTVSeasonsWatchedBulk(
+                user,
+                mediaId,
+                mediaData,
+                seasonNumbers,
+                seasonEpisodeCounts,
+                { silent: true }
+            );
+        } catch (error) {
+            console.error("[MediaService] _propagateSeriesWatched error:", error);
+        }
+    },
+
+    /**
+     * Propagate season-level watched to all episodes in that season.
+     */
+    async _propagateSeasonWatched(user, mediaId, mediaData, seasonNumber, seasonEpisodeCounts) {
+        if (!user?.uid || !mediaId || seasonNumber == null) return;
+        try {
+            let epCounts = seasonEpisodeCounts || {};
+            // If we don't have episode counts, fetch from TMDB
+            if (!epCounts[String(seasonNumber)]) {
+                const { tmdb: tmdbApi } = await import("@/lib/tmdb");
+                const tvDetails = await tmdbApi.getTVDetails(mediaId);
+                if (tvDetails?.seasons) {
+                    tvDetails.seasons.forEach((s) => {
+                        if (s?.season_number != null) {
+                            epCounts[String(s.season_number)] = s.episode_count || 0;
+                        }
+                    });
+                }
+            }
+            await this.markTVSeasonWatched(user, mediaId, mediaData, seasonNumber, epCounts, { silent: true });
+        } catch (error) {
+            console.error("[MediaService] _propagateSeasonWatched error:", error);
         }
     },
 };

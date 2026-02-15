@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import {
@@ -13,11 +13,32 @@ import {
     getDocs,
     serverTimestamp,
 } from "firebase/firestore";
+import eventBus from "@/lib/eventBus";
 
 export function useRatings() {
     const { user } = useAuth();
     const [ratings, setRatings] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    const fetchRatings = useCallback(async () => {
+        if (!user) return;
+        try {
+            const q = query(
+                collection(db, "user_ratings"),
+                where("userId", "==", user.uid)
+            );
+            const snapshot = await getDocs(q);
+            const items = snapshot.docs.map((d) => ({
+                id: d.id,
+                ...d.data(),
+            }));
+            setRatings(items);
+        } catch (error) {
+            console.error("Error fetching ratings:", error);
+        } finally {
+            setLoading(false);
+        }
+    }, [user]);
 
     useEffect(() => {
         if (!user) {
@@ -26,27 +47,19 @@ export function useRatings() {
             return;
         }
 
-        const fetchRatings = async () => {
-            try {
-                const q = query(
-                    collection(db, "user_ratings"),
-                    where("userId", "==", user.uid)
-                );
-                const snapshot = await getDocs(q);
-                const items = snapshot.docs.map((doc) => ({
-                    id: doc.id,
-                    ...doc.data(),
-                }));
-                setRatings(items);
-            } catch (error) {
-                console.error("Error fetching ratings:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchRatings();
-    }, [user]);
+    }, [user, fetchRatings]);
+
+    // Re-fetch when ratings change externally
+    useEffect(() => {
+        const handler = () => fetchRatings();
+        eventBus.on("MEDIA_UPDATED", handler);
+        eventBus.on("RATINGS_SNAPSHOT", handler);
+        return () => {
+            eventBus.off("MEDIA_UPDATED", handler);
+            eventBus.off("RATINGS_SNAPSHOT", handler);
+        };
+    }, [fetchRatings]);
 
     const getRating = (mediaId) => {
         const rating = ratings.find((r) => r.mediaId === mediaId);

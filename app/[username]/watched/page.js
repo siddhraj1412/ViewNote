@@ -8,8 +8,31 @@ import { collection, getDocs, limit, orderBy, query, startAfter, where } from "f
 import { db } from "@/lib/firebase";
 import { tmdb } from "@/lib/tmdb";
 import { getMediaUrl } from "@/lib/slugify";
+import { Star, Heart, MessageSquare, RotateCcw } from "lucide-react";
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 18;
+
+const SORT_OPTIONS = [
+    { id: "newest", label: "Newest" },
+    { id: "oldest", label: "Oldest" },
+    { id: "a-z", label: "A → Z" },
+    { id: "z-a", label: "Z → A" },
+];
+
+const FILTER_OPTIONS = [
+    { id: "all", label: "All" },
+    { id: "movie", label: "Movies" },
+    { id: "tv", label: "Shows" },
+];
+
+const STAR_FILTER_OPTIONS = [
+    { id: "all", label: "All Ratings" },
+    ...([5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5].map((s) => ({
+        id: String(s),
+        label: `${"★".repeat(Math.floor(s))}${s % 1 ? "½" : ""} (${s})`,
+    }))),
+    { id: "0", label: "Unrated" },
+];
 
 async function resolveUsernameToUid(username) {
     if (!username) return null;
@@ -23,12 +46,39 @@ async function resolveUsernameToUid(username) {
     }
 }
 
+function sortItems(items, sortBy) {
+    const copy = [...items];
+    switch (sortBy) {
+        case "oldest":
+            return copy.sort((a, b) => {
+                const aT = a.addedAt?.seconds || 0;
+                const bT = b.addedAt?.seconds || 0;
+                return aT - bT;
+            });
+        case "a-z":
+            return copy.sort((a, b) => (a.title || a.name || "").localeCompare(b.title || b.name || ""));
+        case "z-a":
+            return copy.sort((a, b) => (b.title || b.name || "").localeCompare(a.title || a.name || ""));
+        case "newest":
+        default:
+            return copy.sort((a, b) => {
+                const aT = a.addedAt?.seconds || 0;
+                const bT = b.addedAt?.seconds || 0;
+                return bT - aT;
+            });
+    }
+}
+
 export default function WatchedAllPage() {
     const params = useParams();
     const username = params?.username ? decodeURIComponent(params.username) : "";
 
     const [uid, setUid] = useState(null);
     const [loadingUser, setLoadingUser] = useState(true);
+    const [sortBy, setSortBy] = useState("newest");
+    const [filterType, setFilterType] = useState("all");
+    const [starFilter, setStarFilter] = useState("all");
+    const [ratingsMap, setRatingsMap] = useState({});
 
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -78,6 +128,28 @@ export default function WatchedAllPage() {
     useEffect(() => {
         if (!uid) return;
         loadFirst(uid);
+        // Also fetch ratings for metadata display
+        const fetchRatings = async () => {
+            try {
+                const q = query(collection(db, "user_ratings"), where("userId", "==", uid));
+                const snap = await getDocs(q);
+                const map = {};
+                snap.docs.forEach((d) => {
+                    const data = d.data();
+                    const key = `${data.mediaType}_${data.mediaId}`;
+                    if (!map[key] || (data.targetType || data.tvTargetType || "series") === "series") {
+                        map[key] = {
+                            rating: data.rating || 0,
+                            liked: data.liked || false,
+                            review: data.review || "",
+                            viewCount: data.viewCount || (data.isRewatch ? 2 : 1),
+                        };
+                    }
+                });
+                setRatingsMap(map);
+            } catch (_) {}
+        };
+        fetchRatings();
     }, [uid, loadFirst]);
 
     const loadMore = useCallback(async () => {
@@ -106,6 +178,23 @@ export default function WatchedAllPage() {
     const backHref = useMemo(() => {
         return username ? `/${encodeURIComponent(username)}?tab=watched` : "/";
     }, [username]);
+
+    const displayItems = useMemo(() => {
+        let filtered = items;
+        if (filterType !== "all") {
+            filtered = filtered.filter((item) => item.mediaType === filterType);
+        }
+        if (starFilter !== "all") {
+            const targetStar = Number(starFilter);
+            filtered = filtered.filter((item) => {
+                const key = `${item.mediaType}_${item.mediaId}`;
+                const meta = ratingsMap[key];
+                if (!meta) return targetStar === 0;
+                return Math.round(meta.rating * 2) / 2 === targetStar;
+            });
+        }
+        return sortItems(filtered, sortBy);
+    }, [items, sortBy, filterType, starFilter, ratingsMap]);
 
     if (loadingUser) {
         return (
@@ -139,29 +228,83 @@ export default function WatchedAllPage() {
                     </Link>
                 </div>
 
+                {/* Sort & Filter Controls */}
+                <div className="flex flex-wrap items-center gap-3 mb-6">
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="bg-background text-white border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                    >
+                        {SORT_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
+                    </select>
+                    <select
+                        value={filterType}
+                        onChange={(e) => setFilterType(e.target.value)}
+                        className="bg-background text-white border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                    >
+                        {FILTER_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
+                    </select>
+                    <select
+                        value={starFilter}
+                        onChange={(e) => setStarFilter(e.target.value)}
+                        className="bg-background text-white border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                    >
+                        {STAR_FILTER_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
+                    </select>
+                    <span className="text-xs text-textSecondary ml-auto">{displayItems.length} item{displayItems.length !== 1 ? "s" : ""}</span>
+                </div>
+
                 {loading ? (
                     <div className="text-center py-12 text-textSecondary">Loading watched...</div>
-                ) : items.length === 0 ? (
+                ) : displayItems.length === 0 ? (
                     <div className="bg-secondary rounded-xl border border-white/5 p-6">
                         <div className="text-sm text-textSecondary">No watched items.</div>
                     </div>
                 ) : (
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-                        {items.map((item) => (
-                            <Link key={item.id} href={getMediaUrl(item, item.mediaType)} className="group">
-                                <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-all bg-secondary">
-                                    <Image
-                                        src={tmdb.getImageUrl(item.poster_path)}
-                                        alt={item.title || item.name || "Media"}
-                                        fill
-                                        className="object-cover"
-                                        sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
-                                        loading="lazy"
-                                    />
-                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                                </div>
-                            </Link>
-                        ))}
+                        {displayItems.map((item) => {
+                            const key = `${item.mediaType}_${item.mediaId}`;
+                            const meta = ratingsMap[key];
+                            return (
+                                <Link key={item.id} href={getMediaUrl(item, item.mediaType)} className="group">
+                                    <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-all bg-secondary">
+                                        <Image
+                                            src={tmdb.getImageUrl(item.poster_path)}
+                                            alt={item.title || item.name || "Media"}
+                                            fill
+                                            className="object-cover"
+                                            sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
+                                            loading="lazy"
+                                        />
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                                        {meta && (
+                                            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 flex items-center gap-1.5">
+                                                {meta.rating > 0 && (
+                                                    <span className="flex items-center gap-0.5 text-accent text-[10px] font-bold">
+                                                        <Star size={10} className="fill-accent" />
+                                                        {meta.rating % 1 === 0 ? meta.rating : meta.rating.toFixed(1)}
+                                                    </span>
+                                                )}
+                                                {meta.liked && <Heart size={10} className="text-red-400 fill-red-400" />}
+                                                {meta.review && <MessageSquare size={10} className="text-blue-400" />}
+                                                {meta.viewCount > 1 && (
+                                                    <span className="flex items-center gap-0.5 text-[10px] text-white/70">
+                                                        <RotateCcw size={9} />
+                                                        {meta.viewCount}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </Link>
+                            );
+                        })}
                     </div>
                 )}
 

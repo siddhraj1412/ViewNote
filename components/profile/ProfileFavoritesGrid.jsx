@@ -13,6 +13,7 @@ export default function ProfileFavoritesGrid({ userId }) {
     const { user } = useAuth();
     const [movies, setMovies] = useState([]);
     const [shows, setShows] = useState([]);
+    const [episodes, setEpisodes] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const ownerId = userId || user?.uid;
@@ -21,9 +22,10 @@ export default function ProfileFavoritesGrid({ userId }) {
         if (!ownerId) return;
         setLoading(true);
         try {
-            const { movies, shows } = await profileService.getFavorites(ownerId);
+            const { movies, shows, episodes } = await profileService.getFavorites(ownerId);
             setMovies(movies);
             setShows(shows);
+            setEpisodes(episodes || []);
         } catch (error) {
             console.error("Error loading favorites:", error);
         } finally {
@@ -78,24 +80,11 @@ export default function ProfileFavoritesGrid({ userId }) {
                 mediaType="tv"
                 emptyLabel="Series"
             />
-            <div>
-                <div className="flex items-center gap-2 mb-4">
-                    <Play size={20} className="text-accent" />
-                    <h3 className="text-lg font-bold">Favorite Episodes</h3>
-                </div>
-                <div className="grid grid-cols-5 gap-3">
-                    {[...Array(5)].map((_, i) => (
-                        <div
-                            key={i}
-                            className="relative aspect-[2/3] rounded-xl bg-white/5 border border-white/10 flex flex-col items-center justify-center overflow-hidden"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/30" />
-                            <Play size={24} className="text-white/20 mb-2 relative z-10" />
-                            <span className="text-xs text-white/30 font-medium relative z-10">Coming Soon</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
+            <EpisodesRow
+                title="Favorite Episodes"
+                icon={<Play size={20} className="text-accent" />}
+                items={episodes}
+            />
         </div>
     );
 }
@@ -146,6 +135,60 @@ function FavoritesRow({ title, icon, items, mediaType, emptyLabel }) {
                             <Film size={20} className="text-white/15" />
                         </div>
                         <p className="mt-1.5 text-xs text-white/20 text-center">—</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function EpisodesRow({ title, icon, items }) {
+    const filledSlots = items.slice(0, 5);
+    const emptyCount = Math.max(0, 5 - filledSlots.length);
+
+    return (
+        <div>
+            <div className="flex items-center gap-2 mb-4">
+                {icon}
+                <h3 className="text-lg font-bold">{title}</h3>
+            </div>
+            <div className="grid grid-cols-5 gap-3">
+                {filledSlots.map((item) => (
+                    <div key={item.id} className="group">
+                        <div className="relative aspect-video rounded-xl overflow-hidden bg-secondary ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-accent transition-all">
+                            {(item.still_path || item.poster_path) ? (
+                                <Image
+                                    src={tmdb.getImageUrl(item.still_path || item.poster_path, "w300")}
+                                    alt={item.episodeName || item.title || "Episode"}
+                                    fill
+                                    className="object-cover"
+                                    loading="lazy"
+                                    sizes="20vw"
+                                />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-white/5">
+                                    <Play size={20} className="text-white/20" />
+                                </div>
+                            )}
+                            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                                <p className="text-[10px] text-white/90 font-medium line-clamp-1">
+                                    {item.episodeName || item.title}
+                                </p>
+                            </div>
+                        </div>
+                        <p className="mt-1 text-[11px] text-textSecondary line-clamp-1">
+                            {item.series_name || ""}
+                            {item.seasonNumber != null && item.episodeNumber != null ? ` · S${item.seasonNumber}E${item.episodeNumber}` : ""}
+                        </p>
+                    </div>
+                ))}
+
+                {[...Array(emptyCount)].map((_, i) => (
+                    <div key={`empty-ep-${i}`}>
+                        <div className="relative aspect-video rounded-xl bg-white/5 border border-dashed border-white/10 flex items-center justify-center">
+                            <Play size={16} className="text-white/15" />
+                        </div>
+                        <p className="mt-1 text-[11px] text-white/20 text-center">—</p>
                     </div>
                 ))}
             </div>

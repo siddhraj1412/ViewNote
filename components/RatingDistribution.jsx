@@ -21,10 +21,15 @@ const BAR_MAX_PX = 112; // h-28 = 7rem = 112px
 /**
  * Aggregates rating data from user_ratings for a given media,
  * then writes the result into the media_stats doc so onSnapshot fires.
+ * Supports scope-aware stats: pass statsKey and scopeFilter to write
+ * season/episode-specific stats.
  */
-export async function aggregateAndWriteStats(mediaId, mediaType) {
+export async function aggregateAndWriteStats(mediaId, mediaType, statsKey = null, scopeFilter = {}) {
     if (!mediaId || !mediaType) return null;
-    const statsKey = `${mediaType}_${String(mediaId)}`;
+    const key = statsKey || `${mediaType}_${String(mediaId)}`;
+    const targetType = scopeFilter?.targetType || null;
+    const seasonNumber = scopeFilter?.seasonNumber ?? null;
+    const episodeNumber = scopeFilter?.episodeNumber ?? null;
 
     try {
         const ratingsQ = query(
@@ -41,6 +46,18 @@ export async function aggregateAndWriteStats(mediaId, mediaType) {
         ratingsSnap.docs.forEach((d) => {
             const data = d.data();
             if (data.mediaType !== mediaType) return;
+
+            // Scope filtering for TV
+            if (mediaType === "tv" && targetType) {
+                if (targetType === "series") {
+                    // Only include series-level ratings (no tvTargetType or tvTargetType === "series")
+                    if (data.tvTargetType && data.tvTargetType !== "series") return;
+                } else if (targetType === "season" && seasonNumber != null) {
+                    if (data.tvTargetType !== "season" || data.tvSeasonNumber !== seasonNumber) return;
+                } else if (targetType === "episode" && seasonNumber != null && episodeNumber != null) {
+                    if (data.tvTargetType !== "episode" || data.tvSeasonNumber !== seasonNumber || data.tvEpisodeNumber !== episodeNumber) return;
+                }
+            }
 
             const r = Number(data.rating);
             if (!Number.isFinite(r) || r <= 0 || r > 5) return; // Reject zero and invalid ratings
@@ -74,11 +91,11 @@ export async function aggregateAndWriteStats(mediaId, mediaType) {
             lastUpdated: serverTimestamp(),
         };
 
-        const statsRef = doc(db, "media_stats", statsKey);
+        const statsRef = doc(db, "media_stats", key);
         await setDoc(statsRef, statsData, { merge: true });
 
         if (process.env.NODE_ENV === "development") {
-            console.log(`[RatingDistribution] Stats refreshed for ${statsKey}:`, {
+            console.log(`[RatingDistribution] Stats refreshed for ${key}:`, {
                 totalRatings, totalReviews, totalWatchers, totalLikes,
                 buckets: ratingBuckets,
             });
@@ -105,6 +122,20 @@ export default function RatingDistribution({ mediaId, mediaType = null, statsId 
         if (statsId) return String(statsId);
         if (mediaType && mediaId != null) return `${mediaType}_${String(mediaId)}`;
         return null;
+    }, [statsId, mediaType, mediaId]);
+
+    // Derive scope filter from statsId so aggregation queries the right ratings
+    const scopeFilter = useMemo(() => {
+        if (!mediaType || mediaType !== "tv") return {};
+        const s = statsId ? String(statsId) : `${mediaType}_${String(mediaId)}`;
+        // Episode pattern: tv_12345_s1e3
+        const epMatch = s.match(/_s(\d+)e(\d+)$/);
+        if (epMatch) return { targetType: "episode", seasonNumber: Number(epMatch[1]), episodeNumber: Number(epMatch[2]) };
+        // Season pattern: tv_12345_season_1
+        const snMatch = s.match(/_season_(\d+)$/);
+        if (snMatch) return { targetType: "season", seasonNumber: Number(snMatch[1]) };
+        // Series level (default statsId = tv_12345) — only show series-level ratings
+        return { targetType: "series" };
     }, [statsId, mediaType, mediaId]);
 
     const applyStatsData = useCallback((data) => {
@@ -151,14 +182,14 @@ export default function RatingDistribution({ mediaId, mediaType = null, statsId 
                 const hasData = BUCKETS.some((b) => Number(buckets[String(b)] || 0) > 0);
                 if (!hasData && !aggregatedRef.current && mediaId && mediaType) {
                     aggregatedRef.current = true;
-                    aggregateAndWriteStats(mediaId, mediaType);
+                    aggregateAndWriteStats(mediaId, mediaType, statsKey, scopeFilter);
                 }
             } else {
                 resetStats();
                 // No stats doc — seed it via aggregation
                 if (!aggregatedRef.current && mediaId && mediaType) {
                     aggregatedRef.current = true;
-                    aggregateAndWriteStats(mediaId, mediaType);
+                    aggregateAndWriteStats(mediaId, mediaType, statsKey, scopeFilter);
                 }
             }
             setLoading(false);
@@ -170,7 +201,7 @@ export default function RatingDistribution({ mediaId, mediaType = null, statsId 
         return () => {
             try { unsub(); } catch (_) {}
         };
-    }, [statsKey, mediaId, mediaType, applyStatsData, resetStats]);
+    }, [statsKey, mediaId, mediaType, scopeFilter, applyStatsData, resetStats]);
 
     // Re-aggregate whenever a rating or status change event fires for this media
     useEffect(() => {
@@ -178,13 +209,13 @@ export default function RatingDistribution({ mediaId, mediaType = null, statsId 
 
         const handleUpdate = (data) => {
             if (String(data.mediaId) === String(mediaId) && data.mediaType === mediaType) {
-                aggregateAndWriteStats(mediaId, mediaType);
+                aggregateAndWriteStats(mediaId, mediaType, statsKey, scopeFilter);
             }
         };
 
         eventBus.on("MEDIA_UPDATED", handleUpdate);
         return () => eventBus.off("MEDIA_UPDATED", handleUpdate);
-    }, [mediaId, mediaType]);
+    }, [mediaId, mediaType, statsKey, scopeFilter]);
 
     // Compute bar heights in pixels so they always render correctly
     const bars = useMemo(() => {

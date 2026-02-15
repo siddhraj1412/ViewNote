@@ -11,7 +11,7 @@ import { reviewService } from "@/services/reviewService";
 import { useAuth } from "@/context/AuthContext";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p";
-const REVIEWS_PER_PAGE = 5;
+const REVIEWS_PER_PAGE = 15;
 
 function generateSlugFromTitle(text) {
     if (!text) return "";
@@ -213,7 +213,7 @@ function InlineComments({ reviewId, user }) {
     );
 }
 
-export default function ReviewsForMedia({ mediaId, mediaType, title }) {
+export default function ReviewsForMedia({ mediaId, mediaType, title, tvTargetType, tvSeasonNumber, tvEpisodeNumber, slug }) {
     const { user } = useAuth();
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -232,14 +232,29 @@ export default function ReviewsForMedia({ mediaId, mediaType, title }) {
             const snap = await getDocs(q);
             const items = snap.docs
                 .map((d) => ({ id: d.id, ...d.data() }))
-                .filter((r) => r.review && r.review.trim().length > 0 && (!mediaType || r.mediaType === mediaType));
+                .filter((r) => {
+                    if (!r.review || r.review.trim().length === 0) return false;
+                    if (mediaType && r.mediaType !== mediaType) return false;
+                    // Filter by target scope for TV content
+                    if (tvTargetType === "season" && typeof tvSeasonNumber === "number") {
+                        return r.tvTargetType === "season" && r.tvSeasonNumber === tvSeasonNumber;
+                    }
+                    if (tvTargetType === "episode" && typeof tvSeasonNumber === "number" && typeof tvEpisodeNumber === "number") {
+                        return r.tvTargetType === "episode" && r.tvSeasonNumber === tvSeasonNumber && r.tvEpisodeNumber === tvEpisodeNumber;
+                    }
+                    // For series-level reviews, show only those without season/episode scope
+                    if (tvTargetType === "series" || (!tvTargetType && mediaType === "tv")) {
+                        return !r.tvTargetType || r.tvTargetType === "series";
+                    }
+                    return true;
+                });
             setReviews(items);
         } catch {
             setReviews([]);
         } finally {
             setLoading(false);
         }
-    }, [mediaId, mediaType]);
+    }, [mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber]);
 
     useEffect(() => {
         fetchReviews();
@@ -406,7 +421,7 @@ export default function ReviewsForMedia({ mediaId, mediaType, title }) {
 
             {/* Load More / Pagination */}
             {hasMore && (
-                <div className="mt-6 flex justify-center">
+                <div className="mt-6 flex flex-col items-center gap-3">
                     <button
                         onClick={handleLoadMore}
                         disabled={loadingMore}
@@ -424,6 +439,14 @@ export default function ReviewsForMedia({ mediaId, mediaType, title }) {
                             </>
                         )}
                     </button>
+                    {slug && mediaType === "tv" && (
+                        <Link
+                            href={`/show/${slug}/reviews`}
+                            className="text-sm text-accent hover:underline font-medium"
+                        >
+                            See All Reviews →
+                        </Link>
+                    )}
                 </div>
             )}
         </section>

@@ -1,6 +1,7 @@
 import "./globals.css";
 import "../styles/nprogress.css";
 import { Inter } from "next/font/google";
+import { Suspense } from "react";
 import { AuthProvider } from "@/context/AuthContext";
 import { Toaster } from "react-hot-toast";
 import Navbar from "@/components/Navbar";
@@ -64,7 +65,9 @@ export default function RootLayout({ children }) {
                                 },
                             }}
                         />
-                        <LoadingBar />
+                        <Suspense fallback={null}>
+                            <LoadingBar />
+                        </Suspense>
                         <ScrollToTop />
                         <div className="min-h-screen flex flex-col w-full overflow-x-hidden">
                             <Navbar />

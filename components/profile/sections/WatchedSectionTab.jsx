@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
@@ -10,14 +10,22 @@ import { useAuth } from "@/context/AuthContext";
 import { useParams } from "next/navigation";
 import eventBus from "@/lib/eventBus";
 import { mediaService } from "@/services/mediaService";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { Star, Heart, MessageSquare, RotateCcw } from "lucide-react";
+
+const PREVIEW_SIZE = 24;
 
 export default function WatchedSectionTab() {
     const { user } = useAuth();
     const params = useParams();
     const profileUserId = params?.id || user?.uid;
+    const usernameParam = params?.username;
 
     const [watchedItems, setWatchedItems] = useState([]);
+    const [ratingsMap, setRatingsMap] = useState({});
     const [filter, setFilter] = useState("all");
+    const [starFilter, setStarFilter] = useState("all");
     const [loading, setLoading] = useState(true);
 
     const fetchWatched = useCallback(async () => {
@@ -33,13 +41,43 @@ export default function WatchedSectionTab() {
         }
     }, [profileUserId]);
 
+    // Fetch user ratings to build metadata map
+    const fetchRatings = useCallback(async () => {
+        if (!profileUserId) return;
+        try {
+            const q = query(
+                collection(db, "user_ratings"),
+                where("userId", "==", profileUserId)
+            );
+            const snap = await getDocs(q);
+            const map = {};
+            snap.docs.forEach((d) => {
+                const data = d.data();
+                const key = `${data.mediaType}_${data.mediaId}`;
+                // For series-level, use the base key
+                if (!map[key] || (data.targetType || data.tvTargetType || "series") === "series") {
+                    map[key] = {
+                        rating: data.rating || 0,
+                        liked: data.liked || false,
+                        review: data.review || "",
+                        viewCount: data.viewCount || (data.isRewatch ? 2 : 1),
+                    };
+                }
+            });
+            setRatingsMap(map);
+        } catch (e) {
+            console.error("Error fetching ratings:", e);
+        }
+    }, [profileUserId]);
+
     useEffect(() => {
         fetchWatched();
-    }, [fetchWatched]);
+        fetchRatings();
+    }, [fetchWatched, fetchRatings]);
 
     // Listen for media updates and snapshot events
     useEffect(() => {
-        const handler = () => fetchWatched();
+        const handler = () => { fetchWatched(); fetchRatings(); };
         eventBus.on("MEDIA_UPDATED", handler);
         eventBus.on("WATCHED_SNAPSHOT", handler);
         eventBus.on("PROFILE_DATA_INVALIDATED", handler);
@@ -48,7 +86,7 @@ export default function WatchedSectionTab() {
             eventBus.off("WATCHED_SNAPSHOT", handler);
             eventBus.off("PROFILE_DATA_INVALIDATED", handler);
         };
-    }, [fetchWatched]);
+    }, [fetchWatched, fetchRatings]);
 
     // Attach realtime listener
     useEffect(() => {
@@ -61,12 +99,22 @@ export default function WatchedSectionTab() {
         return cleanup;
     }, [profileUserId]);
 
-    const filteredItems = watchedItems.filter((item) => {
-        if (filter === "all") return true;
-        if (filter === "movies") return item.mediaType === "movie";
-        if (filter === "series") return item.mediaType === "tv";
-        return true;
-    });
+    const filteredItems = useMemo(() => {
+        let items = watchedItems;
+        if (filter === "movies") items = items.filter((i) => i.mediaType === "movie");
+        else if (filter === "series") items = items.filter((i) => i.mediaType === "tv");
+
+        if (starFilter !== "all") {
+            const targetStar = Number(starFilter);
+            items = items.filter((item) => {
+                const key = `${item.mediaType}_${item.mediaId}`;
+                const meta = ratingsMap[key];
+                if (!meta) return targetStar === 0; // "Unrated" filter
+                return Math.round(meta.rating * 2) / 2 === targetStar;
+            });
+        }
+        return items;
+    }, [watchedItems, filter, starFilter, ratingsMap]);
 
     const counts = {
         all: watchedItems.length,
@@ -80,7 +128,7 @@ export default function WatchedSectionTab() {
 
     return (
         <div className="space-y-6">
-            <div className="flex gap-2 mb-4 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2 mb-4">
                 {["all", "movies", "series"].map((f) => (
                     <button
                         key={f}
@@ -94,44 +142,91 @@ export default function WatchedSectionTab() {
                         {f.charAt(0).toUpperCase() + f.slice(1)} ({counts[f]})
                     </button>
                 ))}
+                <select
+                    value={starFilter}
+                    onChange={(e) => setStarFilter(e.target.value)}
+                    className="ml-auto bg-background text-white border border-white/10 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                >
+                    <option value="all">All Ratings</option>
+                    {[5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5].map((s) => (
+                        <option key={s} value={s}>{"★".repeat(Math.floor(s))}{s % 1 ? "½" : ""} ({s})</option>
+                    ))}
+                    <option value="0">Unrated</option>
+                </select>
             </div>
 
             {filteredItems.length === 0 ? (
                 <div className="text-center py-12 text-textSecondary">
-                    No watched items yet
+                    No watched items {starFilter !== "all" ? "with this rating" : "yet"}
                 </div>
             ) : (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-                    {filteredItems.map((item) => (
-                        <Link
-                            key={item.id}
-                            href={getMediaUrl(item, item.mediaType)}
-                            className="group"
-                        >
-                            <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-all bg-secondary">
-                                <Image
-                                    src={tmdb.getImageUrl(item.poster_path)}
-                                    alt={item.title || item.name || "Media"}
-                                    fill
-                                    className="object-cover"
-                                    sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
-                                    loading="lazy"
-                                />
-                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                            </div>
-                            <div className="mt-2">
-                                <h3 className="text-sm font-semibold line-clamp-1 group-hover:text-accent transition-colors">
-                                    {item.title || item.name}
-                                </h3>
-                                <p className="text-xs text-textSecondary">
-                                    {item.addedAt?.seconds
-                                        ? new Date(item.addedAt.seconds * 1000).toLocaleDateString()
-                                        : "Watched"}
-                                </p>
-                            </div>
-                        </Link>
-                    ))}
-                </div>
+                <>
+                    {filteredItems.length > PREVIEW_SIZE && usernameParam && (
+                        <div className="flex justify-end mb-4">
+                            <Link href={`/${encodeURIComponent(usernameParam)}/watched`} className="text-sm text-accent hover:underline">
+                                See all ({filteredItems.length})
+                            </Link>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+                        {filteredItems.slice(0, PREVIEW_SIZE).map((item) => {
+                        const key = `${item.mediaType}_${item.mediaId}`;
+                        const meta = ratingsMap[key];
+                        return (
+                            <Link
+                                key={item.id}
+                                href={getMediaUrl(item, item.mediaType)}
+                                className="group"
+                            >
+                                <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-all bg-secondary">
+                                    <Image
+                                        src={tmdb.getImageUrl(item.poster_path)}
+                                        alt={item.title || item.name || "Media"}
+                                        fill
+                                        className="object-cover"
+                                        sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
+                                        loading="lazy"
+                                    />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                                    {/* Metadata indicators */}
+                                    {meta && (
+                                        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 flex items-center gap-1.5">
+                                            {meta.rating > 0 && (
+                                                <span className="flex items-center gap-0.5 text-accent text-[10px] font-bold">
+                                                    <Star size={10} className="fill-accent" />
+                                                    {meta.rating % 1 === 0 ? meta.rating : meta.rating.toFixed(1)}
+                                                </span>
+                                            )}
+                                            {meta.liked && (
+                                                <Heart size={10} className="text-red-400 fill-red-400" />
+                                            )}
+                                            {meta.review && (
+                                                <MessageSquare size={10} className="text-blue-400" />
+                                            )}
+                                            {meta.viewCount > 1 && (
+                                                <span className="flex items-center gap-0.5 text-[10px] text-white/70">
+                                                    <RotateCcw size={9} />
+                                                    {meta.viewCount}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="mt-2">
+                                    <h3 className="text-sm font-semibold line-clamp-1 group-hover:text-accent transition-colors">
+                                        {item.title || item.name}
+                                    </h3>
+                                    <p className="text-xs text-textSecondary">
+                                        {item.addedAt?.seconds
+                                            ? new Date(item.addedAt.seconds * 1000).toLocaleDateString()
+                                            : "Watched"}
+                                    </p>
+                                </div>
+                            </Link>
+                        );
+                    })}
+                    </div>
+                </>
             )}
         </div>
     );

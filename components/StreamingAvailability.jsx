@@ -7,11 +7,55 @@ const STORAGE_KEY = "streaming_country";
 const REGIONS_STORAGE_KEY = "tmdb_watch_provider_regions_v1";
 const REGIONS_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
+/** Map common IANA timezones to ISO 3166-1 country codes */
+const TZ_TO_COUNTRY = {
+    "America/New_York": "US", "America/Chicago": "US", "America/Denver": "US", "America/Los_Angeles": "US",
+    "America/Anchorage": "US", "Pacific/Honolulu": "US", "America/Phoenix": "US",
+    "Europe/London": "GB", "Europe/Berlin": "DE", "Europe/Paris": "FR", "Europe/Madrid": "ES",
+    "Europe/Rome": "IT", "Europe/Amsterdam": "NL", "Europe/Brussels": "BE", "Europe/Zurich": "CH",
+    "Europe/Vienna": "AT", "Europe/Stockholm": "SE", "Europe/Oslo": "NO", "Europe/Copenhagen": "DK",
+    "Europe/Helsinki": "FI", "Europe/Warsaw": "PL", "Europe/Prague": "CZ", "Europe/Budapest": "HU",
+    "Europe/Bucharest": "RO", "Europe/Sofia": "BG", "Europe/Athens": "GR", "Europe/Istanbul": "TR",
+    "Europe/Lisbon": "PT", "Europe/Dublin": "IE", "Europe/Moscow": "RU",
+    "Asia/Tokyo": "JP", "Asia/Seoul": "KR", "Asia/Shanghai": "CN", "Asia/Hong_Kong": "HK",
+    "Asia/Taipei": "TW", "Asia/Singapore": "SG", "Asia/Kolkata": "IN", "Asia/Calcutta": "IN",
+    "Asia/Dubai": "AE", "Asia/Bangkok": "TH", "Asia/Jakarta": "ID", "Asia/Manila": "PH",
+    "Asia/Kuala_Lumpur": "MY", "Asia/Ho_Chi_Minh": "VN",
+    "Australia/Sydney": "AU", "Australia/Melbourne": "AU", "Australia/Perth": "AU",
+    "Pacific/Auckland": "NZ", "America/Toronto": "CA", "America/Vancouver": "CA",
+    "America/Sao_Paulo": "BR", "America/Mexico_City": "MX", "America/Buenos_Aires": "AR",
+    "America/Santiago": "CL", "America/Bogota": "CO", "America/Lima": "PE",
+    "Africa/Johannesburg": "ZA", "Africa/Lagos": "NG", "Africa/Cairo": "EG",
+    "Asia/Jerusalem": "IL", "Asia/Riyadh": "SA",
+};
+
+function detectCountryFromLocale() {
+    try {
+        // Try timezone first (most reliable)
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (tz && TZ_TO_COUNTRY[tz]) return TZ_TO_COUNTRY[tz];
+        // Try region from timezone path (e.g. "America/New_York" → check broader region)
+        if (tz) {
+            const parts = tz.split("/");
+            for (const [key, code] of Object.entries(TZ_TO_COUNTRY)) {
+                if (key.startsWith(parts[0] + "/")) return code;
+            }
+        }
+    } catch (_) {}
+    try {
+        // Fallback: navigator.language region subtag (e.g. "en-US" → "US")
+        const lang = navigator.language || navigator.languages?.[0] || "";
+        const match = lang.match(/[-_]([A-Z]{2})$/i);
+        if (match) return match[1].toUpperCase();
+    } catch (_) {}
+    return "US";
+}
+
 function getDefaultCountry() {
     if (typeof window === "undefined") return "US";
     const saved = window.localStorage.getItem(STORAGE_KEY);
     if (saved && typeof saved === "string" && saved.length === 2) return saved.toUpperCase();
-    return "US";
+    return detectCountryFromLocale();
 }
 
 export default function StreamingAvailability({ mediaType, mediaId }) {

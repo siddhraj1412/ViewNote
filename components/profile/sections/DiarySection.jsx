@@ -11,7 +11,7 @@ import StarRating from "@/components/StarRating";
 import eventBus from "@/lib/eventBus";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w154";
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 24;
 
 export default function DiarySection({ userId }) {
     const { user } = useAuth();
