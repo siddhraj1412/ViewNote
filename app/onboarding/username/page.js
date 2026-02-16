@@ -106,9 +106,17 @@ export default function UsernameOnboardingPage() {
                 {
                     username: trimmed,
                     username_lowercase: trimmed.toLowerCase(),
+                    onboardingComplete: true,
                 },
                 { merge: true }
             );
+            // Update local user state so needsUsername is cleared
+            if (user) {
+                user.username = trimmed;
+                user.username_lowercase = trimmed.toLowerCase();
+                user.needsUsername = false;
+                user.onboardingComplete = true;
+            }
             // Navigate to the new profile
             router.replace(`/${trimmed}`);
         } catch (error) {

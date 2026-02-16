@@ -12,8 +12,13 @@ import { getMediaUrl } from "@/lib/slugify";
 const PAGE_SIZE = 18;
 
 const SORT_OPTIONS = [
-    { id: "newest", label: "Newest" },
-    { id: "oldest", label: "Oldest" },
+    { id: "newest", label: "Added: Newest" },
+    { id: "oldest", label: "Added: Oldest" },
+    { id: "popularity", label: "Popularity" },
+    { id: "release-desc", label: "Release: Newest" },
+    { id: "release-asc", label: "Release: Oldest" },
+    { id: "rating-desc", label: "Rating: High → Low" },
+    { id: "rating-asc", label: "Rating: Low → High" },
     { id: "a-z", label: "A → Z" },
     { id: "z-a", label: "Z → A" },
 ];
@@ -40,22 +45,32 @@ function sortItems(items, sortBy) {
     const copy = [...items];
     switch (sortBy) {
         case "oldest":
+            return copy.sort((a, b) => (a.addedAt?.seconds || 0) - (b.addedAt?.seconds || 0));
+        case "popularity":
+            return copy.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+        case "release-desc":
             return copy.sort((a, b) => {
-                const aT = a.addedAt?.seconds || 0;
-                const bT = b.addedAt?.seconds || 0;
-                return aT - bT;
+                const aD = a.release_date || a.first_air_date || "";
+                const bD = b.release_date || b.first_air_date || "";
+                return bD.localeCompare(aD);
             });
+        case "release-asc":
+            return copy.sort((a, b) => {
+                const aD = a.release_date || a.first_air_date || "";
+                const bD = b.release_date || b.first_air_date || "";
+                return aD.localeCompare(bD);
+            });
+        case "rating-desc":
+            return copy.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+        case "rating-asc":
+            return copy.sort((a, b) => (a.vote_average || 0) - (b.vote_average || 0));
         case "a-z":
             return copy.sort((a, b) => (a.title || a.name || "").localeCompare(b.title || b.name || ""));
         case "z-a":
             return copy.sort((a, b) => (b.title || b.name || "").localeCompare(a.title || a.name || ""));
         case "newest":
         default:
-            return copy.sort((a, b) => {
-                const aT = a.addedAt?.seconds || 0;
-                const bT = b.addedAt?.seconds || 0;
-                return bT - aT;
-            });
+            return copy.sort((a, b) => (b.addedAt?.seconds || 0) - (a.addedAt?.seconds || 0));
     }
 }
 

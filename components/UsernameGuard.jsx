@@ -9,6 +9,11 @@ const PUBLIC_PATHS = [
     "/login",
     "/signup",
     "/onboarding",
+    "/forgot-password",
+    "/about",
+    "/contact",
+    "/privacy",
+    "/terms",
     "/api",
 ];
 

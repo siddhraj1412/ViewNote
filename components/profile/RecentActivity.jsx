@@ -147,18 +147,29 @@ export default function RecentActivity({ userId }) {
                     const IconComp = item.activityIcon;
                     // Use episode-aware routing
                     const isEpisode = item.mediaType === "episode" || (item.seasonNumber != null && item.episodeNumber != null);
+                    const isSeason = item.targetType === "season" || (item.seasonNumber != null && item.episodeNumber == null && item.mediaType !== "episode");
                     const url = isEpisode
                         ? getEpisodeUrl(item)
                         : getMediaUrl(
                             { id: item.mediaId, title: item.title, name: item.title, mediaId: item.mediaId },
                             item.mediaType
                         );
-                    const posterUrl = item.poster_path ? tmdb.getImageUrl(item.poster_path) : null;
+
+                    // Poster priority: user custom → episode still → season poster → series poster → TMDB fallback
+                    const posterUrl = item.customPoster
+                        ? item.customPoster
+                        : isEpisode && item.episodeStill
+                            ? tmdb.getImageUrl(item.episodeStill, "w500")
+                            : (isSeason || isEpisode) && item.seasonPoster
+                                ? tmdb.getImageUrl(item.seasonPoster, "w500")
+                                : item.poster_path
+                                    ? tmdb.getImageUrl(item.poster_path)
+                                    : null;
 
                     // Determine scope label
                     const scopeLabel = isEpisode
                         ? `S${item.seasonNumber || "?"}E${item.episodeNumber || "?"}`
-                        : item.targetType === "season"
+                        : isSeason
                             ? `S${item.seasonNumber || "?"}`
                             : item.mediaType === "movie" ? "Movie" : item.mediaType === "tv" ? "Series" : "";
 

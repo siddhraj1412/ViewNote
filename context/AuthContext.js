@@ -103,9 +103,17 @@ export const AuthProvider = ({ children }) => {
                 firebaseUser.photoURL = photo;
                 firebaseUser.username = data.username || null;
                 firebaseUser.username_lowercase = data.username_lowercase || null;
-                firebaseUser.needsUsername = !data.username;
+                firebaseUser.onboardingComplete = data.onboardingComplete === true;
+                firebaseUser.needsUsername = !data.username || data.onboardingComplete === false;
+                // Auto-backfill onboardingComplete for existing users with username
+                if (data.username && data.onboardingComplete === undefined) {
+                    setDoc(doc(db, "user_profiles", firebaseUser.uid), { onboardingComplete: true }, { merge: true }).catch(() => {});
+                    firebaseUser.onboardingComplete = true;
+                    firebaseUser.needsUsername = false;
+                }
             } else {
                 firebaseUser.needsUsername = true;
+                firebaseUser.onboardingComplete = false;
             }
         } catch (e) {
             console.error("Error fetching user profile:", e);
@@ -168,6 +176,7 @@ export const AuthProvider = ({ children }) => {
                 username_lowercase: finalUsername.toLowerCase(),
                 provider: "email",
                 profile_picture_url: null,
+                onboardingComplete: true,
                 createdAt: serverTimestamp(),
             });
         }
@@ -228,16 +237,19 @@ export const AuthProvider = ({ children }) => {
                 username_lowercase: autoUsername.toLowerCase(),
                 provider: "google",
                 profile_picture_url: result.user.photoURL,
+                onboardingComplete: false,
                 createdAt: serverTimestamp(),
             });
             result.user.username = autoUsername;
             result.user.username_lowercase = autoUsername.toLowerCase();
             result.user.needsUsername = true; // send to onboarding
+            result.user.onboardingComplete = false;
             result.isNewUser = true;
         } else {
             const data = snap.data();
             result.user.username = data.username || null;
-            result.user.needsUsername = !data.username;
+            result.user.onboardingComplete = data.onboardingComplete !== false;
+            result.user.needsUsername = !data.username || data.onboardingComplete === false;
             result.isNewUser = false;
 
             // Backfill username if missing
@@ -253,6 +265,13 @@ export const AuthProvider = ({ children }) => {
                 result.user.username = username;
                 result.user.username_lowercase = username.toLowerCase();
                 result.user.needsUsername = true;
+            }
+
+            // Backfill onboardingComplete for existing users who already have a username
+            if (data.username && data.onboardingComplete === undefined) {
+                await setDoc(userDocRef, { onboardingComplete: true }, { merge: true });
+                result.user.onboardingComplete = true;
+                result.user.needsUsername = false;
             }
         }
 

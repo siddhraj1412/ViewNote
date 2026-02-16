@@ -177,49 +177,99 @@ export default function HomePage() {
             setLoading(true);
             try {
                 const today = new Date();
-                const futureDate = new Date(today);
-                futureDate.setMonth(futureDate.getMonth() + 2);
-                const futureDateStr = futureDate.toISOString().split("T")[0];
                 const todayStr = today.toISOString().split("T")[0];
+                const futureDate = new Date(today);
+                futureDate.setDate(futureDate.getDate() + 90);
+                const futureDateStr = futureDate.toISOString().split("T")[0];
 
                 const pg = randomPage;
                 const results = await Promise.allSettled([
-                    tmdb.getTrendingMovies("day"),                     // 0: Featured Today
-                    tmdb.getTrendingMovies("week"),                    // 1: What's Hot
-                    fetchTMDBPage(`tv/on_the_air?page=${pg(3)}`),     // 2: Fresh Episodes
-                    fetchTMDBPage(`movie/now_playing?page=${pg(3)}`),  // 3: In Cinemas
-                    fetchTMDBPage(`movie/popular?page=${pg(5)}`),      // 4: Popular
-                    fetchTMDBPage(`tv/popular?page=${pg(3)}`),         // 5: Binge-Worthy
-                    fetchTMDBPage(`movie/upcoming?page=${pg(3)}`),     // 6: Coming Soon
-                    fetchTMDBPage(`discover/movie?vote_count.gte=50&vote_count.lte=500&vote_average.gte=7&sort_by=vote_average.desc&page=${pg(5)}`), // 7: Hidden Gems
+                    fetchTMDBPage(`trending/all/week`),                       // 0: What's Hot
+                    fetchTMDBPage(`tv/on_the_air?page=${pg(3)}`),             // 1: Fresh Episodes candidates
+                    fetchTMDBPage(`movie/now_playing?page=${pg(3)}&region=US`),// 2: In Cinemas
+                    fetchTMDBPage(`movie/popular?page=${pg(5)}`),             // 3: Popular
+                    fetchTMDBPage(`discover/tv?vote_average.gte=7.2&vote_count.gte=500&sort_by=vote_average.desc&page=${pg(3)}`), // 4: Binge-Worthy
+                    fetchTMDBPage(`movie/upcoming?page=${pg(3)}&region=US`),  // 5: Coming Soon
+                    fetchTMDBPage(`discover/movie?vote_average.gte=7.5&vote_count.gte=100&vote_count.lte=10000&sort_by=vote_average.desc&with_original_language=en&page=${pg(5)}`), // 6: Hidden Gems
+                    tmdb.getTrendingMovies("day"),                            // 7: Featured Today
                 ]);
 
                 if (controller.signal.aborted) return;
 
                 const extract = (i) => (results[i].status === "fulfilled" ? results[i].value : []);
 
+                // --- What's Hot: only movie/tv with vote_count>100 & popularity>100 ---
+                const whatsHotRaw = extract(0).filter(
+                    (m) => (m.media_type === "movie" || m.media_type === "tv") && (m.vote_count || 0) > 100 && (m.popularity || 0) > 100
+                );
+
+                // --- Fresh Episodes: enrich with last_episode_to_air, only last 7 days, exclude specials ---
+                const freshCandidates = extract(1);
+                const sevenDaysAgo = new Date(today);
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                const enrichedEpisodes = await enrichFreshEpisodes(freshCandidates, sevenDaysAgo, controller.signal);
+
+                // --- In Cinemas: only recent releases (last 45 days) ---
+                const inCinemasRaw = extract(2).filter((m) => {
+                    if (!m.release_date) return false;
+                    const rd = new Date(m.release_date);
+                    const daysSince = (today - rd) / (1000 * 60 * 60 * 24);
+                    return daysSince >= 0 && daysSince <= 45;
+                });
+
+                // --- Popular: vote_count > 200, popularity > 150 ---
+                const popularRaw = extract(3).filter(
+                    (m) => (m.vote_count || 0) > 200 && (m.popularity || 0) > 150
+                );
+
+                // --- Binge-Worthy: already filtered by discover endpoint ---
+                const bingeRaw = extract(4);
+
+                // --- Coming Soon: future release only (up to 90 days) ---
+                const comingSoonRaw = extract(5).filter((m) => {
+                    if (!m.release_date) return false;
+                    const rd = new Date(m.release_date);
+                    return rd > today;
+                });
+
+                // --- Hidden Gems: popularity < 100 ---
+                const hiddenGemsRaw = extract(6).filter(
+                    (m) => (m.popularity || 0) < 100
+                );
+
+                // --- Featured Today ---
+                const featuredTodayRaw = extract(7);
+
+                // --- Cross-section deduplication ---
                 let seenIds = new Set();
                 if (user) {
                     try { seenIds = await mediaService.getUserSeenMediaIds(user.uid); } catch {}
                 }
 
                 const shownIds = getShownIds();
-                const filterSeen = (arr) => arr.filter((m) => !seenIds.has(m.id));
-                const filterShown = (arr) => {
-                    const fresh = arr.filter((m) => !shownIds.has(m.id));
-                    return fresh.length >= 5 ? fresh : arr;
+                const globalDedup = new Set();
+
+                const dedupPick = (arr, count = 10) => {
+                    const filtered = arr.filter((m) => {
+                        if (!m.id || globalDedup.has(m.id) || seenIds.has(m.id)) return false;
+                        return true;
+                    });
+                    const fresh = filtered.filter((m) => !shownIds.has(m.id));
+                    const pool = fresh.length >= 5 ? fresh : filtered;
+                    const picked = pool.slice(0, count);
+                    picked.forEach((m) => globalDedup.add(m.id));
+                    return picked;
                 };
-                const pickSection = (arr) => filterShown(filterSeen(arr)).slice(0, 10);
 
                 const newSections = {
-                    featuredToday: pickSection(extract(0)),
-                    whatsHot: pickSection(extract(1)),
-                    freshEpisodes: pickSection(extract(2)),
-                    inCinemas: pickSection(extract(3)),
-                    popular: pickSection(extract(4)),
-                    bingeWorthy: pickSection(extract(5)),
-                    comingSoon: pickSection(extract(6)),
-                    hiddenGems: pickSection(extract(7)),
+                    featuredToday: dedupPick(featuredTodayRaw),
+                    whatsHot: dedupPick(whatsHotRaw),
+                    freshEpisodes: dedupPick(enrichedEpisodes),
+                    inCinemas: dedupPick(inCinemasRaw),
+                    popular: dedupPick(popularRaw),
+                    bingeWorthy: dedupPick(bingeRaw),
+                    comingSoon: dedupPick(comingSoonRaw),
+                    hiddenGems: dedupPick(hiddenGemsRaw),
                 };
 
                 const allNewIds = new Set(shownIds);
@@ -387,8 +437,8 @@ export default function HomePage() {
                         <h2 className="text-3xl md:text-4xl font-bold">What&apos;s Hot</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {sections.whatsHot.map((movie) => (
-                            <MediaCard key={movie.id} item={movie} type="movie" />
+                        {sections.whatsHot.map((item) => (
+                            <MediaCard key={item.id} item={item} type={item.media_type || "movie"} />
                         ))}
                     </div>
                 </section>
@@ -403,7 +453,17 @@ export default function HomePage() {
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
                         {sections.freshEpisodes.map((show) => (
-                            <MediaCard key={show.id} item={show} type="tv" />
+                            <div key={show.id} className="group">
+                                <MediaCard item={show} type="tv" />
+                                {show._lastEpisode && (
+                                    <div className="mt-2 px-1">
+                                        <p className="text-xs text-white/80 font-medium truncate">{show._lastEpisode.name}</p>
+                                        <p className="text-[10px] text-textSecondary">
+                                            S{show._lastEpisode.season_number}E{show._lastEpisode.episode_number} · {new Date(show._lastEpisode.air_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
                         ))}
                     </div>
                 </section>
@@ -503,6 +563,51 @@ export default function HomePage() {
             )}
         </main>
     );
+}
+
+/**
+ * Helper: Enrich fresh episode candidates with last_episode_to_air data.
+ * Only keeps shows where last episode aired in the last 7 days and is not a special.
+ */
+async function enrichFreshEpisodes(candidates, sevenDaysAgo, signal) {
+    if (!candidates || candidates.length === 0) return [];
+    const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
+    // Fetch details for up to 15 candidates in parallel
+    const batch = candidates.slice(0, 15);
+    const details = await Promise.allSettled(
+        batch.map(async (show) => {
+            if (signal?.aborted) return null;
+            try {
+                const url = `https://api.themoviedb.org/3/tv/${show.id}?api_key=${TMDB_API_KEY}`;
+                const res = await fetch(url);
+                if (!res.ok) return null;
+                return await res.json();
+            } catch { return null; }
+        })
+    );
+
+    const enriched = [];
+    for (let i = 0; i < batch.length; i++) {
+        const detail = details[i]?.status === "fulfilled" ? details[i].value : null;
+        if (!detail || !detail.last_episode_to_air) continue;
+        const ep = detail.last_episode_to_air;
+        if (!ep.air_date) continue;
+        // Exclude specials (season_number === 0 or episode_type === "special")
+        if (ep.season_number === 0 || ep.episode_type === "special") continue;
+        const airDate = new Date(ep.air_date);
+        if (airDate < sevenDaysAgo) continue;
+        // Attach episode info to the show object for display
+        enriched.push({
+            ...batch[i],
+            _lastEpisode: {
+                name: ep.name,
+                air_date: ep.air_date,
+                season_number: ep.season_number,
+                episode_number: ep.episode_number,
+            },
+        });
+    }
+    return enriched;
 }
 
 /**
