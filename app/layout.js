@@ -10,6 +10,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import LoadingBar from "@/components/LoadingBar";
 import Footer from "@/components/Footer";
 import DebugPanelWrapper from "@/components/DebugPanelWrapper";
+import UsernameGuard from "@/components/UsernameGuard";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -71,7 +72,9 @@ export default function RootLayout({ children }) {
                         <ScrollToTop />
                         <div className="min-h-screen flex flex-col w-full overflow-x-hidden">
                             <Navbar />
-                            <div className="flex-1 w-full min-w-0">{children}</div>
+                            <UsernameGuard>
+                                <div className="flex-1 w-full min-w-0">{children}</div>
+                            </UsernameGuard>
                             <Footer />
                         </div>
                         <DebugPanelWrapper />

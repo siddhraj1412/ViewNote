@@ -83,7 +83,7 @@ const MediaCard = memo(function MediaCard({ item, type }) {
 
     return (
         <Link href={href} className="group">
-            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden mb-4 shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
+            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-shadow duration-300">
                 <Image
                     src={tmdb.getImageUrl(item.poster_path)}
                     alt={title || "Poster"}
@@ -92,14 +92,16 @@ const MediaCard = memo(function MediaCard({ item, type }) {
                     loading="lazy"
                     sizes="(max-width: 768px) 50vw, (max-width: 1024px) 25vw, 20vw"
                 />
-            </div>
-            <h3 className="text-base md:text-lg font-semibold line-clamp-1 group-hover:text-accent transition-colors">
-                {title}
-            </h3>
-            <div className="flex items-center gap-2 text-textSecondary text-sm">
-                <span>{year}</span>
-                <span>•</span>
-                <span className="text-accent font-bold">★ {rating}</span>
+                {/* Hover info overlay */}
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex flex-col justify-end p-3 opacity-0 group-hover:opacity-100">
+                    <h4 className="text-sm font-semibold text-white line-clamp-2 leading-tight">{title}</h4>
+                    <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-white/70">{year}</span>
+                        {rating && rating !== "0.0" && (
+                            <span className="text-xs text-accent font-bold">★ {rating}</span>
+                        )}
+                    </div>
+                </div>
             </div>
         </Link>
     );

@@ -181,11 +181,6 @@ export default function RatingModal({
             showToast.error("Please select a rating from 0.5 to 5.0");
             return;
         }
-        // Require at least rating or review
-        if (normalizedRating === 0 && !review.trim()) {
-            showToast.error("Please add a rating or a review");
-            return;
-        }
 
         setLoading(true);
         try {

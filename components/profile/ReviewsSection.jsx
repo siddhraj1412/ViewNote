@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { MessageSquare, Heart, Calendar, ThumbsUp } from "lucide-react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { MessageSquare, Heart, Calendar, ThumbsUp, Send, ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import StarRating from "@/components/StarRating";
 import { reviewService } from "@/services/reviewService";
+import { useAuth } from "@/context/AuthContext";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p";
 const PREVIEW_SIZE = 24;
@@ -25,10 +26,18 @@ function generateSlugFromTitle(text) {
 }
 
 export default function ReviewsSection({ userId, username }) {
+    const { user: currentUser } = useAuth();
     const [reviews, setReviews] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showAll, setShowAll] = useState(false);
+    const [sortBy, setSortBy] = useState("newest");
     const [socialCounts, setSocialCounts] = useState({}); // { [reviewId]: { likes: N, comments: N } }
+    const [likedByMe, setLikedByMe] = useState({}); // { [reviewId]: bool }
+    const [liking, setLiking] = useState({}); // { [reviewId]: bool } – prevent double-clicks
+    const [openComments, setOpenComments] = useState({}); // { [reviewId]: bool }
+    const [commentsData, setCommentsData] = useState({}); // { [reviewId]: Comment[] }
+    const [commentInputs, setCommentInputs] = useState({}); // { [reviewId]: string }
+    const [submittingComment, setSubmittingComment] = useState({});
 
     const fetchReviews = useCallback(async () => {
         if (!userId) return;
@@ -45,30 +54,96 @@ export default function ReviewsSection({ userId, username }) {
                 .sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
             setReviews(items);
 
-            // Fetch like and comment counts for each review
+            // Fetch like and comment counts + whether current user liked each
             const counts = {};
+            const myLikes = {};
             await Promise.all(items.map(async (item) => {
                 try {
-                    const [likeCount, comments] = await Promise.all([
+                    const [likeCount, comments, iLiked] = await Promise.all([
                         reviewService.getLikeCount(item.id),
                         reviewService.getComments(item.id),
+                        currentUser ? reviewService.hasUserLiked(item.id, currentUser.uid) : Promise.resolve(false),
                     ]);
                     counts[item.id] = { likes: likeCount, comments: comments.length };
+                    myLikes[item.id] = iLiked;
                 } catch {
                     counts[item.id] = { likes: 0, comments: 0 };
+                    myLikes[item.id] = false;
                 }
             }));
             setSocialCounts(counts);
+            setLikedByMe(myLikes);
         } catch (error) {
             console.error("Error loading reviews:", error);
         } finally {
             setLoading(false);
         }
-    }, [userId]);
+    }, [userId, currentUser]);
 
     useEffect(() => {
         fetchReviews();
     }, [fetchReviews]);
+
+    // ── Interaction handlers ──
+    const handleToggleLike = async (reviewId, e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!currentUser || liking[reviewId]) return;
+        setLiking((p) => ({ ...p, [reviewId]: true }));
+        try {
+            const result = await reviewService.toggleLike(reviewId, currentUser.uid);
+            setLikedByMe((p) => ({ ...p, [reviewId]: result.liked }));
+            setSocialCounts((p) => ({
+                ...p,
+                [reviewId]: {
+                    ...p[reviewId],
+                    likes: (p[reviewId]?.likes || 0) + (result.liked ? 1 : -1),
+                },
+            }));
+        } catch (err) {
+            console.error("Like toggle error:", err);
+        } finally {
+            setLiking((p) => ({ ...p, [reviewId]: false }));
+        }
+    };
+
+    const handleToggleComments = async (reviewId, e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const isOpen = !openComments[reviewId];
+        setOpenComments((p) => ({ ...p, [reviewId]: isOpen }));
+        if (isOpen && !commentsData[reviewId]) {
+            try {
+                const comments = await reviewService.getComments(reviewId);
+                setCommentsData((p) => ({ ...p, [reviewId]: comments }));
+            } catch (err) {
+                console.error("Load comments error:", err);
+            }
+        }
+    };
+
+    const handleSubmitComment = async (reviewId, e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const text = (commentInputs[reviewId] || "").trim();
+        if (!text || !currentUser || submittingComment[reviewId]) return;
+        setSubmittingComment((p) => ({ ...p, [reviewId]: true }));
+        try {
+            await reviewService.addComment(reviewId, currentUser.uid, currentUser.username || currentUser.displayName || "User", text);
+            setCommentInputs((p) => ({ ...p, [reviewId]: "" }));
+            // Refresh comments
+            const comments = await reviewService.getComments(reviewId);
+            setCommentsData((p) => ({ ...p, [reviewId]: comments }));
+            setSocialCounts((p) => ({
+                ...p,
+                [reviewId]: { ...p[reviewId], comments: comments.length },
+            }));
+        } catch (err) {
+            console.error("Submit comment error:", err);
+        } finally {
+            setSubmittingComment((p) => ({ ...p, [reviewId]: false }));
+        }
+    };
 
     const getReviewLink = (item) => {
         if (username) {
@@ -125,17 +200,61 @@ export default function ReviewsSection({ userId, username }) {
         );
     }
 
+    const sortedReviews = useMemo(() => {
+        const copy = [...reviews];
+        switch (sortBy) {
+            case "oldest":
+                copy.sort((a, b) => (a.ratedAt?.seconds || 0) - (b.ratedAt?.seconds || 0));
+                break;
+            case "a-z":
+                copy.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+                break;
+            case "z-a":
+                copy.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
+                break;
+            case "rating-high":
+                copy.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+                break;
+            case "rating-low":
+                copy.sort((a, b) => (a.rating || 0) - (b.rating || 0));
+                break;
+            case "most-liked":
+                copy.sort((a, b) => (socialCounts[b.id]?.likes || 0) - (socialCounts[a.id]?.likes || 0));
+                break;
+            case "newest":
+            default:
+                copy.sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
+                break;
+        }
+        return copy;
+    }, [reviews, sortBy, socialCounts]);
+
     return (
         <section>
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold">Reviews</h2>
-                <span className="text-sm text-textSecondary">{reviews.length} review{reviews.length !== 1 ? "s" : ""}</span>
+                <div className="flex items-center gap-3">
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="bg-background text-white border border-white/10 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                    >
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="a-z">A → Z</option>
+                        <option value="z-a">Z → A</option>
+                        <option value="rating-high">Rating ↓</option>
+                        <option value="rating-low">Rating ↑</option>
+                        <option value="most-liked">Most Liked</option>
+                    </select>
+                    <span className="text-sm text-textSecondary">{reviews.length} review{reviews.length !== 1 ? "s" : ""}</span>
+                </div>
             </div>
 
             <div className="space-y-4">
-                {(showAll ? reviews : reviews.slice(0, PREVIEW_SIZE)).map((item) => (
-                    <Link key={item.id} href={getReviewLink(item)} className="block">
-                        <div className="bg-secondary rounded-xl p-5 border border-white/5 hover:border-white/10 transition-all">
+                {(showAll ? sortedReviews : sortedReviews.slice(0, PREVIEW_SIZE)).map((item) => (
+                    <div key={item.id} className="bg-secondary rounded-xl p-5 border border-white/5 hover:border-white/10 transition-all">
+                        <Link href={getReviewLink(item)} className="block">
                             <div className="flex gap-4">
                                 <div className="shrink-0">
                                     {item.poster_path ? (
@@ -179,36 +298,92 @@ export default function ReviewsSection({ userId, username }) {
                                             )}
                                         </div>
                                     )}
-                                    {/* Social counts */}
-                                    {(socialCounts[item.id]?.likes > 0 || socialCounts[item.id]?.comments > 0) && (
-                                        <div className="flex items-center gap-3 mt-2.5 pt-2 border-t border-white/5">
-                                            {socialCounts[item.id]?.likes > 0 && (
-                                                <div className="flex items-center gap-1 text-xs text-textSecondary">
-                                                    <ThumbsUp size={12} />
-                                                    <span>{socialCounts[item.id].likes}</span>
-                                                </div>
-                                            )}
-                                            {socialCounts[item.id]?.comments > 0 && (
-                                                <div className="flex items-center gap-1 text-xs text-textSecondary">
-                                                    <MessageSquare size={12} />
-                                                    <span>{socialCounts[item.id].comments}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
                                 </div>
                             </div>
+                        </Link>
+                        {/* Interactive social bar - outside of Link */}
+                        <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/5">
+                            {/* Like button */}
+                            <button
+                                onClick={(e) => handleToggleLike(item.id, e)}
+                                disabled={!currentUser || liking[item.id]}
+                                className={`flex items-center gap-1.5 text-xs transition-colors ${
+                                    likedByMe[item.id]
+                                        ? "text-accent"
+                                        : "text-textSecondary hover:text-accent"
+                                } disabled:opacity-40 disabled:cursor-not-allowed`}
+                            >
+                                <ThumbsUp
+                                    size={14}
+                                    className={likedByMe[item.id] ? "fill-accent" : ""}
+                                />
+                                <span>{socialCounts[item.id]?.likes || 0}</span>
+                            </button>
+                            {/* Comment toggle */}
+                            <button
+                                onClick={(e) => handleToggleComments(item.id, e)}
+                                className="flex items-center gap-1.5 text-xs text-textSecondary hover:text-blue-400 transition-colors"
+                            >
+                                <MessageSquare size={14} />
+                                <span>{socialCounts[item.id]?.comments || 0}</span>
+                                {openComments[item.id] ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                            </button>
                         </div>
-                    </Link>
+
+                        {/* Inline comments panel */}
+                        {openComments[item.id] && (
+                            <div className="mt-3 pt-3 border-t border-white/5 space-y-3">
+                                {/* Comment list */}
+                                {(commentsData[item.id] || []).length > 0 ? (
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                        {(commentsData[item.id] || []).map((c) => (
+                                            <div key={c.id} className="text-xs text-textSecondary">
+                                                <span className="font-semibold text-white">{c.username || "User"}</span>{" "}
+                                                <span>{c.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-textSecondary/60">No comments yet</p>
+                                )}
+                                {/* Comment input */}
+                                {currentUser && (
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={commentInputs[item.id] || ""}
+                                            onChange={(e) =>
+                                                setCommentInputs((p) => ({ ...p, [item.id]: e.target.value }))
+                                            }
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter") handleSubmitComment(item.id, e);
+                                            }}
+                                            placeholder="Add a comment…"
+                                            className="flex-1 bg-white/5 rounded-lg px-3 py-1.5 text-xs text-white placeholder-textSecondary/50 outline-none focus:ring-1 focus:ring-accent/50"
+                                        />
+                                        <button
+                                            onClick={(e) => handleSubmitComment(item.id, e)}
+                                            disabled={submittingComment[item.id] || !(commentInputs[item.id] || "").trim()}
+                                            className="text-accent disabled:opacity-30 disabled:cursor-not-allowed hover:text-white transition-colors"
+                                        >
+                                            <Send size={14} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 ))}
             </div>
             {!showAll && reviews.length > PREVIEW_SIZE && (
-                <button
-                    onClick={() => setShowAll(true)}
-                    className="mt-4 w-full py-2.5 text-sm font-medium text-accent hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all"
-                >
-                    Show all {reviews.length} reviews
-                </button>
+                <div className="flex justify-center mt-6">
+                    <button
+                        onClick={() => setShowAll(true)}
+                        className="px-6 py-2.5 text-sm font-medium text-accent hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all"
+                    >
+                        Show all {reviews.length} reviews
+                    </button>
+                </div>
             )}
         </section>
     );

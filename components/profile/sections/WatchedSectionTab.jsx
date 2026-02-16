@@ -16,6 +16,36 @@ import { Star, Heart, MessageSquare, RotateCcw } from "lucide-react";
 
 const PREVIEW_SIZE = 24;
 
+// Render visual star icons (filled, half, empty) for a rating value
+function renderStarIcons(rating, size = 10) {
+    const stars = [];
+    const fullStars = Math.floor(rating);
+    const hasHalf = rating % 1 >= 0.25 && rating % 1 <= 0.75;
+    const emptyStars = 5 - fullStars - (hasHalf ? 1 : 0);
+
+    for (let i = 0; i < fullStars; i++) {
+        stars.push(
+            <Star key={`f${i}`} size={size} className="text-accent fill-accent" />
+        );
+    }
+    if (hasHalf) {
+        stars.push(
+            <span key="half" className="relative inline-block" style={{ width: size, height: size }}>
+                <Star size={size} className="absolute text-white/20" />
+                <span className="absolute overflow-hidden" style={{ width: size / 2, height: size }}>
+                    <Star size={size} className="text-accent fill-accent" />
+                </span>
+            </span>
+        );
+    }
+    for (let i = 0; i < emptyStars; i++) {
+        stars.push(
+            <Star key={`e${i}`} size={size} className="text-white/20" />
+        );
+    }
+    return <span className="flex items-center gap-px">{stars}</span>;
+}
+
 export default function WatchedSectionTab() {
     const { user } = useAuth();
     const params = useParams();
@@ -26,6 +56,7 @@ export default function WatchedSectionTab() {
     const [ratingsMap, setRatingsMap] = useState({});
     const [filter, setFilter] = useState("all");
     const [starFilter, setStarFilter] = useState("all");
+    const [sortBy, setSortBy] = useState("newest");
     const [loading, setLoading] = useState(true);
 
     const fetchWatched = useCallback(async () => {
@@ -113,8 +144,40 @@ export default function WatchedSectionTab() {
                 return Math.round(meta.rating * 2) / 2 === targetStar;
             });
         }
-        return items;
-    }, [watchedItems, filter, starFilter, ratingsMap]);
+
+        // Sort
+        const sorted = [...items];
+        switch (sortBy) {
+            case "oldest":
+                sorted.sort((a, b) => (a.addedAt?.seconds || 0) - (b.addedAt?.seconds || 0));
+                break;
+            case "a-z":
+                sorted.sort((a, b) => (a.title || a.name || "").localeCompare(b.title || b.name || ""));
+                break;
+            case "z-a":
+                sorted.sort((a, b) => (b.title || b.name || "").localeCompare(a.title || a.name || ""));
+                break;
+            case "rating-high":
+                sorted.sort((a, b) => {
+                    const rA = ratingsMap[`${a.mediaType}_${a.mediaId}`]?.rating || 0;
+                    const rB = ratingsMap[`${b.mediaType}_${b.mediaId}`]?.rating || 0;
+                    return rB - rA;
+                });
+                break;
+            case "rating-low":
+                sorted.sort((a, b) => {
+                    const rA = ratingsMap[`${a.mediaType}_${a.mediaId}`]?.rating || 0;
+                    const rB = ratingsMap[`${b.mediaType}_${b.mediaId}`]?.rating || 0;
+                    return rA - rB;
+                });
+                break;
+            case "newest":
+            default:
+                sorted.sort((a, b) => (b.addedAt?.seconds || 0) - (a.addedAt?.seconds || 0));
+                break;
+        }
+        return sorted;
+    }, [watchedItems, filter, starFilter, sortBy, ratingsMap]);
 
     const counts = {
         all: watchedItems.length,
@@ -145,13 +208,25 @@ export default function WatchedSectionTab() {
                 <select
                     value={starFilter}
                     onChange={(e) => setStarFilter(e.target.value)}
-                    className="ml-auto bg-background text-white border border-white/10 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                    className="bg-background text-white border border-white/10 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-accent/50 [color-scheme:dark]"
                 >
                     <option value="all">All Ratings</option>
                     {[5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5].map((s) => (
                         <option key={s} value={s}>{"★".repeat(Math.floor(s))}{s % 1 ? "½" : ""} ({s})</option>
                     ))}
                     <option value="0">Unrated</option>
+                </select>
+                <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="bg-background text-white border border-white/10 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="a-z">A → Z</option>
+                    <option value="z-a">Z → A</option>
+                    <option value="rating-high">Rating ↓</option>
+                    <option value="rating-low">Rating ↑</option>
                 </select>
             </div>
 
@@ -161,13 +236,7 @@ export default function WatchedSectionTab() {
                 </div>
             ) : (
                 <>
-                    {filteredItems.length > PREVIEW_SIZE && usernameParam && (
-                        <div className="flex justify-end mb-4">
-                            <Link href={`/${encodeURIComponent(usernameParam)}/watched`} className="text-sm text-accent hover:underline">
-                                See all ({filteredItems.length})
-                            </Link>
-                        </div>
-                    )}
+
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                         {filteredItems.slice(0, PREVIEW_SIZE).map((item) => {
                         const key = `${item.mediaType}_${item.mediaId}`;
@@ -203,12 +272,7 @@ export default function WatchedSectionTab() {
                                 </div>
                                 {/* Metadata indicators under poster */}
                                 <div className="mt-1.5 flex items-center gap-1.5 min-h-[18px]">
-                                    {meta?.rating > 0 && (
-                                        <span className="flex items-center gap-0.5 text-accent text-[10px] font-bold">
-                                            <Star size={10} className="fill-accent" />
-                                            {meta.rating % 1 === 0 ? meta.rating : meta.rating.toFixed(1)}
-                                        </span>
-                                    )}
+                                    {meta?.rating > 0 && renderStarIcons(meta.rating, 10)}
                                     {meta?.liked && (
                                         <Heart size={10} className="text-red-400 fill-red-400" />
                                     )}
@@ -226,6 +290,16 @@ export default function WatchedSectionTab() {
                         );
                     })}
                     </div>
+                    {filteredItems.length > PREVIEW_SIZE && usernameParam && (
+                        <div className="flex justify-center mt-6">
+                            <Link
+                                href={`/${encodeURIComponent(usernameParam)}/watched`}
+                                className="px-6 py-2.5 text-sm font-medium text-accent hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all"
+                            >
+                                See More ({filteredItems.length})
+                            </Link>
+                        </div>
+                    )}
                 </>
             )}
         </div>

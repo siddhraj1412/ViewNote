@@ -16,6 +16,7 @@ import {
 import eventBus from "@/lib/eventBus";
 import showToast from "@/lib/toast";
 import { aggregateAndWriteStats } from "@/components/RatingDistribution";
+import { reviewService } from "@/services/reviewService";
 
 const STATUS_COLLECTIONS = {
     watched: "user_watched",
@@ -403,6 +404,10 @@ export const mediaService = {
             eventBus.emit("PROFILE_DATA_INVALIDATED", { userId: user.uid });
             const statsId = getScopedStatsId(mediaId, mediaType, options);
             aggregateAndWriteStats(mediaId, mediaType, statsId, options).catch(() => {});
+            // Cascade delete: remove associated review likes & comments
+            reviewService.deleteReviewThread(scopedId).catch((e) =>
+                console.warn("[mediaService] Failed to cascade-delete review thread:", e)
+            );
             showToast.success("Rating removed");
             return true;
         } catch (error) {

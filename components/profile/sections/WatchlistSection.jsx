@@ -125,14 +125,7 @@ export default function WatchlistSection({ userId }) {
 
     return (
         <div>
-            {watchlistItems.length > PREVIEW_SIZE && usernameParam ? (
-                <div className="flex justify-end mb-4">
-                    <Link href={`/${encodeURIComponent(usernameParam)}/watchlist`} className="text-sm text-accent hover:underline">
-                        See all
-                    </Link>
-                </div>
-            ) : null}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                 {previewItems.map((item) => (
                 <Link
                     key={item.id}
@@ -140,33 +133,38 @@ export default function WatchlistSection({ userId }) {
                     className="group"
                 >
                     <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl group-hover:shadow-accent/10 transition-all bg-zinc-900">
-                        <Image
-                            src={tmdb.getImageUrl(item.poster_path)}
-                            alt={item.title || item.name || "Media"}
-                            fill
-                            className="object-contain object-center"
-                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
-                            loading="lazy"
-                        />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                        <div className="absolute top-2 right-2 bg-accent/80 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-bold text-white border border-white/10">
-                            WATCHLIST
+                        {item.poster_path ? (
+                            <Image
+                                src={tmdb.getImageUrl(item.poster_path)}
+                                alt={item.title || item.name || "Media"}
+                                fill
+                                className="object-cover"
+                                sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
+                                loading="lazy"
+                            />
+                        ) : (
+                            <div className="absolute inset-0 flex items-center justify-center bg-zinc-800">
+                                <span className="text-xs text-white/40 text-center px-2 line-clamp-3">{item.title || item.name || "No poster"}</span>
+                            </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex flex-col justify-end p-2.5 opacity-0 group-hover:opacity-100">
+                            <h4 className="text-xs font-semibold text-white line-clamp-2 leading-tight">{item.title || item.name}</h4>
                         </div>
                     </div>
-                    <div className="mt-2">
-                        <h3 className="text-sm font-semibold line-clamp-1 group-hover:text-accent transition-colors">
-                            {item.title || item.name}
-                        </h3>
-                        {renderIndicators(ratingsByKey[`${item.mediaType}_${item.mediaId}`])}
-                        <p className="text-xs text-textSecondary">
-                            {item.addedAt?.seconds
-                                ? new Date(item.addedAt.seconds * 1000).toLocaleDateString()
-                                : "In Watchlist"}
-                        </p>
-                    </div>
+                    {renderIndicators(ratingsByKey[`${item.mediaType}_${item.mediaId}`])}
                 </Link>
             ))}
             </div>
+            {watchlistItems.length > PREVIEW_SIZE && usernameParam && (
+                <div className="flex justify-center mt-6">
+                    <Link
+                        href={`/${encodeURIComponent(usernameParam)}/watchlist`}
+                        className="px-6 py-2.5 text-sm font-medium text-accent hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all"
+                    >
+                        See More ({watchlistItems.length})
+                    </Link>
+                </div>
+            )}
         </div>
     );
 }

@@ -130,10 +130,9 @@ export default function UsernameOnboardingPage() {
     if (!user) return null;
 
     return (
-        <main className="min-h-screen bg-background flex items-center justify-center pt-24">
-            <div className="site-container w-full">
-                <div className="w-full">
-                    <div className="bg-secondary rounded-3xl border border-white/5 p-6 md:p-8 shadow-2xl">
+        <main className="min-h-screen bg-background flex items-center justify-center pt-24 px-4">
+            <div className="w-full max-w-md mx-auto">
+                <div className="bg-secondary rounded-3xl border border-white/5 p-6 md:p-8 shadow-2xl">
                         {/* Header */}
                         <div className="text-center mb-8">
                             <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -239,7 +238,6 @@ export default function UsernameOnboardingPage() {
                         </button>
                     </div>
                 </div>
-            </div>
         </main>
     );
 }

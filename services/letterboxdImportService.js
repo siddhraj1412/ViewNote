@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import Papa from "papaparse";
 import { db } from "@/lib/firebase";
-import { doc, writeBatch, collection, query, where, getDocs, serverTimestamp, getDoc, setDoc } from "firebase/firestore";
+import { doc, writeBatch, collection, query, where, getDocs, serverTimestamp, getDoc, setDoc, Timestamp } from "firebase/firestore";
 import { tmdb } from "@/lib/tmdb";
 import eventBus from "@/lib/eventBus";
 
@@ -26,66 +26,228 @@ function parseDate(dateStr) {
     return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0];
 }
 
+/**
+ * Convert a date string to a Firestore Timestamp, preserving the original date.
+ * Falls back to serverTimestamp() if parsing fails.
+ */
+function dateToTimestamp(dateStr) {
+    if (!dateStr) return serverTimestamp();
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return serverTimestamp();
+    return Timestamp.fromDate(d);
+}
+
 function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
 }
 
 /**
+ * Levenshtein distance for fuzzy matching.
+ */
+function levenshteinDistance(a, b) {
+    const al = a.length, bl = b.length;
+    if (al === 0) return bl;
+    if (bl === 0) return al;
+    const matrix = [];
+    for (let i = 0; i <= bl; i++) matrix[i] = [i];
+    for (let j = 0; j <= al; j++) matrix[0][j] = j;
+    for (let i = 1; i <= bl; i++) {
+        for (let j = 1; j <= al; j++) {
+            matrix[i][j] = b[i - 1] === a[j - 1]
+                ? matrix[i - 1][j - 1]
+                : Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+        }
+    }
+    return matrix[bl][al];
+}
+
+/**
+ * Normalize a title for comparison (lowercase, strip articles, punctuation).
+ */
+function normalizeTitle(t) {
+    if (!t) return "";
+    return t
+        .toLowerCase()
+        .replace(/^(the|a|an)\s+/i, "")
+        .replace(/[''":!?,.\-–—()[\]{}]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+/**
  * Parse a CSV string using PapaParse.
  * Returns an array of row objects.
+ * Handles multi-line review fields properly.
  */
 function parseCSV(csvText) {
     const result = Papa.parse(csvText.trim(), {
         header: true,
-        skipEmptyLines: true,
+        skipEmptyLines: "greedy",
         transformHeader: (h) => h.trim(),
+        quoteChar: '"',
+        escapeChar: '"',
     });
     return result.data || [];
 }
 
 /**
- * Match a movie title+year to TMDB.
- * First tries letterboxdURI → TMDB ID extraction, then falls back to search.
+ * Extract TMDB or IMDb ID from a Letterboxd URI if embedded.
+ * Letterboxd URIs are like https://letterboxd.com/film/movie-name/
+ * (no direct ID, but we can use the slug for search later)
+ */
+function extractLetterboxdSlug(uri) {
+    if (!uri) return null;
+    const match = uri.match(/letterboxd\.com\/film\/([^/]+)/);
+    return match ? match[1] : null;
+}
+
+/**
+ * Multi-stage TMDB matching:
+ *  1. Exact title + exact year search
+ *  2. Exact title + fuzzy year (±1)
+ *  3. Alternate title / normalized title search
+ *  4. Levenshtein fuzzy matching against results
+ *  5. Slug-based search from Letterboxd URI
+ *  6. First result fallback
  */
 async function matchToTMDB(title, year, letterboxdURI) {
     if (!title) return null;
 
-    // Try searching with year first for better accuracy
+    const yearNum = year ? parseInt(year) : null;
+    const normalizedInput = normalizeTitle(title);
+
+    // Stage 1 & 2: Search TMDB with title, score candidates
     try {
-        const searchQuery = year ? `${title}` : title;
-        const results = await tmdb.searchMovies(searchQuery);
-
+        const results = await tmdb.searchMovies(title);
         if (results && results.length > 0) {
-            // Try exact year match first
-            if (year) {
-                const yearNum = parseInt(year);
-                const exactMatch = results.find((r) => {
-                    const releaseYear = r.release_date ? parseInt(r.release_date.split("-")[0]) : null;
-                    return releaseYear === yearNum && r.title.toLowerCase() === title.toLowerCase();
+            // Stage 1: Exact title + exact year
+            if (yearNum) {
+                const exact = results.find((r) => {
+                    const ry = r.release_date ? parseInt(r.release_date.split("-")[0]) : null;
+                    return ry === yearNum && r.title.toLowerCase() === title.toLowerCase();
                 });
-                if (exactMatch) return exactMatch;
-
-                // Fuzzy year match (±1 year)
-                const fuzzyMatch = results.find((r) => {
-                    const releaseYear = r.release_date ? parseInt(r.release_date.split("-")[0]) : null;
-                    return releaseYear && Math.abs(releaseYear - yearNum) <= 1 &&
-                        r.title.toLowerCase() === title.toLowerCase();
-                });
-                if (fuzzyMatch) return fuzzyMatch;
-
-                // Partial title match with year
-                const partialMatch = results.find((r) => {
-                    const releaseYear = r.release_date ? parseInt(r.release_date.split("-")[0]) : null;
-                    return releaseYear === yearNum;
-                });
-                if (partialMatch) return partialMatch;
+                if (exact) return exact;
             }
 
-            // Fall back to first result
+            // Stage 2: Exact title + fuzzy year (±1)
+            if (yearNum) {
+                const fuzzyYear = results.find((r) => {
+                    const ry = r.release_date ? parseInt(r.release_date.split("-")[0]) : null;
+                    return ry && Math.abs(ry - yearNum) <= 1 &&
+                        r.title.toLowerCase() === title.toLowerCase();
+                });
+                if (fuzzyYear) return fuzzyYear;
+            }
+
+            // Stage 3: Normalized title match with year
+            if (yearNum) {
+                const normMatch = results.find((r) => {
+                    const ry = r.release_date ? parseInt(r.release_date.split("-")[0]) : null;
+                    return ry === yearNum && normalizeTitle(r.title) === normalizedInput;
+                });
+                if (normMatch) return normMatch;
+
+                // Also check original_title
+                const origMatch = results.find((r) => {
+                    const ry = r.release_date ? parseInt(r.release_date.split("-")[0]) : null;
+                    return ry === yearNum && normalizeTitle(r.original_title) === normalizedInput;
+                });
+                if (origMatch) return origMatch;
+            }
+
+            // Stage 4: Levenshtein fuzzy match — pick best under threshold
+            const scoredResults = results
+                .map((r) => {
+                    const titleDist = levenshteinDistance(normalizedInput, normalizeTitle(r.title));
+                    const origDist = r.original_title
+                        ? levenshteinDistance(normalizedInput, normalizeTitle(r.original_title))
+                        : Infinity;
+                    const dist = Math.min(titleDist, origDist);
+                    const maxLen = Math.max(normalizedInput.length, (normalizeTitle(r.title)).length);
+                    const similarity = maxLen > 0 ? 1 - dist / maxLen : 0;
+                    const yearPenalty = yearNum
+                        ? (r.release_date
+                            ? Math.abs(parseInt(r.release_date.split("-")[0]) - yearNum) * 0.1
+                            : 0.3)
+                        : 0;
+                    return { result: r, score: similarity - yearPenalty, dist };
+                })
+                .sort((a, b) => b.score - a.score);
+
+            // Accept if top candidate is ≥ 70% similar
+            if (scoredResults.length > 0 && scoredResults[0].score >= 0.7) {
+                return scoredResults[0].result;
+            }
+
+            // Stage 5: Year match only (partial title)
+            if (yearNum) {
+                const yearMatch = results.find((r) => {
+                    const ry = r.release_date ? parseInt(r.release_date.split("-")[0]) : null;
+                    return ry === yearNum;
+                });
+                if (yearMatch) return yearMatch;
+            }
+
+            // Stage 6: Fall back to first result
             return results[0];
         }
     } catch (err) {
         console.warn(`[LBImport] TMDB search failed for "${title}" (${year}):`, err.message);
+    }
+
+    // Stage 7: Try searching with Letterboxd slug as alternate title
+    const slug = extractLetterboxdSlug(letterboxdURI);
+    if (slug) {
+        try {
+            const slugTitle = slug.replace(/-/g, " ");
+            const slugResults = await tmdb.searchMovies(slugTitle);
+            if (slugResults && slugResults.length > 0) {
+                if (yearNum) {
+                    const m = slugResults.find((r) => {
+                        const ry = r.release_date ? parseInt(r.release_date.split("-")[0]) : null;
+                        return ry === yearNum;
+                    });
+                    if (m) return m;
+                }
+                return slugResults[0];
+            }
+        } catch {
+            // Ignore slug search failure
+        }
+        await sleep(TMDB_RATE_LIMIT_MS);
+    }
+
+    // Stage 8: Try TV show search as fallback (some Letterboxd entries are miniseries)
+    try {
+        await sleep(TMDB_RATE_LIMIT_MS);
+        const tvResults = await tmdb.searchTV(title);
+        if (tvResults && tvResults.length > 0) {
+            if (yearNum) {
+                const exact = tvResults.find((r) => {
+                    const ry = r.first_air_date ? parseInt(r.first_air_date.split("-")[0]) : null;
+                    return ry === yearNum && (r.name || "").toLowerCase() === title.toLowerCase();
+                });
+                if (exact) return { ...exact, title: exact.name, release_date: exact.first_air_date, media_type: "tv" };
+
+                const fuzzy = tvResults.find((r) => {
+                    const ry = r.first_air_date ? parseInt(r.first_air_date.split("-")[0]) : null;
+                    return ry && Math.abs(ry - yearNum) <= 1;
+                });
+                if (fuzzy) return { ...fuzzy, title: fuzzy.name, release_date: fuzzy.first_air_date, media_type: "tv" };
+            }
+            // Title similarity check for TV
+            const tvScored = tvResults.map((r) => {
+                const dist = levenshteinDistance(normalizedInput, normalizeTitle(r.name || r.original_name || ""));
+                const maxLen = Math.max(normalizedInput.length, (r.name || "").length);
+                return { result: r, score: maxLen > 0 ? 1 - dist / maxLen : 0 };
+            }).sort((a, b) => b.score - a.score);
+            if (tvScored[0]?.score >= 0.65) {
+                const r = tvScored[0].result;
+                return { ...r, title: r.name, release_date: r.first_air_date, media_type: "tv" };
+            }
+        }
+    } catch {
+        // Ignore TV search failure
     }
 
     return null;
@@ -106,6 +268,7 @@ async function extractZip(file) {
         "likes.csv": "likes",         // Could be likes/films.csv
         "watchlist.csv": "watchlist",
         "lists.csv": "lists",
+        "films.csv": "watched",       // Alternate name used in some exports
     };
 
     // Also check nested paths (likes/films.csv, etc.)
@@ -401,7 +564,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                         title: tmdbData.title || "",
                         poster_path: tmdbData.poster_path || "",
                         username,
-                        ratedAt: serverTimestamp(),
+                        ratedAt: dateToTimestamp(watchedDate || row["Watched Date"] || row.Date || row.date),
                         importedFrom: "letterboxd",
                     };
                     if (rating > 0) ratingData.rating = rating;
@@ -445,6 +608,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                 continue;
             }
 
+            const ratingDateStr = row.Date || row.date || "";
             operations.push({
                 type: "set",
                 collection: "user_ratings",
@@ -457,7 +621,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                     title: tmdbData.title || "",
                     poster_path: tmdbData.poster_path || "",
                     username,
-                    ratedAt: serverTimestamp(),
+                    ratedAt: dateToTimestamp(ratingDateStr),
                     importedFrom: "letterboxd",
                 },
             });
@@ -495,14 +659,15 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
             const tmdbData = getTMDB(row);
             if (!tmdbData) { summary.reviews.failed++; continue; }
             const mediaId = tmdbData.id;
-            const reviewText = row.Review || row.review || "";
-            if (!reviewText) { summary.reviews.skipped++; continue; }
+            const reviewText = row.Review || row.review || row["Review Text"] || row["review text"] || "";
+            if (!reviewText.trim()) { summary.reviews.skipped++; continue; }
 
             const rating = normalizeRating(row.Rating || row.rating || 0);
             const ratingDocId = `${userId}_movie_${mediaId}`;
             const watchedDate = parseDate(row["Watched Date"] || row.Date || row.date);
 
-            // Merge review into existing rating doc
+            // Merge review into existing rating doc (uses Firestore merge:true)
+            const reviewDateStr = row["Watched Date"] || row.Date || row.date || "";
             const reviewData = {
                 userId,
                 mediaId: Number(mediaId),
@@ -511,7 +676,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                 poster_path: tmdbData.poster_path || "",
                 review: reviewText,
                 username,
-                ratedAt: serverTimestamp(),
+                ratedAt: dateToTimestamp(reviewDateStr),
                 importedFrom: "letterboxd",
             };
             if (rating > 0) reviewData.rating = rating;

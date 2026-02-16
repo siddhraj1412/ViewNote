@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Calendar, Heart } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
@@ -19,6 +19,7 @@ export default function DiarySection({ userId }) {
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showAll, setShowAll] = useState(false);
+    const [sortBy, setSortBy] = useState("newest");
 
     const fetchDiary = useCallback(async () => {
         if (!ownerId) { setLoading(false); return; }
@@ -116,14 +117,54 @@ export default function DiarySection({ userId }) {
         );
     }
 
+    const sortedEntries = useMemo(() => {
+        const copy = [...entries];
+        switch (sortBy) {
+            case "oldest":
+                copy.sort((a, b) => (a.ratedAt?.seconds || 0) - (b.ratedAt?.seconds || 0));
+                break;
+            case "a-z":
+                copy.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+                break;
+            case "z-a":
+                copy.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
+                break;
+            case "rating-high":
+                copy.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+                break;
+            case "rating-low":
+                copy.sort((a, b) => (a.rating || 0) - (b.rating || 0));
+                break;
+            case "newest":
+            default:
+                copy.sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
+                break;
+        }
+        return copy;
+    }, [entries, sortBy]);
+
     return (
         <div>
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold">Diary</h2>
-                <span className="text-sm text-textSecondary">{entries.length} entries</span>
+                <div className="flex items-center gap-3">
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="bg-background text-white border border-white/10 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-accent/50 [color-scheme:dark]"
+                    >
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="a-z">A → Z</option>
+                        <option value="z-a">Z → A</option>
+                        <option value="rating-high">Rating ↓</option>
+                        <option value="rating-low">Rating ↑</option>
+                    </select>
+                    <span className="text-sm text-textSecondary">{entries.length} entries</span>
+                </div>
             </div>
             <div className="space-y-2">
-                {(showAll ? entries : entries.slice(0, PAGE_SIZE)).map((item) => {
+                {(showAll ? sortedEntries : sortedEntries.slice(0, PAGE_SIZE)).map((item) => {
                     const url = getMediaUrl(
                         { id: item.mediaId, title: item.title, name: item.title },
                         item.mediaType
