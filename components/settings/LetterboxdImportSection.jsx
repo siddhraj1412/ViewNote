@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Upload, FileArchive, CheckCircle2, XCircle, AlertTriangle, Loader2, RotateCcw } from "lucide-react";
+import { Upload, FileArchive, CheckCircle2, XCircle, AlertTriangle, Loader2, RotateCcw, ShieldAlert } from "lucide-react";
 import { importLetterboxdData, getImportHistory } from "@/services/letterboxdImportService";
 import { useAuth } from "@/context/AuthContext";
+import { createPortal } from "react-dom";
 
 const PHASE_LABELS = {
     extract: "Extracting ZIP",
@@ -164,26 +165,38 @@ export default function LetterboxdImportSection() {
                 </button>
             )}
 
-            {/* Progress */}
-            {importing && progress && (
-                <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                        <Loader2 size={18} className="text-accent animate-spin" />
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-white">
-                                {PHASE_LABELS[progress.phase] || progress.phase}
+            {/* Progress — Full-screen lock modal */}
+            {importing && progress && typeof document !== "undefined" && createPortal(
+                <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-secondary rounded-2xl border border-white/10 p-8 max-w-md w-full shadow-2xl">
+                        <div className="flex items-center gap-3 mb-6">
+                            <ShieldAlert size={20} className="text-yellow-400" />
+                            <p className="text-sm font-medium text-yellow-200">
+                                Do not close this tab or navigate away
                             </p>
-                            <p className="text-xs text-textSecondary truncate">{progress.message}</p>
                         </div>
-                        <span className="text-xs text-accent font-mono tabular-nums">{progressPercent}%</span>
+                        <div className="flex items-center gap-3 mb-4">
+                            <Loader2 size={24} className="text-accent animate-spin shrink-0" />
+                            <div className="flex-1 min-w-0">
+                                <p className="text-base font-semibold text-white">
+                                    {PHASE_LABELS[progress.phase] || progress.phase}
+                                </p>
+                                <p className="text-xs text-textSecondary truncate mt-0.5">{progress.message}</p>
+                            </div>
+                            <span className="text-lg text-accent font-mono font-bold tabular-nums">{progressPercent}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-accent rounded-full transition-all duration-300"
+                                style={{ width: `${progressPercent}%` }}
+                            />
+                        </div>
+                        <p className="text-[10px] text-textSecondary/60 text-center mt-4">
+                            This may take several minutes for large libraries
+                        </p>
                     </div>
-                    <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-                        <div
-                            className="h-full bg-accent rounded-full transition-all duration-300"
-                            style={{ width: `${progressPercent}%` }}
-                        />
-                    </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Error */}
@@ -220,8 +233,7 @@ export default function LetterboxdImportSection() {
                             { label: "Diary", v: summary.diary },
                             { label: "Likes", v: summary.likes },
                             { label: "Watchlist", v: summary.watchlist },
-                            { label: "Lists", v: summary.lists },
-                        ].filter((s) => s.v.total > 0).map((s) => (
+                        ].filter((s) => s.v && s.v.total > 0).map((s) => (
                             <div key={s.label} className="bg-white/5 rounded-lg p-2.5 text-center">
                                 <div className="text-lg font-bold text-white tabular-nums">{s.v.imported}</div>
                                 <div className="text-[10px] text-textSecondary uppercase tracking-wider">{s.label}</div>

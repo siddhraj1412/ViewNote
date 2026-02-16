@@ -13,6 +13,7 @@ import {
     EmailAuthProvider,
     reauthenticateWithCredential,
     reauthenticateWithPopup,
+    sendPasswordResetEmail,
 } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import {
@@ -334,6 +335,10 @@ export const AuthProvider = ({ children }) => {
     // ──── Logout ────
     const logout = () => signOut(auth);
 
+    const resetPassword = async (email) => {
+        await sendPasswordResetEmail(auth, email);
+    };
+
     return (
         <AuthContext.Provider
             value={{
@@ -349,6 +354,7 @@ export const AuthProvider = ({ children }) => {
                 reauthenticate,
                 deleteAccount,
                 logout,
+                resetPassword,
                 getFirebaseErrorMessage,
             }}
         >

@@ -1,18 +1,27 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { List, Plus, Edit2 } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { List, Plus, Edit2, Search, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { detectListType, getListTypeInfo } from "@/lib/listUtils";
 import CreateListModal from "./CreateListModal";
 
+const SORT_OPTIONS = [
+    { value: "newest", label: "Newest" },
+    { value: "oldest", label: "Oldest" },
+    { value: "name", label: "A-Z" },
+    { value: "items", label: "Most Items" },
+];
+
 export default function ListsSection({ ownerId, isOwnProfile }) {
     const [lists, setLists] = useState([]);
     const [loading, setLoading] = useState(true);
     const [createOpen, setCreateOpen] = useState(false);
     const [editList, setEditList] = useState(null);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [sortBy, setSortBy] = useState("newest");
 
     const fetchLists = useCallback(async () => {
         if (!ownerId) return;
@@ -37,6 +46,36 @@ export default function ListsSection({ ownerId, isOwnProfile }) {
     useEffect(() => {
         fetchLists();
     }, [fetchLists]);
+
+    const filteredLists = useMemo(() => {
+        let result = [...lists];
+        // Search filter
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            result = result.filter(
+                (l) =>
+                    (l.name || "").toLowerCase().includes(q) ||
+                    (l.description || "").toLowerCase().includes(q)
+            );
+        }
+        // Sort
+        switch (sortBy) {
+            case "oldest":
+                result.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+                break;
+            case "name":
+                result.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+                break;
+            case "items":
+                result.sort((a, b) => (b.items?.length || 0) - (a.items?.length || 0));
+                break;
+            case "newest":
+            default:
+                result.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+                break;
+        }
+        return result;
+    }, [lists, searchQuery, sortBy]);
 
     const handleOpenCreate = () => {
         setEditList(null);
@@ -101,7 +140,7 @@ export default function ListsSection({ ownerId, isOwnProfile }) {
 
     return (
         <section>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
                 <h2 className="text-3xl font-bold">Lists</h2>
                 {isOwnProfile && (
                     <button
@@ -114,8 +153,45 @@ export default function ListsSection({ ownerId, isOwnProfile }) {
                 )}
             </div>
 
+            {/* Filter / Sort controls */}
+            {lists.length > 1 && (
+                <div className="flex flex-col sm:flex-row gap-3 mb-6">
+                    <div className="relative flex-1">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-textSecondary" />
+                        <input
+                            type="text"
+                            placeholder="Search lists..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-textSecondary focus:outline-none focus:border-accent/50 transition-colors"
+                        />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <ArrowUpDown size={14} className="text-textSecondary shrink-0" />
+                        {SORT_OPTIONS.map((opt) => (
+                            <button
+                                key={opt.value}
+                                onClick={() => setSortBy(opt.value)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                    sortBy === opt.value
+                                        ? "bg-accent text-white"
+                                        : "bg-white/5 text-textSecondary hover:bg-white/10"
+                                }`}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {filteredLists.length === 0 && searchQuery.trim() ? (
+                <div className="text-center py-8">
+                    <p className="text-textSecondary">No lists match &quot;{searchQuery}&quot;</p>
+                </div>
+            ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {lists.map((list) => {
+                {filteredLists.map((list) => {
                     const listType = detectListType(list.items);
                     const { Icon: TypeIcon, label: typeLabel, color: typeColor } = getListTypeInfo(listType);
                     const previewItems = (list.items || []).slice(0, 4);
@@ -187,6 +263,7 @@ export default function ListsSection({ ownerId, isOwnProfile }) {
                     );
                 })}
             </div>
+            )}
 
             {/* Create / Edit modal */}
             <CreateListModal

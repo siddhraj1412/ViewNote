@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
-import { getMediaUrl } from "@/lib/slugify";
+import { getMediaUrl, getEpisodeUrl } from "@/lib/slugify";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, limit, orderBy } from "firebase/firestore";
 import eventBus from "@/lib/eventBus";
-import { Clock, Eye, Bookmark, Pause, XCircle, Star } from "lucide-react";
+import { Clock, Eye, Bookmark, Pause, XCircle, Star, RotateCcw, Film, Tv, Layers } from "lucide-react";
 
 const ACTIVITY_LIMIT = 6; // 3×2 grid
 
@@ -145,11 +145,22 @@ export default function RecentActivity({ userId }) {
             <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-6 gap-4">
                 {activities.map((item) => {
                     const IconComp = item.activityIcon;
-                    const url = getMediaUrl(
-                        { id: item.mediaId, title: item.title, name: item.title, mediaId: item.mediaId },
-                        item.mediaType
-                    );
+                    // Use episode-aware routing
+                    const isEpisode = item.mediaType === "episode" || (item.seasonNumber != null && item.episodeNumber != null);
+                    const url = isEpisode
+                        ? getEpisodeUrl(item)
+                        : getMediaUrl(
+                            { id: item.mediaId, title: item.title, name: item.title, mediaId: item.mediaId },
+                            item.mediaType
+                        );
                     const posterUrl = item.poster_path ? tmdb.getImageUrl(item.poster_path) : null;
+
+                    // Determine scope label
+                    const scopeLabel = isEpisode
+                        ? `S${item.seasonNumber || "?"}E${item.episodeNumber || "?"}`
+                        : item.targetType === "season"
+                            ? `S${item.seasonNumber || "?"}`
+                            : item.mediaType === "movie" ? "Movie" : item.mediaType === "tv" ? "Series" : "";
 
                     return (
                         <Link key={item.id} href={url} className="group">
@@ -172,9 +183,19 @@ export default function RecentActivity({ userId }) {
                                 <div className="absolute top-1.5 left-1.5">
                                     <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-sm border border-white/10 ${item.activityColor}`}>
                                         <IconComp size={10} />
-                                        <span className="text-[9px] font-bold uppercase">{item.activityType}</span>
+                                        <span className="text-[9px] font-bold uppercase">
+                                            {item.isRewatch ? "Rewatch" : item.activityType}
+                                        </span>
                                     </div>
                                 </div>
+                                {/* Scope tag (top-right) */}
+                                {scopeLabel && (
+                                    <div className="absolute top-1.5 right-1.5">
+                                        <span className="px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-sm border border-white/10 text-[9px] font-bold text-white/80">
+                                            {scopeLabel}
+                                        </span>
+                                    </div>
+                                )}
                                 {/* Hover overlay */}
                                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex flex-col justify-end p-2 opacity-0 group-hover:opacity-100">
                                     <h4 className="text-xs font-semibold text-white line-clamp-2 leading-tight">{item.title || item.name}</h4>

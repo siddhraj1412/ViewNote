@@ -14,6 +14,7 @@ import {
     serverTimestamp,
 } from "firebase/firestore";
 import eventBus from "@/lib/eventBus";
+import showToast from "@/lib/toast";
 
 export function useRatings() {
     const { user } = useAuth();
@@ -35,6 +36,7 @@ export function useRatings() {
             setRatings(items);
         } catch (error) {
             console.error("Error fetching ratings:", error);
+            showToast.error("Failed to load your ratings");
         } finally {
             setLoading(false);
         }

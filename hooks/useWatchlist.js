@@ -14,6 +14,7 @@ import {
     serverTimestamp,
 } from "firebase/firestore";
 import eventBus from "@/lib/eventBus";
+import showToast from "@/lib/toast";
 
 export function useWatchlist() {
     const { user } = useAuth();
@@ -35,6 +36,7 @@ export function useWatchlist() {
             setWatchlist(items);
         } catch (error) {
             console.error("Error fetching watchlist:", error);
+            showToast.error("Failed to load your watchlist");
         } finally {
             setLoading(false);
         }

@@ -58,28 +58,6 @@ export default function LikesSection({ userId }) {
         };
     }, [fetchLikes]);
 
-    if (loading) {
-        return (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-                {Array.from({ length: 12 }).map((_, i) => (
-                    <div key={i} className="aspect-[2/3] rounded-xl bg-white/5 animate-pulse" />
-                ))}
-            </div>
-        );
-    }
-
-    if (likes.length === 0) {
-        return (
-            <div className="text-center py-12">
-                <Heart size={64} className="mx-auto text-textSecondary mb-4 opacity-50" />
-                <p className="text-textSecondary mb-2">No likes yet</p>
-                <p className="text-sm text-textSecondary opacity-70">
-                    Like movies and TV shows when rating to see them here
-                </p>
-            </div>
-        );
-    }
-
     const sortedLikes = useMemo(() => {
         const copy = [...likes];
         switch (sortBy) {
@@ -105,6 +83,28 @@ export default function LikesSection({ userId }) {
         }
         return copy;
     }, [likes, sortBy]);
+
+    if (loading) {
+        return (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+                {Array.from({ length: 12 }).map((_, i) => (
+                    <div key={i} className="aspect-[2/3] rounded-xl bg-white/5 animate-pulse" />
+                ))}
+            </div>
+        );
+    }
+
+    if (likes.length === 0) {
+        return (
+            <div className="text-center py-12">
+                <Heart size={64} className="mx-auto text-textSecondary mb-4 opacity-50" />
+                <p className="text-textSecondary mb-2">No likes yet</p>
+                <p className="text-sm text-textSecondary opacity-70">
+                    Like movies and TV shows when rating to see them here
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div>

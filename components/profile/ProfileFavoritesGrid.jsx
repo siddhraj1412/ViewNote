@@ -8,6 +8,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Film, Tv, Play } from "lucide-react";
 import eventBus from "@/lib/eventBus";
+import { getMediaUrl, getEpisodeUrl } from "@/lib/slugify";
 
 export default function ProfileFavoritesGrid({ userId }) {
     const { user } = useAuth();
@@ -154,7 +155,7 @@ function EpisodesRow({ title, icon, items }) {
             </div>
             <div className="grid grid-cols-5 gap-3">
                 {filledSlots.map((item) => {
-                    const href = item.seriesId ? `/show/${item.seriesId}` : "#";
+                    const href = getEpisodeUrl(item);
                     return (
                         <Link key={item.id} href={href} className="group">
                             <div className="relative aspect-video rounded-xl overflow-hidden bg-secondary ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-accent transition-all">

@@ -3,20 +3,25 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Star, Film, Tv } from "lucide-react";
+import { Star, Film, Tv, Layers, Play } from "lucide-react";
 import eventBus from "@/lib/eventBus";
 
 const STAR_VALUES = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
 const BAR_MAX_PX = 112; // h-28 = 7rem = 112px
 
+const SCOPE_FILTERS = [
+    { key: "all", label: "All" },
+    { key: "movie", label: "Movies" },
+    { key: "tv", label: "Shows" },
+    { key: "season", label: "Seasons" },
+    { key: "episode", label: "Episodes" },
+];
+
 export default function UserRatingDistribution({ userId }) {
-    const [distribution, setDistribution] = useState({});
-    const [totalRatings, setTotalRatings] = useState(0);
-    const [averageRating, setAverageRating] = useState(0);
-    const [movieCount, setMovieCount] = useState(0);
-    const [tvCount, setTvCount] = useState(0);
+    const [allRatings, setAllRatings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [hoverBucket, setHoverBucket] = useState(null);
+    const [scope, setScope] = useState("all");
 
     const fetchDistribution = useCallback(async () => {
         if (!userId) { setLoading(false); return; }
@@ -27,33 +32,16 @@ export default function UserRatingDistribution({ userId }) {
                 where("userId", "==", userId)
             );
             const snap = await getDocs(q);
-            const dist = {};
-            STAR_VALUES.forEach((v) => { dist[v] = 0; });
-            let sum = 0;
-            let count = 0;
-            let movies = 0;
-            let shows = 0;
-
-            snap.docs.forEach((d) => {
+            const ratings = snap.docs.map((d) => {
                 const data = d.data();
-                const rating = Number(data.rating || 0);
-                if (rating > 0 && rating <= 5) {
-                    const rounded = Math.round(rating * 2) / 2;
-                    if (dist[rounded] !== undefined) {
-                        dist[rounded]++;
-                    }
-                    sum += rating;
-                    count++;
-                    if (data.mediaType === "movie") movies++;
-                    else if (data.mediaType === "tv") shows++;
-                }
-            });
+                return {
+                    rating: Number(data.rating || 0),
+                    mediaType: data.mediaType || "movie",
+                    targetType: data.targetType || null,
+                };
+            }).filter((r) => r.rating > 0 && r.rating <= 5);
 
-            setDistribution(dist);
-            setTotalRatings(count);
-            setAverageRating(count > 0 ? sum / count : 0);
-            setMovieCount(movies);
-            setTvCount(shows);
+            setAllRatings(ratings);
         } catch (e) {
             console.error("Error fetching rating distribution:", e);
         } finally {
@@ -74,6 +62,39 @@ export default function UserRatingDistribution({ userId }) {
             eventBus.off("PROFILE_DATA_INVALIDATED", handler);
         };
     }, [fetchDistribution]);
+
+    // Compute filtered data based on scope
+    const { distribution, totalRatings, averageRating, movieCount, tvCount } = useMemo(() => {
+        const filtered = scope === "all"
+            ? allRatings
+            : scope === "season"
+                ? allRatings.filter((r) => r.targetType === "season")
+                : scope === "episode"
+                    ? allRatings.filter((r) => r.targetType === "episode" || r.mediaType === "episode")
+                    : allRatings.filter((r) => r.mediaType === scope && r.targetType !== "season" && r.targetType !== "episode");
+
+        const dist = {};
+        STAR_VALUES.forEach((v) => { dist[v] = 0; });
+        let sum = 0;
+        let movies = 0;
+        let shows = 0;
+
+        filtered.forEach((r) => {
+            const rounded = Math.round(r.rating * 2) / 2;
+            if (dist[rounded] !== undefined) dist[rounded]++;
+            sum += r.rating;
+            if (r.mediaType === "movie") movies++;
+            else if (r.mediaType === "tv") shows++;
+        });
+
+        return {
+            distribution: dist,
+            totalRatings: filtered.length,
+            averageRating: filtered.length > 0 ? sum / filtered.length : 0,
+            movieCount: movies,
+            tvCount: shows,
+        };
+    }, [allRatings, scope]);
 
     // Compute pixel-based bar heights matching media page histogram style
     const bars = useMemo(() => {
@@ -118,21 +139,22 @@ export default function UserRatingDistribution({ userId }) {
                 </div>
             </div>
 
-            {/* Scope breakdown pills */}
-            {(movieCount > 0 || tvCount > 0) && (
-                <div className="flex items-center gap-2 mb-4">
-                    {movieCount > 0 && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded-full text-[10px] text-textSecondary">
-                            <Film size={10} /> {movieCount} movie{movieCount !== 1 ? "s" : ""}
-                        </span>
-                    )}
-                    {tvCount > 0 && (
-                        <span className="flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded-full text-[10px] text-textSecondary">
-                            <Tv size={10} /> {tvCount} TV
-                        </span>
-                    )}
-                </div>
-            )}
+            {/* Scope filter buttons */}
+            <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+                {SCOPE_FILTERS.map((f) => (
+                    <button
+                        key={f.key}
+                        onClick={() => setScope(f.key)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                            scope === f.key
+                                ? "bg-accent text-background"
+                                : "bg-white/5 text-textSecondary hover:bg-white/10 hover:text-white"
+                        }`}
+                    >
+                        {f.label}
+                    </button>
+                ))}
+            </div>
 
             {/* Histogram bars — pixel-based heights for reliable rendering */}
             {totalRatings === 0 ? (
@@ -157,33 +179,17 @@ export default function UserRatingDistribution({ userId }) {
                                         <span className="tabular-nums">{b.count}</span>
                                     </div>
                                 )}
-                                {/* Background track — only show when bucket has ratings */}
+                                {/* Filled bar — only render when bucket has ratings */}
                                 {b.count > 0 && (
-                                    <>
-                                        <div
-                                            className="w-full rounded-sm bg-white/[0.06]"
-                                            style={{ height: `${BAR_MAX_PX}px` }}
-                                        />
-                                        {/* Filled bar anchored to bottom */}
-                                        <div
-                                            className="absolute bottom-0 left-0 right-0 rounded-sm transition-all duration-300 bg-accent group-hover:bg-accent/90"
-                                            style={{ height: `${b.heightPx}px` }}
-                                        />
-                                    </>
+                                    <div
+                                        className="absolute bottom-0 left-0 right-0 rounded-sm transition-all duration-300 bg-accent group-hover:bg-accent/90"
+                                        style={{ height: `${b.heightPx}px` }}
+                                    />
                                 )}
                             </div>
                         ))}
                     </div>
-                    {/* Bucket labels */}
-                    <div className="flex gap-1.5 mt-1">
-                        {STAR_VALUES.map((val) => (
-                            <div key={val} className="flex-1 text-center">
-                                <span className="text-[9px] text-textSecondary tabular-nums">
-                                    {val % 1 === 0 ? val : ""}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
+
                 </div>
             )}
         </div>

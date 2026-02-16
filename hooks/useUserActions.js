@@ -11,6 +11,7 @@ import {
     doc,
     getDoc,
 } from "firebase/firestore";
+import showToast from "@/lib/toast";
 
 export function useUserActions() {
     const { user } = useAuth();
@@ -38,6 +39,7 @@ export function useUserActions() {
             setActions(actionsMap);
         } catch (error) {
             console.error("Error fetching user actions:", error);
+            showToast.error("Failed to load your activity data");
         } finally {
             setLoading(false);
         }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
 import Button from "@/components/ui/Button";
-import { Play, Sparkles, Tv, TrendingUp, Calendar, Clapperboard, Flame, Clock } from "lucide-react";
+import { Play, Sparkles, Tv, TrendingUp, Calendar, Clapperboard, Flame, Star, Eye, Gem } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { mediaService } from "@/services/mediaService";
 import { getMediaUrl } from "@/lib/slugify";
@@ -109,13 +109,14 @@ const MediaCard = memo(function MediaCard({ item, type }) {
 
 export default function HomePage() {
     const emptySections = {
-        trendingMovies: [],
-        trendingTV: [],
-        newEpisodes: [],
-        inTheatres: [],
-        popularMovies: [],
+        featuredToday: [],
+        whatsHot: [],
+        freshEpisodes: [],
+        inCinemas: [],
+        popular: [],
+        bingeWorthy: [],
         comingSoon: [],
-        mostAnticipated: [],
+        hiddenGems: [],
     };
 
     // Detect hard refresh before state init so we never serve stale cache on reload
@@ -183,13 +184,14 @@ export default function HomePage() {
 
                 const pg = randomPage;
                 const results = await Promise.allSettled([
-                    tmdb.getTrendingMovies("week"),
-                    tmdb.getTrendingTV("week"),
-                    fetchTMDBPage(`tv/on_the_air?page=${pg(3)}`),
-                    fetchTMDBPage(`movie/now_playing?page=${pg(3)}`),
-                    fetchTMDBPage(`movie/popular?page=${pg(5)}`),
-                    fetchTMDBPage(`movie/upcoming?page=${pg(3)}`),
-                    fetchTMDBPage(`discover/movie?primary_release_date.gte=${todayStr}&primary_release_date.lte=${futureDateStr}&sort_by=popularity.desc&page=${pg(3)}`),
+                    tmdb.getTrendingMovies("day"),                     // 0: Featured Today
+                    tmdb.getTrendingMovies("week"),                    // 1: What's Hot
+                    fetchTMDBPage(`tv/on_the_air?page=${pg(3)}`),     // 2: Fresh Episodes
+                    fetchTMDBPage(`movie/now_playing?page=${pg(3)}`),  // 3: In Cinemas
+                    fetchTMDBPage(`movie/popular?page=${pg(5)}`),      // 4: Popular
+                    fetchTMDBPage(`tv/popular?page=${pg(3)}`),         // 5: Binge-Worthy
+                    fetchTMDBPage(`movie/upcoming?page=${pg(3)}`),     // 6: Coming Soon
+                    fetchTMDBPage(`discover/movie?vote_count.gte=50&vote_count.lte=500&vote_average.gte=7&sort_by=vote_average.desc&page=${pg(5)}`), // 7: Hidden Gems
                 ]);
 
                 if (controller.signal.aborted) return;
@@ -210,13 +212,14 @@ export default function HomePage() {
                 const pickSection = (arr) => filterShown(filterSeen(arr)).slice(0, 10);
 
                 const newSections = {
-                    trendingMovies: pickSection(extract(0)),
-                    trendingTV: pickSection(extract(1)),
-                    newEpisodes: pickSection(extract(2)),
-                    inTheatres: pickSection(extract(3)),
-                    popularMovies: pickSection(extract(4)),
-                    comingSoon: pickSection(extract(5)),
-                    mostAnticipated: pickSection(extract(6)),
+                    featuredToday: pickSection(extract(0)),
+                    whatsHot: pickSection(extract(1)),
+                    freshEpisodes: pickSection(extract(2)),
+                    inCinemas: pickSection(extract(3)),
+                    popular: pickSection(extract(4)),
+                    bingeWorthy: pickSection(extract(5)),
+                    comingSoon: pickSection(extract(6)),
+                    hiddenGems: pickSection(extract(7)),
                 };
 
                 const allNewIds = new Set(shownIds);
@@ -247,15 +250,15 @@ export default function HomePage() {
         return () => controller.abort();
     }, [user, authLoading]);
 
-    // Stable spotlight — picks from trending or popular pool
+    // Stable spotlight — picks from featured today or popular pool
     const featuredMovie = (() => {
         let pool;
         if (heroCategory === "top_rated") {
-            pool = [...sections.popularMovies].sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+            pool = [...sections.popular].sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
         } else if (heroCategory === "popular") {
-            pool = [...sections.popularMovies].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+            pool = [...sections.popular].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
         } else {
-            pool = [...sections.trendingMovies, ...sections.popularMovies];
+            pool = [...sections.featuredToday, ...sections.popular];
         }
         const candidates = pool.filter(m => m.backdrop_path);
         if (candidates.length === 0) return null;
@@ -361,82 +364,97 @@ export default function HomePage() {
                 </div>
             )}
 
-            {/* 1. Trending This Week */}
-            {sections.trendingMovies.length > 0 && (
+            {/* 1. Featured Today */}
+            {sections.featuredToday.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
-                        <TrendingUp className="text-accent" size={32} />
-                        <h2 className="text-3xl md:text-4xl font-bold">Trending This Week</h2>
+                        <Sparkles className="text-accent" size={32} />
+                        <h2 className="text-3xl md:text-4xl font-bold">Featured Today</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {sections.trendingMovies.map((movie) => (
+                        {sections.featuredToday.map((movie) => (
                             <MediaCard key={movie.id} item={movie} type="movie" />
                         ))}
                     </div>
                 </section>
             )}
 
-            {/* 2. New Episodes */}
-            {sections.newEpisodes.length > 0 && (
+            {/* 2. What's Hot */}
+            {sections.whatsHot.length > 0 && (
+                <section className="site-container py-16">
+                    <div className="flex items-center gap-3 mb-8">
+                        <TrendingUp className="text-accent" size={32} />
+                        <h2 className="text-3xl md:text-4xl font-bold">What&apos;s Hot</h2>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
+                        {sections.whatsHot.map((movie) => (
+                            <MediaCard key={movie.id} item={movie} type="movie" />
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* 3. Fresh Episodes */}
+            {sections.freshEpisodes.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <Tv className="text-accent" size={32} />
-                        <h2 className="text-3xl md:text-4xl font-bold">New Episodes</h2>
+                        <h2 className="text-3xl md:text-4xl font-bold">Fresh Episodes</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {sections.newEpisodes.map((show) => (
+                        {sections.freshEpisodes.map((show) => (
                             <MediaCard key={show.id} item={show} type="tv" />
                         ))}
                     </div>
                 </section>
             )}
 
-            {/* 3. In Theatres Now */}
-            {sections.inTheatres.length > 0 && (
+            {/* 4. In Cinemas */}
+            {sections.inCinemas.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <Clapperboard className="text-accent" size={32} />
-                        <h2 className="text-3xl md:text-4xl font-bold">In Theatres Now</h2>
+                        <h2 className="text-3xl md:text-4xl font-bold">In Cinemas</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {sections.inTheatres.map((movie) => (
+                        {sections.inCinemas.map((movie) => (
                             <MediaCard key={movie.id} item={movie} type="movie" />
                         ))}
                     </div>
                 </section>
             )}
 
-            {/* 4. Popular Movies */}
-            {sections.popularMovies.length > 0 && (
+            {/* 5. Popular */}
+            {sections.popular.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
                         <Flame className="text-accent" size={32} />
-                        <h2 className="text-3xl md:text-4xl font-bold">Popular Movies</h2>
+                        <h2 className="text-3xl md:text-4xl font-bold">Popular</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {sections.popularMovies.map((movie) => (
+                        {sections.popular.map((movie) => (
                             <MediaCard key={movie.id} item={movie} type="movie" />
                         ))}
                     </div>
                 </section>
             )}
 
-            {/* 5. Trending Shows */}
-            {sections.trendingTV.length > 0 && (
+            {/* 6. Binge-Worthy */}
+            {sections.bingeWorthy.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
-                        <TrendingUp className="text-accent" size={32} />
-                        <h2 className="text-3xl md:text-4xl font-bold">Trending Shows</h2>
+                        <Eye className="text-accent" size={32} />
+                        <h2 className="text-3xl md:text-4xl font-bold">Binge-Worthy</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {sections.trendingTV.map((show) => (
+                        {sections.bingeWorthy.map((show) => (
                             <MediaCard key={show.id} item={show} type="tv" />
                         ))}
                     </div>
                 </section>
             )}
 
-            {/* 6. Coming Soon */}
+            {/* 7. Coming Soon */}
             {sections.comingSoon.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
@@ -451,15 +469,15 @@ export default function HomePage() {
                 </section>
             )}
 
-            {/* 7. Most Anticipated */}
-            {sections.mostAnticipated.length > 0 && (
+            {/* 8. Hidden Gems */}
+            {sections.hiddenGems.length > 0 && (
                 <section className="site-container py-16">
                     <div className="flex items-center gap-3 mb-8">
-                        <Clock className="text-accent" size={32} />
-                        <h2 className="text-3xl md:text-4xl font-bold">Most Anticipated</h2>
+                        <Gem className="text-accent" size={32} />
+                        <h2 className="text-3xl md:text-4xl font-bold">Hidden Gems</h2>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-                        {sections.mostAnticipated.map((movie) => (
+                        {sections.hiddenGems.map((movie) => (
                             <MediaCard key={movie.id} item={movie} type="movie" />
                         ))}
                     </div>

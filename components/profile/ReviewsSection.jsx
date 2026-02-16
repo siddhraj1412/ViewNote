@@ -162,6 +162,35 @@ export default function ReviewsSection({ userId, username }) {
         });
     };
 
+    const sortedReviews = useMemo(() => {
+        const copy = [...reviews];
+        switch (sortBy) {
+            case "oldest":
+                copy.sort((a, b) => (a.ratedAt?.seconds || 0) - (b.ratedAt?.seconds || 0));
+                break;
+            case "a-z":
+                copy.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+                break;
+            case "z-a":
+                copy.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
+                break;
+            case "rating-high":
+                copy.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+                break;
+            case "rating-low":
+                copy.sort((a, b) => (a.rating || 0) - (b.rating || 0));
+                break;
+            case "most-liked":
+                copy.sort((a, b) => (socialCounts[b.id]?.likes || 0) - (socialCounts[a.id]?.likes || 0));
+                break;
+            case "newest":
+            default:
+                copy.sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
+                break;
+        }
+        return copy;
+    }, [reviews, sortBy, socialCounts]);
+
     if (loading) {
         return (
             <section>
@@ -199,35 +228,6 @@ export default function ReviewsSection({ userId, username }) {
             </section>
         );
     }
-
-    const sortedReviews = useMemo(() => {
-        const copy = [...reviews];
-        switch (sortBy) {
-            case "oldest":
-                copy.sort((a, b) => (a.ratedAt?.seconds || 0) - (b.ratedAt?.seconds || 0));
-                break;
-            case "a-z":
-                copy.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
-                break;
-            case "z-a":
-                copy.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
-                break;
-            case "rating-high":
-                copy.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-                break;
-            case "rating-low":
-                copy.sort((a, b) => (a.rating || 0) - (b.rating || 0));
-                break;
-            case "most-liked":
-                copy.sort((a, b) => (socialCounts[b.id]?.likes || 0) - (socialCounts[a.id]?.likes || 0));
-                break;
-            case "newest":
-            default:
-                copy.sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
-                break;
-        }
-        return copy;
-    }, [reviews, sortBy, socialCounts]);
 
     return (
         <section>
