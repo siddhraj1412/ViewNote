@@ -151,9 +151,18 @@ export default function ReviewsSection({ userId, username }) {
             const slug = generateSlugFromTitle(item.title);
             return `/${username}/${slug}-${item.mediaId}`;
         }
-        // Fallback to media page
         if (item.mediaType === "tv") return `/tv/${item.mediaId}`;
         return `/movie/${item.mediaId}`;
+    };
+
+    const getScopeLabel = (item) => {
+        if (item.tvTargetType === "episode" && item.tvSeasonNumber != null && item.tvEpisodeNumber != null) {
+            return `S${item.tvSeasonNumber}E${item.tvEpisodeNumber}`;
+        }
+        if (item.tvTargetType === "season" && item.tvSeasonNumber != null) {
+            return `Season ${item.tvSeasonNumber}`;
+        }
+        return null;
     };
 
     const formatDate = (timestamp) => {
@@ -279,7 +288,10 @@ export default function ReviewsSection({ userId, username }) {
                                         {item.liked && (
                                             <Heart size={14} className="text-red-400" fill="currentColor" />
                                         )}
-                                        <span className="text-xs text-textSecondary capitalize">{item.mediaType}</span>
+                                        <span className="text-xs text-textSecondary capitalize">{item.mediaType === "tv" ? "TV" : item.mediaType}</span>
+                                        {getScopeLabel(item) && (
+                                            <span className="text-xs text-accent font-medium">{getScopeLabel(item)}</span>
+                                        )}
                                         {item.ratedAt && (
                                             <span className="text-xs text-textSecondary">{formatDate(item.ratedAt)}</span>
                                         )}

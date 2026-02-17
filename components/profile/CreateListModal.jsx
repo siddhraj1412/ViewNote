@@ -214,7 +214,7 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
     const addSeason = (season) => {
         addItem({
             id: `${expandedSeries.id}_s${season.season_number}`,
-            title: `${expandedSeries.name} — Season ${season.season_number}`,
+            title: `${expandedSeries.name} - Season ${season.season_number}`,
             poster_path: season.poster_path || expandedSeries.poster_path || "",
             mediaType: "season",
             seriesId: expandedSeries.id,
@@ -225,7 +225,7 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
     const addEpisode = (ep, seasonNum) => {
         addItem({
             id: `${expandedSeries.id}_s${seasonNum}e${ep.episode_number}`,
-            title: `${expandedSeries.name} — S${seasonNum}E${ep.episode_number}: ${ep.name || ""}`,
+            title: `${expandedSeries.name} - S${seasonNum}E${ep.episode_number}: ${ep.name || ""}`,
             poster_path: ep.still_path || expandedSeries.poster_path || "",
             mediaType: "episode",
             seriesId: expandedSeries.id,
@@ -299,29 +299,47 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
                     ...(ranked ? { rank: idx + 1 } : {}),
                 })),
             };
-            if (isEdit) {
-                payload.updatedAt = new Date().toISOString();
-                const { error } = await supabase
-                    .from("user_lists")
-                    .update(payload)
-                    .eq("id", editList.id);
-                if (error) throw error;
+
+            // Helper: attempt save, retry without optional columns if they don't exist yet
+            const attemptSave = async (data) => {
+                if (isEdit) {
+                    data.updatedAt = new Date().toISOString();
+                    const { error } = await supabase
+                        .from("user_lists")
+                        .update(data)
+                        .eq("id", editList.id);
+                    return { error, isEdit: true };
+                } else {
+                    data.createdAt = new Date().toISOString();
+                    const { data: newList, error } = await supabase
+                        .from("user_lists")
+                        .insert(data)
+                        .select()
+                        .single();
+                    return { error, isEdit: false, newList };
+                }
+            };
+
+            let result = await attemptSave(payload);
+
+            // If columns don't exist yet, retry without listType and ranked
+            if (result.error && (result.error.message?.includes("column") || result.error.code === "42703")) {
+                const { listType: _lt, ranked: _r, ...fallbackPayload } = payload;
+                result = await attemptSave(fallbackPayload);
+            }
+
+            if (result.error) throw result.error;
+
+            if (result.isEdit) {
                 showToast.success("List updated!");
             } else {
-                payload.createdAt = new Date().toISOString();
-                const { data: newList, error } = await supabase
-                    .from("user_lists")
-                    .insert(payload)
-                    .select()
-                    .single();
-                if (error) throw error;
-                showToast.linked("List created!", `/list/${newList.id}`);
+                showToast.linked("List created!", `/list/${result.newList.id}`);
             }
             if (onCreated) onCreated();
             onClose();
         } catch (error) {
             console.error("Error saving list:", error);
-            showToast.error("Failed to save list");
+            showToast.error(error?.message || "Failed to save list");
         } finally { setSaving(false); }
     };
 

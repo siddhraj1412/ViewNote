@@ -8,6 +8,7 @@ import { useWatchlist } from "@/hooks/useWatchlist";
 import { useRatings } from "@/hooks/useRatings";
 import { useFollow } from "@/hooks/useFollow";
 import supabase from "@/lib/supabase";
+import eventBus from "@/lib/eventBus";
 import { RESERVED_ROUTES, getProfileUrl } from "@/lib/slugify";
 import ProfileBio from "@/components/profile/ProfileBio";
 import ProfileSocialLinks from "@/components/profile/ProfileSocialLinks";
@@ -79,7 +80,7 @@ function UsernameProfileContent() {
                     setProfileUserId(userDoc.id);
                     setProfileData(userDoc);
                     loadBanner(userDoc.profile_banner_url);
-                    document.title = `${userDoc.display_name || userDoc.username || usernameParam} (@${userDoc.username || usernameParam}) — ViewNote`;
+                    document.title = `${userDoc.display_name || userDoc.username || usernameParam} (@${userDoc.username || usernameParam}) - ViewNote`;
                 } else {
                     // Fallback: try treating the param as a UID (backward compat)
                     try {
@@ -117,6 +118,28 @@ function UsernameProfileContent() {
             resolveUsername();
         }
     }, [usernameParam]);
+
+    // Live-refresh profile data when settings change (banner, avatar, bio)
+    useEffect(() => {
+        if (!profileUserId) return;
+        const handleProfileUpdate = async () => {
+            try {
+                const { data } = await supabase
+                    .from("profiles")
+                    .select("*")
+                    .eq("id", profileUserId)
+                    .single();
+                if (data) {
+                    setProfileData(data);
+                    loadBanner(data.profile_banner_url);
+                }
+            } catch (err) {
+                console.error("[Profile] Failed to refresh profile:", err);
+            }
+        };
+        eventBus.on("PROFILE_UPDATED", handleProfileUpdate);
+        return () => eventBus.off("PROFILE_UPDATED", handleProfileUpdate);
+    }, [profileUserId]);
 
     const loadBanner = (url) => {
         if (url) {

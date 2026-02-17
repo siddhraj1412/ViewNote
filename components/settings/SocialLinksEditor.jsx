@@ -90,12 +90,20 @@ export default function SocialLinksEditor() {
                     socialLinks: socialLinks,
                 })
                 .eq("id", user.uid);
-            if (error) throw error;
-            eventBus.emit("PROFILE_UPDATED", { type: "social" });
-            showToast.success("Social links saved");
+            if (error) {
+                // Handle missing columns error gracefully
+                if (error.message?.includes("column") || error.code === "42703") {
+                    showToast.error("Database migration needed — please run the SQL migration file in Supabase.");
+                } else {
+                    throw error;
+                }
+            } else {
+                eventBus.emit("PROFILE_UPDATED", { type: "social" });
+                showToast.success("Social links saved");
+            }
         } catch (err) {
             console.error("Error saving social links:", err);
-            showToast.error("Failed to save");
+            showToast.error(err?.message || "Failed to save");
         } finally {
             setSaving(false);
         }

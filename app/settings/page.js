@@ -197,8 +197,15 @@ export default function SettingsPage() {
     }, [user]);
 
     const handleLogout = async () => {
-        await logout();
-        router.push("/login");
+        try {
+            await logout();
+            router.push("/login");
+        } catch (err) {
+            console.error("Logout error:", err);
+            // Force clear state even if signOut throws
+            try { await logout(); } catch {}
+            router.push("/login");
+        }
     };
 
     const handleDeleteAccount = async (password) => {

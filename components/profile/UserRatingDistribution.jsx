@@ -34,7 +34,7 @@ export default function UserRatingDistribution({ userId }) {
             const ratings = (data || []).map((row) => ({
                 rating: Number(row.rating || 0),
                 mediaType: row.mediaType || "movie",
-                targetType: row.targetType || null,
+                targetType: row.tvTargetType || null,
             })).filter((r) => r.rating > 0 && r.rating <= 5);
 
             setAllRatings(ratings);
@@ -155,7 +155,7 @@ export default function UserRatingDistribution({ userId }) {
             {/* Histogram bars — pixel-based heights for reliable rendering */}
             {totalRatings === 0 ? (
                 <div className="h-28 flex items-center justify-center text-sm text-textSecondary/60">
-                    No ratings yet — rate something to see your graph!
+                    No ratings yet - rate something to see your graph!
                 </div>
             ) : (
                 <div className="mt-2">

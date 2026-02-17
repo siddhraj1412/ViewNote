@@ -254,33 +254,32 @@ export default function HomePage() {
     // Detect hard refresh — only once
     const isHardRefresh = useRef(false);
     const hardRefreshChecked = useRef(false);
-    if (typeof window !== "undefined" && !hardRefreshChecked.current) {
-        hardRefreshChecked.current = true;
-        try {
-            const navEntries = performance.getEntriesByType("navigation");
-            if (navEntries.length > 0 && navEntries[0].type === "reload") {
-                clearSessionCache();
-                isHardRefresh.current = true;
-            }
-        } catch {}
-    }
 
-    const [sections, setSections] = useState(() => {
-        if (typeof window !== "undefined" && !isHardRefresh.current) {
-            const cached = getSessionCache();
-            if (cached?.sections) return cached.sections;
-        }
-        return emptySections;
-    });
-
+    const [sections, setSections] = useState(emptySections);
     const [heroItem, setHeroItem] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-    const [loading, setLoading] = useState(() => {
-        if (typeof window !== "undefined" && !isHardRefresh.current) {
-            return !getSessionCache();
+    // Hydration-safe: only read cache after mount
+    useEffect(() => {
+        if (!hardRefreshChecked.current) {
+            hardRefreshChecked.current = true;
+            try {
+                const navEntries = performance.getEntriesByType("navigation");
+                if (navEntries.length > 0 && navEntries[0].type === "reload") {
+                    clearSessionCache();
+                    isHardRefresh.current = true;
+                }
+            } catch {}
         }
-        return true;
-    });
+
+        if (!isHardRefresh.current) {
+            const cached = getSessionCache();
+            if (cached?.sections) {
+                setSections(cached.sections);
+                setLoading(false);
+            }
+        }
+    }, []);
 
     const [fetchError, setFetchError] = useState(false);
     const { user, loading: authLoading } = useAuth();
@@ -372,13 +371,14 @@ export default function HomePage() {
             const needsAnyFetch = needsWhatsHot || needsFreshEpisodes || needsInCinemas ||
                 needsPopular || needsBingeWorthy || needsComingSoon || needsHiddenGems || needsHeroPool;
 
-            let userSeenIds = new Set();
-            if (user) {
-                try { userSeenIds = await mediaService.getUserSeenMediaIds(user.uid); } catch {}
-            }
+            // Start user-seen-IDs fetch in parallel (used later in pickHero)
+            const userSeenIdsPromise = user
+                ? mediaService.getUserSeenMediaIds(user.uid).catch(() => new Set())
+                : Promise.resolve(new Set());
 
             if (!needsAnyFetch) {
                 // All sections cached — just use them
+                const userSeenIds = await userSeenIdsPromise;
                 const newSections = {
                     whatsHot: cachedWhatsHot,
                     freshEpisodes: cachedFreshEpisodes,
@@ -496,6 +496,7 @@ export default function HomePage() {
             if (needsHeroPool) setSectionCache("heroPool", heroPool);
 
             if (!controller?.signal?.aborted) {
+                const userSeenIds = await userSeenIdsPromise;
                 setSections(newSections);
                 setHeroItem(pickHero(heroPool, userSeenIds));
                 setSessionCache({ sections: newSections });

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function useScrollDirection() {
     const [scrollDirection, setScrollDirection] = useState("up");
-    const [prevScrollY, setPrevScrollY] = useState(0);
+    const prevScrollY = useRef(0);
 
     useEffect(() => {
         let ticking = false;
@@ -12,13 +12,13 @@ export default function useScrollDirection() {
         const updateScrollDirection = () => {
             const scrollY = window.scrollY;
 
-            if (Math.abs(scrollY - prevScrollY) < 10) {
+            if (Math.abs(scrollY - prevScrollY.current) < 10) {
                 ticking = false;
                 return;
             }
 
-            setScrollDirection(scrollY > prevScrollY ? "down" : "up");
-            setPrevScrollY(scrollY);
+            setScrollDirection(scrollY > prevScrollY.current ? "down" : "up");
+            prevScrollY.current = scrollY;
             ticking = false;
         };
 
@@ -32,7 +32,7 @@ export default function useScrollDirection() {
         window.addEventListener("scroll", onScroll);
 
         return () => window.removeEventListener("scroll", onScroll);
-    }, [prevScrollY]);
+    }, []);
 
     return scrollDirection;
 }

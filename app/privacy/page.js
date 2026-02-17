@@ -1,6 +1,6 @@
 export const metadata = {
     title: "Privacy Policy - ViewNote",
-    description: "ViewNote Privacy Policy — how we collect, use, and protect your data.",
+    description: "ViewNote Privacy Policy — how your data is collected, used, and protected.",
 };
 
 export default function PrivacyPage() {
@@ -12,8 +12,8 @@ export default function PrivacyPage() {
 
                 <div className="prose prose-invert max-w-none space-y-8 text-white/80 text-[15px] leading-relaxed">
                     <section>
-                        <h2 className="text-xl font-bold text-white mb-3">1. Information We Collect</h2>
-                        <p>When you create an account, we collect:</p>
+                        <h2 className="text-xl font-bold text-white mb-3">1. Information Collected</h2>
+                        <p>When you create an account, the following information is collected:</p>
                         <ul className="list-disc list-inside space-y-1 ml-2 text-textSecondary">
                             <li><strong className="text-white/80">Account data:</strong> Email address, display name, username, and profile picture.</li>
                             <li><strong className="text-white/80">Activity data:</strong> Ratings, reviews, watchlist entries, watch history, favorites, and custom lists you create.</li>
@@ -25,28 +25,28 @@ export default function PrivacyPage() {
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">2. Authentication</h2>
                         <p className="text-textSecondary">
-                            We use Supabase Authentication to manage user accounts. You can sign up with email/password or Google Sign-In. We do not store your password directly — authentication is handled securely by our infrastructure. When using Google Sign-In, we receive your name, email, and profile photo from Google.
+                            ViewNote uses Supabase Authentication to manage user accounts. You can sign up with email/password or Google Sign-In. Your password is not stored directly — authentication is handled securely by the infrastructure. When using Google Sign-In, your name, email, and profile photo are received from Google.
                         </p>
                     </section>
 
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">3. Data Storage</h2>
                         <p className="text-textSecondary">
-                            Your data is stored in Supabase (PostgreSQL) and Supabase Storage. All data is transmitted over HTTPS. Profile pictures and import files are stored in Supabase Storage with access controls. We retain your data for as long as your account is active.
+                            Your data is stored in Supabase (PostgreSQL) and Supabase Storage. All data is transmitted over HTTPS. Profile pictures and import files are stored in Supabase Storage with access controls. Your data is retained for as long as your account is active.
                         </p>
                     </section>
 
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">4. Cookies & Local Storage</h2>
                         <p className="text-textSecondary">
-                            We use browser local storage and session storage to cache homepage content, remember your preferences, and maintain your authentication session. We do not use third-party tracking cookies. Firebase Analytics may set its own cookies for anonymous usage statistics.
+                            Browser local storage and session storage are used to cache homepage content, remember your preferences, and maintain your authentication session. No third-party tracking cookies are used. Firebase Analytics may set its own cookies for anonymous usage statistics.
                         </p>
                     </section>
 
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">5. Third-Party Services</h2>
                         <ul className="list-disc list-inside space-y-1 ml-2 text-textSecondary">
-                            <li><strong className="text-white/80">TMDB (The Movie Database):</strong> We use the TMDB API to fetch movie, TV show, and person metadata. Your searches and browsing activity are sent to TMDB as API requests.</li>
+                            <li><strong className="text-white/80">TMDB (The Movie Database):</strong> The TMDB API is used to fetch movie, TV show, and person metadata. Your searches and browsing activity are sent to TMDB as API requests.</li>
                             <li><strong className="text-white/80">Firebase (Google):</strong> Authentication, database, storage, and analytics.</li>
                             <li><strong className="text-white/80">Vercel:</strong> Hosting and deployment infrastructure.</li>
                         </ul>
@@ -55,7 +55,7 @@ export default function PrivacyPage() {
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">6. Data Sharing</h2>
                         <p className="text-textSecondary">
-                            We do not sell, rent, or share your personal data with third parties for marketing purposes. Your data is only shared with the third-party services listed above as necessary to provide the platform&apos;s functionality.
+                            Your personal data is not sold, rented, or shared with third parties for marketing purposes. Data is only shared with the third-party services listed above as necessary to provide the platform&apos;s functionality.
                         </p>
                     </section>
 
@@ -69,7 +69,7 @@ export default function PrivacyPage() {
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">8. Contact</h2>
                         <p className="text-textSecondary">
-                            If you have questions about this privacy policy, contact us at{" "}
+                            If you have questions about this privacy policy, reach out at{" "}
                             <a href="mailto:viewnote799@gmail.com" className="text-accent hover:underline">viewnote799@gmail.com</a>.
                         </p>
                     </section>

@@ -110,7 +110,7 @@ export default function FavoriteEpisodesDialog({ isOpen, onClose, onSave, curren
     }, [selectedSeries]);
 
     const handleSelectEpisode = useCallback((episode) => {
-        const label = `${selectedSeries.name} — S${selectedSeason.season_number}E${episode.episode_number}`;
+        const label = `${selectedSeries.name} - S${selectedSeason.season_number}E${episode.episode_number}`;
         const newItem = {
             mediaId: `${selectedSeries.id}_s${selectedSeason.season_number}e${episode.episode_number}`,
             seriesId: selectedSeries.id,
@@ -189,8 +189,8 @@ export default function FavoriteEpisodesDialog({ isOpen, onClose, onSave, curren
                         )}
                         <h2 className="text-xl font-bold text-white">
                             {step === "search" && "Favorite Episodes"}
-                            {step === "seasons" && `${selectedSeries?.name} — Pick Season`}
-                            {step === "episodes" && `Season ${selectedSeason?.season_number} — Pick Episode`}
+                            {step === "seasons" && `${selectedSeries?.name} - Pick Season`}
+                            {step === "episodes" && `Season ${selectedSeason?.season_number} - Pick Episode`}
                         </h2>
                     </div>
                     <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 transition text-textSecondary hover:text-white">

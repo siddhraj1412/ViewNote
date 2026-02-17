@@ -322,17 +322,18 @@ async function getExistingImportedIds(userId) {
     };
 
     try {
+        // Only fetch the columns we actually need instead of select('*')
         const [watchedRes, ratingsRes, watchlistRes] = await Promise.all([
-            supabase.from("user_watched").select('*').eq("userId", userId),
-            supabase.from("user_ratings").select('*').eq("userId", userId),
-            supabase.from("user_watchlist").select('*').eq("userId", userId),
+            supabase.from("user_watched").select('"mediaId"').eq("userId", userId).limit(10000),
+            supabase.from("user_ratings").select('id, "mediaId", rating').eq("userId", userId).limit(10000),
+            supabase.from("user_watchlist").select('"mediaId"').eq("userId", userId).limit(10000),
         ]);
 
         (watchedRes.data || []).forEach((d) => existing.watched.add(d.mediaId));
         (ratingsRes.data || []).forEach((d) => existing.ratings.set(d.id, d));
         (watchlistRes.data || []).forEach((d) => existing.watchlist.add(d.mediaId));
     } catch (err) {
-        console.warn("[LBImport] Error fetching existing data:", err);
+        console.warn("[LBImport] Error fetching existing data (continuing anyway):", err);
     }
 
     return existing;
@@ -442,7 +443,11 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
     for (let i = 0; i < uniqueMovies.length; i++) {
         const [key, entry] = uniqueMovies[i];
         try {
-            const tmdbResult = await matchToTMDB(entry.title, entry.year, entry.uri);
+            // Add per-match timeout of 15s to prevent hanging
+            const tmdbResult = await Promise.race([
+                matchToTMDB(entry.title, entry.year, entry.uri),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("TMDB match timeout")), 15000)),
+            ]);
             if (tmdbResult) {
                 movieMap.get(key).tmdb = tmdbResult;
                 summary.tmdbMatches++;

@@ -99,7 +99,7 @@ export default function LetterboxdImportSection() {
                 <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
                     <AlertTriangle size={16} className="text-yellow-400 mt-0.5 shrink-0" />
                     <div className="text-xs text-yellow-200/80">
-                        <span className="font-medium text-yellow-200">Previous import detected.</span> Re-importing is safe — duplicates are automatically skipped. Only new items will be added.
+                        <span className="font-medium text-yellow-200">Previous import detected.</span> Re-importing is safe - duplicates are automatically skipped. Only new items will be added.
                     </div>
                 </div>
             )}

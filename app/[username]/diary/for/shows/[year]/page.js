@@ -141,7 +141,7 @@ export default function ShowsDiaryYearPage() {
                     <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                             <Tv size={20} className="text-accent" />
-                            <h1 className="text-3xl md:text-4xl font-bold truncate">Shows Diary — {year}</h1>
+                            <h1 className="text-3xl md:text-4xl font-bold truncate">Shows Diary - {year}</h1>
                         </div>
                         <div className="text-sm text-textSecondary truncate">@{username} · {allItems.length} entries</div>
                     </div>

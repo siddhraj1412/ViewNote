@@ -40,10 +40,12 @@ export function useRatings() {
 
     useEffect(() => {
         const handler = () => fetchRatings();
-        eventBus.on("MEDIA_UPDATED", handler);
+        // Delay refetch on MEDIA_UPDATED to allow Supabase write propagation
+        const delayedHandler = () => setTimeout(fetchRatings, 300);
+        eventBus.on("MEDIA_UPDATED", delayedHandler);
         eventBus.on("RATINGS_SNAPSHOT", handler);
         return () => {
-            eventBus.off("MEDIA_UPDATED", handler);
+            eventBus.off("MEDIA_UPDATED", delayedHandler);
             eventBus.off("RATINGS_SNAPSHOT", handler);
         };
     }, [fetchRatings]);

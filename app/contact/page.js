@@ -2,16 +2,16 @@ import { Mail, MessageSquare } from "lucide-react";
 
 export const metadata = {
     title: "Contact - ViewNote",
-    description: "Get in touch with the ViewNote team for feedback, bug reports, or support.",
+    description: "Get in touch for feedback, bug reports, or support.",
 };
 
 export default function ContactPage() {
     return (
         <main className="min-h-screen bg-background pt-24 pb-16">
             <div className="site-container max-w-3xl">
-                <h1 className="text-4xl md:text-5xl font-black mb-4">Contact Us</h1>
+                <h1 className="text-4xl md:text-5xl font-black mb-4">Contact</h1>
                 <p className="text-lg text-textSecondary mb-12">
-                    For feedback, bug reports, or support, contact us anytime.
+                    For feedback, bug reports, or support, feel free to reach out anytime.
                 </p>
 
                 <div className="bg-secondary rounded-2xl p-6 md:p-8 border border-white/5 space-y-6">
@@ -28,7 +28,7 @@ export default function ContactPage() {
                                 viewnote799@gmail.com
                             </a>
                             <p className="text-sm text-textSecondary mt-2">
-                                We typically respond within 24–48 hours.
+                                I typically respond within 24–48 hours.
                             </p>
                         </div>
                     </div>
@@ -51,7 +51,7 @@ export default function ContactPage() {
 
                 <div className="mt-8 p-4 bg-white/5 rounded-xl border border-white/5">
                     <p className="text-sm text-textSecondary">
-                        We value every message. Whether it&apos;s a feature request, a bug you encountered, or just a kind word — we appreciate you taking the time to reach out.
+                        I value every message. Whether it&apos;s a feature request, a bug you encountered, or just a kind word — I appreciate you taking the time to reach out.
                     </p>
                 </div>
             </div>

@@ -89,8 +89,8 @@ export default function DeleteAccountModal({
                     <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 mb-6">
                         <p className="text-sm text-red-400 text-center leading-relaxed">
                             <strong>This action cannot be undone.</strong> All your
-                            data — watched history, watchlists, ratings, favorites,
-                            reviews, and profile — will be permanently deleted.
+                            data - watched history, watchlists, ratings, favorites,
+                            reviews, and profile - will be permanently deleted.
                         </p>
                     </div>
 

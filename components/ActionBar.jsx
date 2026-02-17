@@ -83,6 +83,7 @@ export default function ActionBar({
         hasEntry: currentRating > 0,
     });
     const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState(false);
 
     const [showRatingModal, setShowRatingModal] = useState(false);
     const [ratingMode, setRatingMode] = useState("normal");
@@ -100,20 +101,24 @@ export default function ActionBar({
     // Shared refresh function — used by initial load, realtime, and eventBus
     const refreshStatus = useCallback(async () => {
         if (!user) return;
-        const s = await mediaService.getMediaStatus(
-            user,
-            mediaId,
-            mediaType,
-            mediaType === "tv"
-                ? {
-                    targetType: tvTargetType,
-                    seasonNumber: tvSeasonNumber,
-                    episodeNumber: tvEpisodeNumber,
-                    seasonEpisodeCounts: seasonEpisodeCounts,
-                }
-                : {}
-        );
-        setStatus(prev => ({ ...prev, ...s }));
+        try {
+            const s = await mediaService.getMediaStatus(
+                user,
+                mediaId,
+                mediaType,
+                mediaType === "tv"
+                    ? {
+                        targetType: tvTargetType,
+                        seasonNumber: tvSeasonNumber,
+                        episodeNumber: tvEpisodeNumber,
+                        seasonEpisodeCounts: seasonEpisodeCounts,
+                    }
+                    : {}
+            );
+            setStatus(prev => ({ ...prev, ...s }));
+        } catch (err) {
+            console.error("[ActionBar] refreshStatus error:", err);
+        }
     }, [user, mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber, seasonEpisodeCounts]);
 
     // Initial load + realtime sync + eventBus — all consolidated into one effect
@@ -123,8 +128,13 @@ export default function ActionBar({
             return;
         }
 
+        let cancelled = false;
+        setLoading(true);
+
         // Initial load
-        refreshStatus().finally(() => setLoading(false));
+        refreshStatus().finally(() => {
+            if (!cancelled) setLoading(false);
+        });
 
         // Realtime channels — one multiplexed channel per ActionBar instance
         const channelName = `actionbar_${user.uid}_${mediaType}_${Number(mediaId)}`;
@@ -133,10 +143,16 @@ export default function ActionBar({
         if (mediaType === "tv") {
             channel = channel
                 .on("postgres_changes", { event: "*", schema: "public", table: "user_series_progress", filter: `id=eq.${user.uid}_${Number(mediaId)}` }, () => refreshStatus())
-                .on("postgres_changes", { event: "*", schema: "public", table: "user_watched", filter: `id=eq.${user.uid}_tv_${Number(mediaId)}` }, () => refreshStatus());
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_watched", filter: `id=eq.${user.uid}_tv_${Number(mediaId)}` }, () => refreshStatus())
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_watchlist", filter: `id=eq.${user.uid}_tv_${Number(mediaId)}` }, () => refreshStatus())
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_paused", filter: `id=eq.${user.uid}_tv_${Number(mediaId)}` }, () => refreshStatus())
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_dropped", filter: `id=eq.${user.uid}_tv_${Number(mediaId)}` }, () => refreshStatus());
         } else {
             channel = channel
-                .on("postgres_changes", { event: "*", schema: "public", table: "user_watched", filter: `id=eq.${user.uid}_${mediaType}_${Number(mediaId)}` }, () => refreshStatus());
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_watched", filter: `id=eq.${user.uid}_${mediaType}_${Number(mediaId)}` }, () => refreshStatus())
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_watchlist", filter: `id=eq.${user.uid}_${mediaType}_${Number(mediaId)}` }, () => refreshStatus())
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_paused", filter: `id=eq.${user.uid}_${mediaType}_${Number(mediaId)}` }, () => refreshStatus())
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_dropped", filter: `id=eq.${user.uid}_${mediaType}_${Number(mediaId)}` }, () => refreshStatus());
         }
         channel.subscribe();
 
@@ -149,6 +165,7 @@ export default function ActionBar({
         eventBus.on("MEDIA_UPDATED", handleUpdate);
 
         return () => {
+            cancelled = true;
             supabase.removeChannel(channel);
             eventBus.off("MEDIA_UPDATED", handleUpdate);
         };
@@ -218,6 +235,7 @@ export default function ActionBar({
 
     const handleWatchedToggle = async () => {
         if (!user) { showToast.info("Please sign in"); return; }
+        if (actionLoading) return;
 
         if (mediaType === "tv") {
             if (tvTargetType === "series") {
@@ -229,6 +247,7 @@ export default function ActionBar({
             const prevStatus = { ...status };
             if (status.isWatched) {
                 setStatus((prev) => ({ ...prev, isWatched: false }));
+                setActionLoading(true);
                 try {
                     let ok = false;
                     if (tvTargetType === "season" && tvSeasonNumber != null) {
@@ -240,12 +259,16 @@ export default function ActionBar({
                     if (!ok) setStatus(prevStatus);
                 } catch {
                     setStatus(prevStatus);
+                    showToast.error("Failed to update. Please try again.");
+                } finally {
+                    setActionLoading(false);
                 }
                 return;
             }
 
             // Optimistic: mark watched
             setStatus((prev) => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
+            setActionLoading(true);
             try {
                 const seriesData = { name: title, title, poster_path: posterPath };
                 let ok = false;
@@ -273,6 +296,9 @@ export default function ActionBar({
                 if (!ok) setStatus(prevStatus);
             } catch {
                 setStatus(prevStatus);
+                showToast.error("Failed to update. Please try again.");
+            } finally {
+                setActionLoading(false);
             }
             return;
         }
@@ -281,21 +307,29 @@ export default function ActionBar({
         const prevStatus = { ...status };
         if (status.isWatched) {
             setStatus((prev) => ({ ...prev, isWatched: false }));
+            setActionLoading(true);
             try {
                 const ok = await mediaService.unwatchMovie(user, mediaId);
                 if (!ok) setStatus(prevStatus);
             } catch {
                 setStatus(prevStatus);
+                showToast.error("Failed to update. Please try again.");
+            } finally {
+                setActionLoading(false);
             }
             return;
         }
 
         setStatus((prev) => ({ ...prev, isWatched: true, isWatchlist: false, isPaused: false, isDropped: false }));
+        setActionLoading(true);
         try {
             const success = await mediaService.markAsWatched(user, mediaId, mediaType, { title, poster_path: posterPath });
             if (!success) setStatus(prevStatus);
         } catch {
             setStatus(prevStatus);
+            showToast.error("Failed to update. Please try again.");
+        } finally {
+            setActionLoading(false);
         }
     };
 
@@ -352,6 +386,8 @@ export default function ActionBar({
                 { includeSpecialsInCompletion: includeSpecials }
             );
             if (ok) setShowSeriesWatchModal(false);
+        } catch {
+            showToast.error("Failed to update watch progress. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -367,6 +403,8 @@ export default function ActionBar({
                 setIncludeSpecials(false);
                 setShowSeriesWatchModal(false);
             }
+        } catch {
+            showToast.error("Failed to reset watch progress. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -375,8 +413,9 @@ export default function ActionBar({
     const handleWatchingToggle = async () => {
         if (!user) { showToast.info("Please sign in"); return; }
         if (mediaType !== "tv") return;
+        if (actionLoading) return;
 
-        setLoading(true);
+        setActionLoading(true);
         try {
             if (status.isWatching) {
                 const ok = await mediaService.removeFromWatching(user, mediaId);
@@ -385,13 +424,16 @@ export default function ActionBar({
                 const ok = await mediaService.addToWatching(user, mediaId, { title, poster_path: posterPath });
                 if (ok) setStatus(prev => ({ ...prev, isWatching: true }));
             }
+        } catch {
+            showToast.error("Failed to update. Please try again.");
         } finally {
-            setLoading(false);
+            setActionLoading(false);
         }
     };
 
     const handleWatchlistToggle = async () => {
         if (!user) { showToast.info("Please sign in"); return; }
+        if (actionLoading) return;
 
         if (status.isWatchlist) {
             showToast.info("Already in Watchlist");
@@ -413,6 +455,8 @@ export default function ActionBar({
 
     const handlePause = async () => {
         if (!user) { showToast.info("Please sign in"); return; }
+        if (actionLoading) return;
+        setActionLoading(true);
         try {
             const success = await mediaService.pauseMedia(user, mediaId, mediaType, { title, poster_path: posterPath });
             if (success) {
@@ -421,11 +465,15 @@ export default function ActionBar({
             }
         } catch {
             showToast.error("Failed to update. Please try again.");
+        } finally {
+            setActionLoading(false);
         }
     };
 
     const handleDrop = async () => {
         if (!user) { showToast.info("Please sign in"); return; }
+        if (actionLoading) return;
+        setActionLoading(true);
         try {
             const success = await mediaService.dropMedia(user, mediaId, mediaType, { title, poster_path: posterPath });
             if (success) {
@@ -434,6 +482,8 @@ export default function ActionBar({
             }
         } catch {
             showToast.error("Failed to update. Please try again.");
+        } finally {
+            setActionLoading(false);
         }
     };
 
@@ -454,7 +504,7 @@ export default function ActionBar({
                 <Button
                     variant={status.isWatched ? "glass" : "secondary"}
                     onClick={handleWatchedToggle}
-                    disabled={loading}
+                    disabled={loading || actionLoading}
                     className={`flex items-center gap-2 ${status.isWatched ? "btn-primary-glass" : ""}`}
                     onMouseEnter={() => setWatchHover(true)}
                     onMouseLeave={() => setWatchHover(false)}
@@ -467,7 +517,7 @@ export default function ActionBar({
                     <Button
                         variant={status.isWatching ? "glass" : "secondary"}
                         onClick={handleWatchingToggle}
-                        disabled={loading}
+                        disabled={loading || actionLoading}
                         className={`flex items-center gap-2 ${status.isWatching ? "btn-primary-glass" : ""}`}
                     >
                         <Tv size={18} />
@@ -521,7 +571,7 @@ export default function ActionBar({
                 <Button
                     variant={status.isWatchlist ? "glass" : "secondary"}
                     onClick={handleWatchlistToggle}
-                    disabled={loading || status.isWatchlist}
+                    disabled={loading || actionLoading || status.isWatchlist}
                     className={`flex items-center gap-2 ${status.isWatchlist ? "btn-primary-glass" : ""}`}
                 >
                     <Bookmark size={18} fill={status.isWatchlist ? "currentColor" : "none"} />
@@ -542,18 +592,9 @@ export default function ActionBar({
                         <>
                             <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
                             <div className="absolute top-full mt-2 right-0 bg-secondary border border-white/10 rounded-lg shadow-xl z-50 min-w-[200px]">
-                                {mediaType === "tv" && (
-                                    <button
-                                        onClick={() => { handleWatchingToggle(); setShowMoreMenu(false); }}
-                                        className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
-                                    >
-                                        <Tv size={16} />
-                                        {status.isWatching ? "Remove from Watching" : "Add to Watching"}
-                                    </button>
-                                )}
                                 <button
                                     onClick={() => { if (!user) { showToast.info("Please sign in"); return; } setShowAddToList(true); setShowMoreMenu(false); }}
-                                    className={`w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm ${mediaType === "tv" ? "border-t border-white/5" : ""}`}
+                                    className="w-full px-4 py-3 text-left hover:bg-white/5 transition flex items-center gap-3 text-sm"
                                 >
                                     <ListPlus size={16} />
                                     Add to List
@@ -614,7 +655,7 @@ export default function ActionBar({
                 <div className="site-container flex items-center justify-around">
                     <button
                         onClick={handleWatchedToggle}
-                        disabled={loading}
+                        disabled={loading || actionLoading}
                         className={`flex flex-col items-center gap-1 text-xs font-semibold transition-all ${
                             status.isWatched ? "text-accent" : "text-textSecondary"
                         }`}
@@ -635,7 +676,7 @@ export default function ActionBar({
 
                     <button
                         onClick={handleWatchlistToggle}
-                        disabled={loading || status.isWatchlist}
+                        disabled={loading || actionLoading || status.isWatchlist}
                         className={`flex flex-col items-center gap-1 ${status.isWatchlist ? "text-white" : "text-textSecondary"}`}
                     >
                         <div className={`p-2 rounded-full transition-all ${status.isWatchlist ? "btn-primary-glass" : "bg-transparent"}`}>

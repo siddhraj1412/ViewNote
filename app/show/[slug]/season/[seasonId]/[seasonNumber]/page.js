@@ -21,6 +21,7 @@ import { useAuth } from "@/context/AuthContext";
 import supabase from "@/lib/supabase";
 import { Eye, EyeOff, Star } from "lucide-react";
 import showToast from "@/lib/toast";
+import eventBus from "@/lib/eventBus";
 
 const RatingModal = dynamic(() => import("@/components/RatingModal"), { ssr: false, loading: () => null });
 
@@ -118,6 +119,16 @@ export default function SeasonPage() {
     const handleToggleEpisodeWatched = useCallback(async (epNum) => {
         if (!user) { showToast.info("Please sign in"); return; }
         const progressId = `${user.uid}_${Number(tvId)}`;
+        const wasWatched = watchedEpisodes.has(epNum);
+
+        // Optimistic update
+        setWatchedEpisodes((prev) => {
+            const next = new Set(prev);
+            if (wasWatched) next.delete(epNum);
+            else next.add(epNum);
+            return next;
+        });
+
         try {
             const { data: existing } = await supabase
                 .from("user_series_progress")
@@ -128,7 +139,7 @@ export default function SeasonPage() {
             const epMap = data.watchedEpisodes || {};
             const current = Array.isArray(epMap[String(seasonNumber)]) ? epMap[String(seasonNumber)].map(Number) : [];
             const currentSet = new Set(current);
-            if (currentSet.has(epNum)) {
+            if (wasWatched) {
                 currentSet.delete(epNum);
                 showToast.success(`Episode ${epNum} unmarked`);
             } else {
@@ -139,24 +150,31 @@ export default function SeasonPage() {
 
             // Auto-mark season if all episodes watched, but NEVER auto-unmark
             const totalEps = episodes.length;
-            const watchedSeasons = Array.isArray(data.watchedSeasons) ? new Set(data.watchedSeasons.map(Number)) : new Set();
+            const watchedSeasonsSet = Array.isArray(data.watchedSeasons) ? new Set(data.watchedSeasons.map(Number)) : new Set();
             if (currentSet.size >= totalEps && totalEps > 0) {
-                watchedSeasons.add(seasonNumber);
+                watchedSeasonsSet.add(seasonNumber);
             }
-            // Do NOT delete season from watchedSeasons when an episode is unchecked
 
             await supabase.from("user_series_progress").upsert({
                 id: progressId,
                 watchedEpisodes: newEpMap,
-                watchedSeasons: Array.from(watchedSeasons),
+                watchedSeasons: Array.from(watchedSeasonsSet),
                 userId: user.uid,
                 seriesId: Number(tvId),
             });
+            eventBus.emit("MEDIA_UPDATED", { mediaId: tvId, mediaType: "tv", action: wasWatched ? "EPISODE_UNWATCHED" : "EPISODE_WATCHED", userId: user.uid });
         } catch (err) {
+            // Revert optimistic update
+            setWatchedEpisodes((prev) => {
+                const next = new Set(prev);
+                if (wasWatched) next.add(epNum);
+                else next.delete(epNum);
+                return next;
+            });
             console.error("Error toggling episode watched:", err);
             showToast.error("Failed to update");
         }
-    }, [user, tvId, seasonNumber, episodes.length]);
+    }, [user, tvId, seasonNumber, episodes.length, watchedEpisodes]);
 
     const handleQuickRateEpisode = useCallback((epNum) => {
         if (!user) { showToast.info("Please sign in"); return; }

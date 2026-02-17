@@ -330,7 +330,7 @@ export const mediaService = {
             }
 
             showToast.linked(
-                `"${mediaData.title || mediaData.name || "Item"}" rated — saved to your profile`,
+                `"${mediaData.title || mediaData.name || "Item"}" rated - saved to your profile`,
                 `/${user.username || user.uid}`
             );
             return true;

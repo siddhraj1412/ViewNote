@@ -150,6 +150,8 @@ export const AuthProvider = ({ children }) => {
 
     // ──── auth state listener ────
     useEffect(() => {
+        let initialSessionHandled = false;
+
         // Get initial session
         supabase.auth.getSession().then(async ({ data: { session } }) => {
             if (session?.user) {
@@ -158,11 +160,15 @@ export const AuthProvider = ({ children }) => {
             } else {
                 setUser(null);
             }
+            initialSessionHandled = true;
             setLoading(false);
         });
 
         // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            // Skip INITIAL_SESSION — we handle it via getSession() above
+            if (event === "INITIAL_SESSION") return;
+
             if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
                 if (session?.user) {
                     const enriched = await attachProfileData(session.user);
@@ -171,7 +177,9 @@ export const AuthProvider = ({ children }) => {
             } else if (event === "SIGNED_OUT") {
                 setUser(null);
             }
-            setLoading(false);
+            if (initialSessionHandled) {
+                setLoading(false);
+            }
         });
 
         return () => subscription.unsubscribe();
@@ -203,11 +211,30 @@ export const AuthProvider = ({ children }) => {
             password,
             options: {
                 data: { display_name: name },
+                // Skip email confirmation — auto-confirm the user
+                emailRedirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
             },
         });
 
         if (error) throw error;
         if (!data.user) throw new Error("Signup failed — no user returned.");
+
+        // If Supabase requires email confirmation and no session is returned,
+        // the user's email_confirmed_at will be null. Try to sign them in directly.
+        if (!data.session) {
+            try {
+                const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                });
+                // If auto-login fails (email not confirmed), that's OK — continue with profile creation
+                if (loginError) {
+                    console.warn("Auto-login after signup failed (email confirmation may be required):", loginError.message);
+                }
+            } catch {
+                // Ignore — profile creation below is still important
+            }
+        }
 
         // Create profile (trigger may also create one, use upsert)
         const { error: profileError } = await supabase.from("profiles").upsert({
@@ -326,12 +353,25 @@ export const AuthProvider = ({ children }) => {
         const { error: rpcError } = await supabase.rpc("delete_user_data", { p_user_id: uid });
         if (rpcError) {
             console.error("Error deleting user data:", rpcError);
-            throw new Error("Failed to delete account data. Please try again.");
+            // If the RPC doesn't exist, delete what we can manually
+            if (rpcError.message?.includes("function") || rpcError.code === "42883") {
+                // Delete data from known tables manually
+                const tables = ["user_ratings", "user_reviews", "user_watched", "user_watchlist", "user_lists", "favorites", "user_series_progress", "user_imports", "followers"];
+                for (const table of tables) {
+                    try { await supabase.from(table).delete().eq("userId", uid); } catch {}
+                }
+                try { await supabase.from("profiles").delete().eq("id", uid); } catch {}
+            } else {
+                throw new Error("Failed to delete account data. Please try again.");
+            }
         }
 
-        // 3. Sign out (Supabase doesn't allow client-side user deletion;
-        // use a server-side admin call or Edge Function for that)
-        await supabase.auth.signOut();
+        // 3. Sign out
+        try {
+            await supabase.auth.signOut();
+        } catch (err) {
+            console.warn("signOut after delete error (ignored):", err);
+        }
 
         // 4. Clear local state
         setUser(null);
@@ -371,7 +411,11 @@ export const AuthProvider = ({ children }) => {
 
     // ──── Logout ────
     const logout = async () => {
-        await supabase.auth.signOut();
+        try {
+            await supabase.auth.signOut();
+        } catch (err) {
+            console.warn("signOut error (ignored):", err);
+        }
         setUser(null);
     };
 

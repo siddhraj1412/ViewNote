@@ -248,13 +248,25 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                 const cacheBustedUrl = `${publicUrl}?t=${Date.now()}`;
 
                 // Update profile in Supabase
-                await supabase
+                const { error: profileError } = await supabase
                     .from("profiles")
                     .update({
                         profile_picture_url: cacheBustedUrl,
                         updatedAt: new Date().toISOString(),
                     })
                     .eq("id", userId);
+
+                if (profileError) {
+                    console.error("Profile update error:", profileError);
+                    // Try upsert as fallback
+                    await supabase
+                        .from("profiles")
+                        .upsert({
+                            id: userId,
+                            profile_picture_url: cacheBustedUrl,
+                            updatedAt: new Date().toISOString(),
+                        }, { onConflict: "id" });
+                }
 
                 // Update Supabase auth user metadata
                 await supabase.auth.updateUser({ data: { avatar_url: cacheBustedUrl } });

@@ -18,8 +18,11 @@ export default function SearchOverlay({ isOpen, onClose }) {
     const inputRef = useRef(null);
     const router = useRouter();
 
-    // Fetch popular results on mount
+    // Fetch popular results when first opened
+    const hasFetchedPopular = useRef(false);
     useEffect(() => {
+        if (!isOpen || hasFetchedPopular.current) return;
+        hasFetchedPopular.current = true;
         const fetchPopular = async () => {
             try {
                 const [movies, tv] = await Promise.all([
@@ -35,7 +38,7 @@ export default function SearchOverlay({ isOpen, onClose }) {
             }
         };
         fetchPopular();
-    }, []);
+    }, [isOpen]);
 
     // Focus input when opened and clear previous query
     useEffect(() => {

@@ -15,14 +15,16 @@ import MediaSection from "@/components/MediaSection";
 import ReviewsForMedia from "@/components/ReviewsForMedia";
 import SectionTabs from "@/components/SectionTabs";
 import StreamingAvailability from "@/components/StreamingAvailability";
+import TmdbRatingBadge from "@/components/TmdbRatingBadge";
 import SeasonCard from "@/components/SeasonCard";
-import { Calendar } from "lucide-react";
+import { Calendar, Clock, Globe, Award, Tv as TvIcon } from "lucide-react";
 import ExpandableText from "@/components/ExpandableText";
 import { useAuth } from "@/context/AuthContext";
 import { useMediaCustomization } from "@/hooks/useMediaCustomization";
 import { parseSlugId, getMovieUrl, getShowUrl } from "@/lib/slugify";
 import supabase from "@/lib/supabase";
 import showToast from "@/lib/toast";
+import eventBus from "@/lib/eventBus";
 
 const RatingModal = dynamic(() => import("@/components/RatingModal"), { ssr: false, loading: () => null });
 
@@ -89,7 +91,7 @@ export default function ShowSlugPage() {
                 setTv(data);
 
                 // Set page title for SEO
-                document.title = `${data.name} (${(data.first_air_date || '').split('-')[0]}) — ViewNote`;
+                document.title = `${data.name} (${(data.first_air_date || '').split('-')[0]}) - ViewNote`;
 
                 // Verify URL slug matches
                 const correctUrl = getShowUrl(data);
@@ -233,6 +235,16 @@ export default function ShowSlugPage() {
     const handleToggleSeasonWatched = useCallback(async (seasonNum) => {
         if (!user) { showToast.info("Please sign in"); return; }
         const progressId = `${user.uid}_${Number(tvId)}`;
+        const wasWatched = watchedSeasons.has(seasonNum);
+
+        // Optimistic update
+        setWatchedSeasons((prev) => {
+            const next = new Set(prev);
+            if (wasWatched) next.delete(seasonNum);
+            else next.add(seasonNum);
+            return next;
+        });
+
         try {
             const { data: existing } = await supabase
                 .from("user_series_progress")
@@ -244,12 +256,10 @@ export default function ShowSlugPage() {
             const currentSet = new Set(current);
             const existingEpMap = data.watchedEpisodes && typeof data.watchedEpisodes === "object" ? { ...data.watchedEpisodes } : {};
 
-            if (currentSet.has(seasonNum)) {
-                // Unmark season — remove only the season flag, keep episode data
+            if (wasWatched) {
                 currentSet.delete(seasonNum);
                 showToast.success(`Season ${seasonNum} unmarked`);
             } else {
-                // Mark season as watched — also mark all episodes
                 currentSet.add(seasonNum);
                 const seasonMeta = Array.isArray(tv?.seasons) ? tv.seasons.find((s) => Number(s?.season_number) === seasonNum) : null;
                 const epCount = seasonMeta ? Number(seasonMeta.episode_count || 0) : 0;
@@ -259,11 +269,19 @@ export default function ShowSlugPage() {
                 showToast.success(`Season ${seasonNum} marked as watched`);
             }
             await supabase.from("user_series_progress").upsert({ id: progressId, watchedSeasons: Array.from(currentSet), watchedEpisodes: existingEpMap, userId: user.uid, seriesId: Number(tvId) });
+            eventBus.emit("MEDIA_UPDATED", { mediaId: tvId, mediaType: "tv", action: wasWatched ? "SEASON_UNWATCHED" : "SEASON_WATCHED", userId: user.uid });
         } catch (err) {
+            // Revert optimistic update
+            setWatchedSeasons((prev) => {
+                const next = new Set(prev);
+                if (wasWatched) next.add(seasonNum);
+                else next.delete(seasonNum);
+                return next;
+            });
             console.error("Error toggling season watched:", err);
             showToast.error("Failed to update");
         }
-    }, [user, tvId, tv?.seasons]);
+    }, [user, tvId, tv?.seasons, watchedSeasons]);
 
     const handleQuickRateSeason = useCallback((seasonNum) => {
         if (!user) { showToast.info("Please sign in"); return; }
@@ -441,13 +459,43 @@ export default function ShowSlugPage() {
                     <div className="lg:col-span-4 space-y-6">
                         <RatingDistribution mediaId={tvId} mediaType="tv" />
                         {tv.vote_average > 0 && (
-                            <div className="flex items-center gap-1.5 text-sm text-textSecondary">
-                                <span className="text-accent">★</span>
-                                <span className="font-semibold text-white tabular-nums">{Number(tv.vote_average).toFixed(1)}</span>
-                                <span>/ 10</span>
-                                <span className="text-xs opacity-60 ml-1">TMDB</span>
-                            </div>
+                            <TmdbRatingBadge value={tv.vote_average} />
                         )}
+
+                        {/* TV Show Details / Metadata */}
+                        <div className="space-y-2 text-sm text-textSecondary">
+                            {(() => {
+                                const usRating = tv.content_ratings?.results?.find(r => r.iso_3166_1 === "US");
+                                const cert = usRating?.rating;
+                                if (!cert) return null;
+                                return (
+                                    <div className="flex items-center gap-2">
+                                        <Award size={14} className="text-accent shrink-0" />
+                                        <span className="font-medium text-white px-1.5 py-0.5 border border-white/20 rounded text-xs">{cert}</span>
+                                        <span className="text-xs opacity-60">Rating</span>
+                                    </div>
+                                );
+                            })()}
+                            {tv.episode_run_time && tv.episode_run_time.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                    <Clock size={14} className="text-accent shrink-0" />
+                                    <span>Avg. Runtime: {tv.episode_run_time[0]}m</span>
+                                </div>
+                            )}
+                            {tv.original_language && (
+                                <div className="flex items-center gap-2">
+                                    <Globe size={14} className="text-accent shrink-0" />
+                                    <span>Original Language: {new Intl.DisplayNames(["en"], { type: "language" }).of(tv.original_language)}</span>
+                                </div>
+                            )}
+                            {Array.isArray(tv.seasons) && tv.seasons.filter(s => Number(s?.season_number) > 0).length > 0 && (
+                                <div className="flex items-center gap-2">
+                                    <TvIcon size={14} className="text-accent shrink-0" />
+                                    <span>Episodes per Season: {tv.seasons.filter(s => Number(s?.season_number) > 0).map(s => `S${s.season_number}: ${s.episode_count}`).join(", ")}</span>
+                                </div>
+                            )}
+                        </div>
+
                         <StreamingAvailability mediaType="tv" mediaId={tvId} />
                     </div>
 

@@ -1,6 +1,6 @@
 export const metadata = {
     title: "Terms of Service - ViewNote",
-    description: "ViewNote Terms of Service — rules, responsibilities, and usage guidelines.",
+    description: "ViewNote Terms of Service - rules, responsibilities, and usage guidelines.",
 };
 
 export default function TermsPage() {
@@ -38,7 +38,7 @@ export default function TermsPage() {
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">4. Content Guidelines</h2>
                         <p className="text-textSecondary">
-                            Reviews and comments should be related to the media being discussed. Spoilers must be marked appropriately using the spoiler toggle. We reserve the right to remove content that violates these guidelines without notice.
+                            Reviews and comments should be related to the media being discussed. Spoilers must be marked appropriately using the spoiler toggle. Content that violates these guidelines may be removed without notice.
                         </p>
                     </section>
 
@@ -52,35 +52,35 @@ export default function TermsPage() {
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">6. Abuse Prevention</h2>
                         <p className="text-textSecondary">
-                            We may suspend or terminate accounts that engage in abusive behavior, including but not limited to: spamming, harassment, creating multiple accounts to manipulate ratings, or any activity that disrupts the platform&apos;s integrity.
+                            Accounts that engage in abusive behavior may be suspended or terminated, including but not limited to: spamming, harassment, creating multiple accounts to manipulate ratings, or any activity that disrupts the platform&apos;s integrity.
                         </p>
                     </section>
 
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">7. Account Termination</h2>
                         <p className="text-textSecondary">
-                            You may delete your account at any time from the Settings page. We reserve the right to suspend or terminate accounts that violate these terms. Upon termination, your data will be permanently deleted in accordance with our Privacy Policy.
+                            You may delete your account at any time from the Settings page. Accounts that violate these terms may be suspended or terminated. Upon termination, your data will be permanently deleted in accordance with the Privacy Policy.
                         </p>
                     </section>
 
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">8. Limitation of Liability</h2>
                         <p className="text-textSecondary">
-                            ViewNote is provided &quot;as is&quot; without warranties of any kind. We are not liable for any damages arising from your use of the platform, including but not limited to: data loss, service interruptions, or inaccuracies in third-party data. Our total liability shall not exceed the amount you have paid for the service (if any).
+                            ViewNote is provided &quot;as is&quot; without warranties of any kind. ViewNote is not liable for any damages arising from your use of the platform, including but not limited to: data loss, service interruptions, or inaccuracies in third-party data. Total liability shall not exceed the amount you have paid for the service (if any).
                         </p>
                     </section>
 
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">9. Changes to Terms</h2>
                         <p className="text-textSecondary">
-                            We may update these terms from time to time. Continued use of the platform after changes constitutes acceptance of the updated terms. We will notify users of significant changes via email or platform notification.
+                            These terms may be updated from time to time. Continued use of the platform after changes constitutes acceptance of the updated terms. Users will be notified of significant changes via email or platform notification.
                         </p>
                     </section>
 
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">10. Contact</h2>
                         <p className="text-textSecondary">
-                            If you have questions about these terms, contact us at{" "}
+                            If you have questions about these terms, reach out at{" "}
                             <a href="mailto:viewnote799@gmail.com" className="text-accent hover:underline">viewnote799@gmail.com</a>.
                         </p>
                     </section>

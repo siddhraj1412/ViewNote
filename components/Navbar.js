@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-    Search, User, Film, Settings, LogOut,
-    BookOpen, List, Star, Bookmark
+    Search, User, Settings, LogOut,
+    BookOpen, List, Star, Bookmark, Clapperboard
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import SearchOverlay from "./SearchOverlay";
@@ -116,7 +116,9 @@ function NavbarContent() {
                             href="/"
                             className="flex items-center gap-2 text-3xl font-bold hover:text-accent transition-all group"
                         >
-                            <Film className="text-accent transition-colors" size={28} />
+                            <div className="w-8 h-8 rounded-lg bg-accent/15 flex items-center justify-center group-hover:bg-accent/25 transition-colors">
+                                <Clapperboard size={18} className="text-accent" />
+                            </div>
                             <span className="drop-shadow-lg">ViewNote</span>
                         </Link>
 

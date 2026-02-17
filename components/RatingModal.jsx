@@ -170,6 +170,7 @@ export default function RatingModal({
     };
 
     const handleSubmit = async () => {
+        if (loading || loadingExisting) return;
         if (!user) {
             showToast.error("You must be logged in");
             return;
@@ -308,7 +309,7 @@ export default function RatingModal({
             });
             onClose();
         } catch (err) {
-            // Error handled in service
+            showToast.error("Failed to remove rating. Please try again.");
         } finally {
             setLoading(false);
         }

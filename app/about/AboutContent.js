@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 
 const CONTACT_EMAIL = "viewnote799@gmail.com";
 
@@ -23,81 +24,48 @@ const SECTIONS = [
     { id: "contact", label: "Contact and Support" },
 ];
 
-function SectionBlock({ id, title, children }) {
+function AccordionItem({ id, title, isOpen, onToggle, children }) {
     return (
-        <section id={id} className="scroll-mt-24 mb-16">
-            <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">{title}</h2>
-            <div className="space-y-4 text-textSecondary leading-relaxed">{children}</div>
-        </section>
+        <div className="border border-white/10 rounded-xl overflow-hidden transition-colors hover:border-white/20">
+            <button
+                onClick={() => onToggle(id)}
+                className="w-full flex items-center justify-between px-6 py-4 text-left bg-secondary/50 hover:bg-secondary transition-colors"
+            >
+                <h2 className="text-lg font-semibold text-white">{title}</h2>
+                <ChevronDown
+                    size={20}
+                    className={`text-textSecondary transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
+                />
+            </button>
+            <div
+                className={`transition-all duration-300 ease-in-out overflow-hidden ${isOpen ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"}`}
+            >
+                <div className="px-6 py-5 space-y-4 text-textSecondary leading-relaxed">
+                    {children}
+                </div>
+            </div>
+        </div>
     );
 }
 
 export default function AboutContent() {
-    const [activeSection, setActiveSection] = useState("about");
-    const observerRef = useRef(null);
+    const [openSection, setOpenSection] = useState("about");
 
-    useEffect(() => {
-        const sectionElements = SECTIONS.map((s) => document.getElementById(s.id)).filter(Boolean);
-
-        observerRef.current = new IntersectionObserver(
-            (entries) => {
-                const visible = entries
-                    .filter((e) => e.isIntersecting)
-                    .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-                if (visible.length > 0) {
-                    setActiveSection(visible[0].target.id);
-                }
-            },
-            { rootMargin: "-80px 0px -60% 0px", threshold: 0.1 }
-        );
-
-        sectionElements.forEach((el) => observerRef.current.observe(el));
-
-        return () => {
-            if (observerRef.current) observerRef.current.disconnect();
-        };
-    }, []);
-
-    const scrollTo = (id) => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.scrollIntoView({ behavior: "smooth", block: "start" });
-            setActiveSection(id);
-        }
+    const handleToggle = (id) => {
+        setOpenSection((prev) => (prev === id ? null : id));
     };
 
     return (
         <main className="min-h-screen bg-background pt-24 pb-16">
             <div className="site-container">
-                <div className="max-w-5xl mx-auto">
+                <div className="max-w-3xl mx-auto">
                     <h1 className="text-4xl md:text-5xl font-black mb-3 text-white">About ViewNote</h1>
-                    <p className="text-lg text-textSecondary mb-12">
+                    <p className="text-lg text-textSecondary mb-10">
                         Everything you need to know about the platform, its features, and how your data is handled.
                     </p>
 
-                    <div className="flex gap-12">
-                        {/* Sidebar Navigation */}
-                        <nav className="hidden lg:block w-56 shrink-0">
-                            <div className="sticky top-24 space-y-1">
-                                {SECTIONS.map((s) => (
-                                    <button
-                                        key={s.id}
-                                        onClick={() => scrollTo(s.id)}
-                                        className={`block w-full text-left text-sm px-3 py-1.5 rounded-lg transition-colors ${
-                                            activeSection === s.id
-                                                ? "bg-accent/10 text-accent font-medium"
-                                                : "text-textSecondary hover:text-white hover:bg-white/5"
-                                        }`}
-                                    >
-                                        {s.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </nav>
-
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                            <SectionBlock id="about" title="What is ViewNote">
+                    <div className="space-y-3">
+                        <AccordionItem id="about" title="What is ViewNote" isOpen={openSection === "about"} onToggle={handleToggle}>
                                 <p>
                                     ViewNote is a personal media tracking platform designed for movie and television enthusiasts. It provides a comprehensive space to log, rate, review, and organize everything you watch. Whether you are a casual viewer or an avid cinephile, ViewNote helps you maintain a detailed record of your viewing habits and discover new content that matches your taste.
                                 </p>
@@ -107,9 +75,9 @@ export default function AboutContent() {
                                 <p>
                                     All movie and television data displayed on ViewNote is sourced from The Movie Database (TMDB). ViewNote uses the TMDB API but is not endorsed or certified by TMDB. Poster images, cast information, synopses, release dates, and other metadata are provided by TMDB and its community of contributors.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="tracking" title="Ways to Track">
+                        <AccordionItem id="tracking" title="Ways to Track" isOpen={openSection === "tracking"} onToggle={handleToggle}>
                                 <p>
                                     ViewNote offers multiple tracking states so you can precisely categorize every title in your library. Each movie or series can be marked with one of the following statuses:
                                 </p>
@@ -123,9 +91,9 @@ export default function AboutContent() {
                                 <p>
                                     These statuses transition automatically when appropriate. For example, adding a title to your watchlist will remove it from your dropped list if it was previously there. Marking a title as watched will remove it from your watchlist and watching list.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="ratings" title="Ratings and Reviews">
+                        <AccordionItem id="ratings" title="Ratings and Reviews" isOpen={openSection === "ratings"} onToggle={handleToggle}>
                                 <p>
                                     ViewNote uses a half star rating scale from 0.5 to 5 stars. You can rate movies, individual TV episodes, full seasons, and complete series. Your ratings are stored privately by default and contribute to your personal statistics and rating distribution graphs.
                                 </p>
@@ -135,9 +103,9 @@ export default function AboutContent() {
                                 <p>
                                     Your personal rating distribution is visible on your profile page, showing a breakdown of how you rate across all media types. You can filter this data by movies only, shows only, seasons, or episodes to gain insights into your viewing preferences.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="favorites" title="Favorites and Lists">
+                        <AccordionItem id="favorites" title="Favorites and Lists" isOpen={openSection === "favorites"} onToggle={handleToggle}>
                                 <p>
                                     The favorites system lets you highlight the titles that matter most to you. You can pin your favorite movies, TV shows, and individual episodes directly to your profile page. These favorites appear prominently on your profile and help visitors understand your taste at a glance.
                                 </p>
@@ -147,9 +115,9 @@ export default function AboutContent() {
                                 <p>
                                     ViewNote also supports importing your existing media library from Letterboxd. If you have been tracking your viewing history on another platform, you can bring that data into ViewNote without starting from scratch. The import process preserves your ratings and watch dates.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="social" title="Social Features">
+                        <AccordionItem id="social" title="Social Features" isOpen={openSection === "social"} onToggle={handleToggle}>
                                 <p>
                                     ViewNote includes a follow system that lets you connect with other users. You can follow other members to see their profiles, ratings, and reviews. The follow relationship is one directional, meaning you can follow someone without requiring them to follow you back.
                                 </p>
@@ -159,9 +127,9 @@ export default function AboutContent() {
                                 <p>
                                     Social links can be added to your profile to connect your presence across platforms. ViewNote supports links to major platforms including Twitter, Instagram, Letterboxd, GitHub, YouTube, TikTok, and many others. Each linked platform is identified automatically with a recognizable icon.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="profiles" title="Profile and Statistics">
+                        <AccordionItem id="profiles" title="Profile and Statistics" isOpen={openSection === "profiles"} onToggle={handleToggle}>
                                 <p>
                                     Every ViewNote user has a public profile page that displays their viewing activity. Your profile shows your display name, bio, avatar, banner image, social links, and location if you choose to share it. All of these elements are customizable through the settings page.
                                 </p>
@@ -171,9 +139,9 @@ export default function AboutContent() {
                                 <p>
                                     Your profile also features tabs for different activity views including your diary of recent watches and ratings, your reviews, your watchlist, your custom lists, your liked content, and titles you have paused or dropped. Each tab provides a detailed view of that particular aspect of your viewing history.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="discovery" title="Content Discovery">
+                        <AccordionItem id="discovery" title="Content Discovery" isOpen={openSection === "discovery"} onToggle={handleToggle}>
                                 <p>
                                     The ViewNote homepage presents a curated selection of movies and TV shows designed to help you find your next watch. Content is organized into several sections including Featured Today, trending titles, fresh TV episodes, films currently in cinemas, popular picks, binge worthy series, upcoming releases, and hidden gems.
                                 </p>
@@ -183,9 +151,9 @@ export default function AboutContent() {
                                 <p>
                                     A rotation system tracks which titles have been displayed to you recently. Content you have seen in previous sessions enters a cooldown period before reappearing, which prevents the same recommendations from showing up repeatedly across multiple visits. When the pool of fresh content is exhausted, previously shown titles are gradually reintroduced.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="episodes" title="Upcoming Episodes and Next Up">
+                        <AccordionItem id="episodes" title="Upcoming Episodes and Next Up" isOpen={openSection === "episodes"} onToggle={handleToggle}>
                                 <p>
                                     For TV series you are currently watching, ViewNote tracks episode level progress. The platform shows which episodes have aired recently and helps you keep track of where you left off. Season cards on show detail pages display your watch progress and personal ratings.
                                 </p>
@@ -195,14 +163,14 @@ export default function AboutContent() {
                                 <p>
                                     When you mark episodes as watched, ViewNote automatically updates your season and series progress. If all episodes in a season are marked as watched, the season is completed. If all seasons of a series are completed, the entire series is marked as watched and removed from your watching and watchlist queues.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="privacy" title="Data and Privacy">
+                        <AccordionItem id="privacy" title="Data and Privacy" isOpen={openSection === "privacy"} onToggle={handleToggle}>
                                 <p>
-                                    ViewNote takes your privacy seriously. Your account data is stored securely using Firebase Authentication and Firestore, which are enterprise grade services provided by Google Cloud. Your password is never stored in plain text and is handled entirely by Firebase Authentication with industry standard encryption.
+                                    ViewNote takes your privacy seriously. Your account data is stored securely using Supabase, which provides enterprise grade authentication and a PostgreSQL database. Your password is never stored in plain text and is handled entirely by Supabase Authentication with industry standard encryption.
                                 </p>
                                 <p>
-                                    Your viewing data, ratings, reviews, and profile information are stored in Firestore. This data is used solely to provide the ViewNote service and is never sold to third parties, used for advertising, or shared with external services beyond what is necessary for the platform to function.
+                                    Your viewing data, ratings, reviews, and profile information are stored in a secure PostgreSQL database. This data is used solely to provide the ViewNote service and is never sold to third parties, used for advertising, or shared with external services beyond what is necessary for the platform to function.
                                 </p>
                                 <p>
                                     You have full control over your account. You can change your email address, update your password, and delete your account at any time through the settings page. Account deletion is permanent and removes all of your data from the platform including your profile, ratings, reviews, lists, and watch history. This action cannot be undone.
@@ -210,9 +178,9 @@ export default function AboutContent() {
                                 <p>
                                     ViewNote uses The Movie Database (TMDB) API to display media information. When you browse movies or TV shows, requests are made to the TMDB API to retrieve metadata. No personal information is sent to TMDB as part of these requests.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="community" title="Community Guidelines">
+                        <AccordionItem id="community" title="Community Guidelines" isOpen={openSection === "community"} onToggle={handleToggle}>
                                 <p>
                                     ViewNote is a community built around a shared appreciation for film and television. All members are expected to engage respectfully and constructively. The following guidelines apply to all user generated content on the platform including reviews, comments, profile bios, and list descriptions.
                                 </p>
@@ -227,38 +195,38 @@ export default function AboutContent() {
                                 <p>
                                     Violations of these guidelines may result in content removal or account suspension depending on the severity and frequency of the behavior.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="reporting" title="Content Reporting">
+                        <AccordionItem id="reporting" title="Content Reporting" isOpen={openSection === "reporting"} onToggle={handleToggle}>
                                 <p>
-                                    If you encounter content that violates the community guidelines, you can report it for review. Reports are handled by the ViewNote team and are treated confidentially. When submitting a report, please provide as much context as possible to help the team understand the issue.
+                                    If you encounter content that violates the community guidelines, you can report it for review. Reports are handled confidentially. When submitting a report, please provide as much context as possible to help understand the issue.
                                 </p>
                                 <p>
-                                    To report a review, comment, or profile that you believe violates the guidelines, contact the team directly at{" "}
+                                    To report a review, comment, or profile that you believe violates the guidelines, reach out directly at{" "}
                                     <a href={`mailto:${CONTACT_EMAIL}`} className="text-accent hover:underline">{CONTACT_EMAIL}</a>.
                                     Include the username of the account in question and a description of the content you are reporting.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="private" title="Private Accounts">
+                        <AccordionItem id="private" title="Private Accounts" isOpen={openSection === "private"} onToggle={handleToggle}>
                                 <p>
                                     ViewNote profiles are public by default, meaning anyone can view your profile page, ratings, reviews, and viewing activity. Private account functionality is planned for a future release and will allow you to restrict who can see your activity.
                                 </p>
                                 <p>
                                     When private accounts are available, you will be able to control the visibility of your profile, ratings, and reviews. Followers will need your approval before they can see your private content. Your public profile will display only your name and avatar without any viewing details.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="recap" title="Yearly Recap">
+                        <AccordionItem id="recap" title="Yearly Recap" isOpen={openSection === "recap"} onToggle={handleToggle}>
                                 <p>
                                     ViewNote provides yearly diary pages that let you look back at everything you watched and rated during a specific year. These pages are accessible from your profile and show a chronological list of all your ratings organized by month with poster thumbnails, star ratings, and liked indicators.
                                 </p>
                                 <p>
                                     Yearly recaps are available for both movies and TV shows separately. You can view past years to see how your viewing habits and preferences have evolved over time. The data for these recaps is generated from your rating history and watch dates, so accurate date logging helps produce a more complete picture of each year.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="roadmap" title="Roadmap">
+                        <AccordionItem id="roadmap" title="Roadmap" isOpen={openSection === "roadmap"} onToggle={handleToggle}>
                                 <p>
                                     ViewNote is under active development and new features are being planned and built continuously. The following areas are currently being worked on or are planned for future releases:
                                 </p>
@@ -274,11 +242,11 @@ export default function AboutContent() {
                                 <p>
                                     Feature requests and suggestions are welcome. If there is something you would like to see added to the platform, please reach out using the contact information below.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="bugs" title="How to Report Bugs">
+                        <AccordionItem id="bugs" title="How to Report Bugs" isOpen={openSection === "bugs"} onToggle={handleToggle}>
                                 <p>
-                                    If you encounter a bug or something that does not work as expected, please report it so the team can investigate and fix the issue. When reporting a bug, providing detailed information significantly speeds up the resolution process.
+                                    If you encounter a bug or something that does not work as expected, please report it so it can be investigated and fixed. When reporting a bug, providing detailed information significantly speeds up the resolution process.
                                 </p>
                                 <p>
                                     A helpful bug report includes the following details when possible: a description of what happened, what you expected to happen instead, the steps you took before the issue occurred, the browser and device you were using, and any error messages that appeared on screen.
@@ -288,11 +256,11 @@ export default function AboutContent() {
                                     <a href={`mailto:${CONTACT_EMAIL}`} className="text-accent hover:underline">{CONTACT_EMAIL}</a>.
                                     Please include the word Bug in the subject line so the report can be prioritized appropriately.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
 
-                            <SectionBlock id="contact" title="Contact and Support">
+                        <AccordionItem id="contact" title="Contact and Support" isOpen={openSection === "contact"} onToggle={handleToggle}>
                                 <p>
-                                    For general inquiries, feedback, feature requests, bug reports, or any other communication, you can reach the ViewNote team at the following email address:
+                                    For general inquiries, feedback, feature requests, bug reports, or any other communication, you can reach me at the following email address:
                                 </p>
                                 <div className="bg-secondary rounded-xl p-4 border border-white/5 mt-2">
                                     <p className="text-white font-medium">
@@ -300,19 +268,18 @@ export default function AboutContent() {
                                     </p>
                                 </div>
                                 <p className="mt-4">
-                                    Response times may vary depending on volume, but the team aims to respond to all inquiries within a reasonable timeframe. When reaching out, please be as specific as possible about your question or issue so the team can provide the most helpful response.
+                                    Response times may vary depending on volume, but I aim to respond to all inquiries within a reasonable timeframe. When reaching out, please be as specific as possible about your question or issue so I can provide the most helpful response.
                                 </p>
-                            </SectionBlock>
+                        </AccordionItem>
+                    </div>
 
-                            {/* TMDB Attribution */}
-                            <div className="bg-secondary rounded-2xl p-6 border border-white/5 mt-8">
-                                <p className="text-sm text-textSecondary">
-                                    This product uses the{" "}
-                                    <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" className="text-accent hover:underline">TMDB</a>{" "}
-                                    API but is not endorsed or certified by TMDB. All movie and TV data is provided by The Movie Database.
-                                </p>
-                            </div>
-                        </div>
+                    {/* TMDB Attribution */}
+                    <div className="bg-secondary rounded-2xl p-6 border border-white/5 mt-8">
+                        <p className="text-sm text-textSecondary">
+                            This product uses the{" "}
+                            <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" className="text-accent hover:underline">TMDB</a>{" "}
+                            API but is not endorsed or certified by TMDB. All movie and TV data is provided by The Movie Database.
+                        </p>
                     </div>
                 </div>
             </div>

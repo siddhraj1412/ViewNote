@@ -106,7 +106,7 @@ export const reviewService = {
                 throw error;
             }
 
-            return {
+            const result = {
                 id: data.id,
                 userId: user.uid,
                 username: user.username || "",
@@ -115,6 +115,10 @@ export const reviewService = {
                 text: trimmed,
                 createdAt: new Date(),
             };
+
+            eventBus.emit("REVIEW_COMMENT_UPDATED", { reviewDocId, action: "add" });
+
+            return result;
         } catch (error) {
             console.error("Error adding comment:", error);
             throw error;
@@ -165,6 +169,8 @@ export const reviewService = {
                 console.error("Error deleting comment:", error);
                 return false;
             }
+
+            eventBus.emit("REVIEW_COMMENT_UPDATED", { commentId, action: "delete" });
 
             return true;
         } catch (error) {
@@ -262,6 +268,8 @@ export const reviewService = {
                 .from("review_comments")
                 .delete()
                 .eq("reviewDocId", reviewDocId);
+
+            eventBus.emit("REVIEW_THREAD_DELETED", { reviewDocId });
 
             return { likesDeleted: likesCount || 0, commentsDeleted: commentsCount || 0 };
         } catch (error) {

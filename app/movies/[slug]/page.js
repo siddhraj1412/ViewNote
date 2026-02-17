@@ -14,7 +14,8 @@ import MediaSection from "@/components/MediaSection";
 import ReviewsForMedia from "@/components/ReviewsForMedia";
 import SectionTabs from "@/components/SectionTabs";
 import StreamingAvailability from "@/components/StreamingAvailability";
-import { Calendar, Clock } from "lucide-react";
+import TmdbRatingBadge from "@/components/TmdbRatingBadge";
+import { Calendar, Clock, Globe, Film, DollarSign, Award } from "lucide-react";
 import ExpandableText from "@/components/ExpandableText";
 import { useAuth } from "@/context/AuthContext";
 import { useRatings } from "@/hooks/useRatings";
@@ -74,7 +75,7 @@ export default function MovieSlugPage() {
                 setMovie(data);
 
                 // Set page title for SEO
-                document.title = `${data.title} (${(data.release_date || '').split('-')[0]}) — ViewNote`;
+                document.title = `${data.title} (${(data.release_date || '').split('-')[0]}) - ViewNote`;
 
                 // Verify URL slug matches the movie title, redirect if not
                 const correctUrl = getMovieUrl(data);
@@ -264,13 +265,49 @@ export default function MovieSlugPage() {
                     <div className="lg:col-span-4 space-y-6">
                         <RatingDistribution mediaId={movieId} mediaType="movie" />
                         {movie.vote_average > 0 && (
-                            <div className="flex items-center gap-1.5 text-sm text-textSecondary">
-                                <span className="text-accent">★</span>
-                                <span className="font-semibold text-white tabular-nums">{Number(movie.vote_average).toFixed(1)}</span>
-                                <span>/ 10</span>
-                                <span className="text-xs opacity-60 ml-1">TMDB</span>
-                            </div>
+                            <TmdbRatingBadge value={movie.vote_average} />
                         )}
+
+                        {/* Movie Details / Metadata */}
+                        <div className="space-y-2 text-sm text-textSecondary">
+                            {(() => {
+                                const usRelease = movie.release_dates?.results?.find(r => r.iso_3166_1 === "US");
+                                const cert = usRelease?.release_dates?.find(d => d.certification)?.certification;
+                                if (!cert) return null;
+                                return (
+                                    <div className="flex items-center gap-2">
+                                        <Award size={14} className="text-accent shrink-0" />
+                                        <span className="font-medium text-white px-1.5 py-0.5 border border-white/20 rounded text-xs">{cert}</span>
+                                        <span className="text-xs opacity-60">Certification</span>
+                                    </div>
+                                );
+                            })()}
+                            {movie.runtime > 0 && (
+                                <div className="flex items-center gap-2">
+                                    <Clock size={14} className="text-accent shrink-0" />
+                                    <span>{Math.floor(movie.runtime / 60)}h {movie.runtime % 60}m</span>
+                                </div>
+                            )}
+                            {movie.original_language && (
+                                <div className="flex items-center gap-2">
+                                    <Globe size={14} className="text-accent shrink-0" />
+                                    <span>Original Language: {new Intl.DisplayNames(["en"], { type: "language" }).of(movie.original_language)}</span>
+                                </div>
+                            )}
+                            {movie.budget > 0 && (
+                                <div className="flex items-center gap-2">
+                                    <DollarSign size={14} className="text-accent shrink-0" />
+                                    <span>Budget: ${movie.budget.toLocaleString()}</span>
+                                </div>
+                            )}
+                            {movie.revenue > 0 && (
+                                <div className="flex items-center gap-2">
+                                    <DollarSign size={14} className="text-accent shrink-0" />
+                                    <span>Revenue: ${movie.revenue.toLocaleString()}</span>
+                                </div>
+                            )}
+                        </div>
+
                         <StreamingAvailability mediaType="movie" mediaId={movieId} />
                     </div>
 

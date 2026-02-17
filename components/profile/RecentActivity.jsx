@@ -261,7 +261,7 @@ export default function RecentActivity({ userId }) {
                             : "";
 
                     return (
-                        <Link key={item.id} href={url} className="group">
+                        <Link key={`${item.activityType}_${item.mediaType}_${item.id}`} href={url} className="group">
                             <div className="relative aspect-[2/3] rounded-xl overflow-hidden shadow-lg bg-secondary group-hover:shadow-xl group-hover:shadow-accent/10 transition-all">
                                 {posterUrl ? (
                                     <Image

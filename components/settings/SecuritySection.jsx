@@ -57,7 +57,7 @@ export default function SecuritySection() {
             setNewEmail("");
             setEmailPassword("");
         } catch (err) {
-            showToast.error(getFirebaseErrorMessage(err));
+            showToast.error(getAuthErrorMessage(err));
         } finally {
             setEmailLoading(false);
         }
@@ -86,7 +86,7 @@ export default function SecuritySection() {
             setNewPassword("");
             setConfirmPassword("");
         } catch (err) {
-            showToast.error(getFirebaseErrorMessage(err));
+            showToast.error(getAuthErrorMessage(err));
         } finally {
             setPasswordLoading(false);
         }
@@ -99,7 +99,7 @@ export default function SecuritySection() {
             await resendVerificationEmail();
             showToast.success("Verification email sent to " + user.email);
         } catch (err) {
-            showToast.error(getFirebaseErrorMessage(err));
+            showToast.error(getAuthErrorMessage(err));
         } finally {
             setVerifyLoading(false);
         }
@@ -111,7 +111,7 @@ export default function SecuritySection() {
             await resetPassword(user.email);
             showToast.success("Password reset email sent to " + user.email);
         } catch (err) {
-            showToast.error(getFirebaseErrorMessage(err));
+            showToast.error(getAuthErrorMessage(err));
         }
     };
 

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { loadingBar } from "@/lib/loadingBar";
 
 export default function LoadingBar() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
+    const router = useRouter();
     const isFirst = useRef(true);
 
     useEffect(() => {
@@ -20,7 +21,7 @@ export default function LoadingBar() {
         loadingBar.done();
     }, [pathname, searchParams]);
 
-    // Intercept link clicks to start the bar before navigation
+    // Intercept anchor clicks to start the bar before navigation
     useEffect(() => {
         const handleClick = (e) => {
             const anchor = e.target.closest("a[href]");
@@ -34,6 +35,35 @@ export default function LoadingBar() {
         document.addEventListener("click", handleClick);
         return () => document.removeEventListener("click", handleClick);
     }, [pathname]);
+
+    // Intercept programmatic navigation (router.push / router.replace)
+    useEffect(() => {
+        const origPush = router.push;
+        const origReplace = router.replace;
+
+        router.push = (...args) => {
+            const target = typeof args[0] === "string" ? args[0] : "";
+            if (target && target !== pathname) loadingBar.start();
+            return origPush.apply(router, args);
+        };
+        router.replace = (...args) => {
+            const target = typeof args[0] === "string" ? args[0] : "";
+            if (target && target !== pathname) loadingBar.start();
+            return origReplace.apply(router, args);
+        };
+
+        return () => {
+            router.push = origPush;
+            router.replace = origReplace;
+        };
+    }, [router, pathname]);
+
+    // Listen for custom routeChangeStart events from any component
+    useEffect(() => {
+        const handler = () => loadingBar.start();
+        window.addEventListener("routeChangeStart", handler);
+        return () => window.removeEventListener("routeChangeStart", handler);
+    }, []);
 
     return null;
 }
