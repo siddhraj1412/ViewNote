@@ -1,5 +1,4 @@
-import { db } from "@/lib/firebase";
-import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { useStore } from "@/store/useStore";
 import showToast from "@/lib/toast";
 
@@ -56,21 +55,22 @@ export const customizationService = {
         store.startOptimisticUpdate(key, { customPoster: posterPath });
 
         try {
-            const prefRef = doc(db, "user_media_preferences", `${userId}_${mediaType}_${mediaId}`);
+            const prefId = `${userId}_${mediaType}_${mediaId}`;
 
             // Retry with exponential backoff
             await retryWithBackoff(async () => {
-                await setDoc(
-                    prefRef,
-                    {
+                const { error } = await supabase
+                    .from("user_media_preferences")
+                    .upsert({
+                        id: prefId,
                         userId,
                         mediaId,
                         mediaType,
                         customPoster: posterPath,
                         updatedAt: new Date().toISOString(),
-                    },
-                    { merge: true }
-                );
+                    }, { onConflict: 'id' });
+
+                if (error) throw error;
             });
 
             store.completeOptimisticUpdate(key);
@@ -109,21 +109,22 @@ export const customizationService = {
         store.startOptimisticUpdate(key, { customBanner: bannerPath });
 
         try {
-            const prefRef = doc(db, "user_media_preferences", `${userId}_${mediaType}_${mediaId}`);
+            const prefId = `${userId}_${mediaType}_${mediaId}`;
 
             // Retry with exponential backoff
             await retryWithBackoff(async () => {
-                await setDoc(
-                    prefRef,
-                    {
+                const { error } = await supabase
+                    .from("user_media_preferences")
+                    .upsert({
+                        id: prefId,
                         userId,
                         mediaId,
                         mediaType,
                         customBanner: bannerPath,
                         updatedAt: new Date().toISOString(),
-                    },
-                    { merge: true }
-                );
+                    }, { onConflict: 'id' });
+
+                if (error) throw error;
             });
 
             store.completeOptimisticUpdate(key);
@@ -148,21 +149,25 @@ export const customizationService = {
     },
 
     /**
-     * Get customization from Firestore with retry
+     * Get customization from Supabase with retry
      */
     async getCustomization(userId, mediaId, mediaType) {
         try {
-            const prefRef = doc(db, "user_media_preferences", `${userId}_${mediaType}_${mediaId}`);
+            const prefId = `${userId}_${mediaType}_${mediaId}`;
 
-            const prefDoc = await retryWithBackoff(async () => {
-                return await getDoc(prefRef);
+            const result = await retryWithBackoff(async () => {
+                const { data, error } = await supabase
+                    .from("user_media_preferences")
+                    .select('*')
+                    .eq('id', prefId)
+                    .single();
+
+                if (error && error.code === 'PGRST116') return null; // Not found
+                if (error) throw error;
+                return data;
             });
 
-            if (prefDoc.exists()) {
-                return prefDoc.data();
-            }
-
-            return null;
+            return result || null;
         } catch (error) {
             console.error("Error fetching customization:", error);
             return null;
@@ -186,18 +191,19 @@ export const customizationService = {
         store.startOptimisticUpdate(key, updatedData);
 
         try {
-            const prefRef = doc(db, "user_media_preferences", `${userId}_${mediaType}_${mediaId}`);
+            const prefId = `${userId}_${mediaType}_${mediaId}`;
 
             // Retry with exponential backoff
             await retryWithBackoff(async () => {
-                await setDoc(
-                    prefRef,
-                    {
+                const { error } = await supabase
+                    .from("user_media_preferences")
+                    .upsert({
+                        id: prefId,
                         [field]: null,
                         updatedAt: new Date().toISOString(),
-                    },
-                    { merge: true }
-                );
+                    }, { onConflict: 'id' });
+
+                if (error) throw error;
             });
 
             store.completeOptimisticUpdate(key);

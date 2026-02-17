@@ -3,20 +3,21 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, setDoc, collection, getDocs, query, where, deleteDoc, writeBatch } from "firebase/firestore";
-import { User, FileText, Film, Tv, Play, Palette, Trash2, AlertTriangle, Camera, LogOut, Image as ImageIcon, ChevronRight, Pencil, Download } from "lucide-react";
+import supabase from "@/lib/supabase";
+import { User, FileText, Film, Tv, Play, Palette, Trash2, AlertTriangle, Camera, LogOut, Image as ImageIcon, ChevronRight, Pencil, Download, Shield } from "lucide-react";
 import LetterboxdImportSection from "@/components/settings/LetterboxdImportSection";
 import showToast from "@/lib/toast";
 import FavoritesEditDialog from "@/components/settings/FavoritesEditDialog";
 import FavoriteEpisodesDialog from "@/components/settings/FavoriteEpisodesDialog";
 import BannerSelectionModal from "@/components/settings/BannerSelectionModal";
 import DeleteAccountModal from "@/components/settings/DeleteAccountModal";
+import SecuritySection from "@/components/settings/SecuritySection";
+import SocialLinksEditor from "@/components/settings/SocialLinksEditor";
 import AvatarUploadModal from "@/components/AvatarUploadModal";
 import eventBus from "@/lib/eventBus";
 
 export default function SettingsPage() {
-    const { user, loading: authLoading, logout, deleteAccount, getFirebaseErrorMessage } = useAuth();
+    const { user, loading: authLoading, logout, deleteAccount, getAuthErrorMessage } = useAuth();
     const router = useRouter();
     const [profile, setProfile] = useState({
         profile_picture_url: "",
@@ -46,22 +47,25 @@ export default function SettingsPage() {
     }, [user, authLoading, router]);
 
     useEffect(() => {
-        if (user) {
+        if (!authLoading && user) {
             loadProfile();
             loadFavorites();
         }
-    }, [user]);
+    }, [user, authLoading]);
 
 
 
     const loadProfile = async () => {
         setLoading(true);
         try {
-            const profileRef = doc(db, "user_profiles", user.uid);
-            const profileSnap = await getDoc(profileRef);
+            const { data, error } = await supabase
+                .from("profiles")
+                .select("*")
+                .eq("id", user.uid)
+                .single();
 
-            if (profileSnap.exists()) {
-                setProfile(profileSnap.data());
+            if (!error && data) {
+                setProfile(data);
             }
         } catch (error) {
             console.error("Error loading profile:", error);
@@ -73,21 +77,20 @@ export default function SettingsPage() {
 
     const loadFavorites = async () => {
         try {
-            const [moviesSnap, showsSnap, episodesSnap] = await Promise.all([
-                getDocs(query(collection(db, "favorites_movies"), where("userId", "==", user.uid))),
-                getDocs(query(collection(db, "favorites_shows"), where("userId", "==", user.uid))),
-                getDocs(query(collection(db, "favorites_episodes"), where("userId", "==", user.uid))),
+            const [moviesRes, showsRes, episodesRes] = await Promise.all([
+                supabase.from("favorites").select("*").eq("userId", user.uid).eq("category", "movies"),
+                supabase.from("favorites").select("*").eq("userId", user.uid).eq("category", "shows"),
+                supabase.from("favorites").select("*").eq("userId", user.uid).eq("category", "episodes"),
             ]);
 
-            const moviesData = moviesSnap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
+            const moviesData = (moviesRes.data || [])
                 .sort((a, b) => (a.order || 0) - (b.order || 0));
-            const showsData = showsSnap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
+            const showsData = (showsRes.data || [])
                 .sort((a, b) => (a.order || 0) - (b.order || 0));
-            const episodesData = episodesSnap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => (a.order || 0) - (b.order || 0));
+            // Spread episode metadata back into the objects for FavoriteEpisodesDialog
+            const episodesData = (episodesRes.data || [])
+                .sort((a, b) => (a.order || 0) - (b.order || 0))
+                .map((ep) => ({ ...ep, ...(ep.metadata || {}) }));
 
             setFavMovies(moviesData);
             setFavShows(showsData);
@@ -100,8 +103,7 @@ export default function SettingsPage() {
     const saveProfile = async (updates) => {
         setSaving(true);
         try {
-            const profileRef = doc(db, "user_profiles", user.uid);
-            await setDoc(profileRef, { ...profile, ...updates, userId: user.uid }, { merge: true });
+            await supabase.from("profiles").upsert({ id: user.uid, ...profile, ...updates, userId: user.uid });
 
             setProfile((prev) => ({ ...prev, ...updates }));
 
@@ -130,46 +132,49 @@ export default function SettingsPage() {
         saveProfile({ profile_banner_url: bannerUrl });
     };
 
-    // Save favorites to Firebase
+    // Save favorites to Supabase
     const saveFavorites = useCallback(async (type, items) => {
-        const collectionName = type === "movie" ? "favorites_movies" : type === "episode" ? "favorites_episodes" : "favorites_shows";
+        const category = type === "movie" ? "movies" : type === "episode" ? "episodes" : "shows";
 
         try {
             // Delete all existing
-            const existingSnap = await getDocs(
-                query(collection(db, collectionName), where("userId", "==", user.uid))
-            );
-
-            const batch = writeBatch(db);
-            existingSnap.docs.forEach((d) => {
-                batch.delete(d.ref);
-            });
+            await supabase
+                .from("favorites")
+                .delete()
+                .eq("userId", user.uid)
+                .eq("category", category);
 
             // Add new ones with order
-            items.forEach((item, index) => {
-                const docRef = doc(db, collectionName, `${user.uid}_${item.mediaId}`);
-                batch.set(docRef, {
-                    userId: user.uid,
-                    mediaId: item.mediaId,
-                    mediaType: item.mediaType || type,
-                    title: item.title,
-                    poster_path: item.poster_path || null,
-                    ...(item.release_date ? { release_date: item.release_date } : {}),
-                    ...(item.air_date ? { air_date: item.air_date } : {}),
-                    ...(type === "episode" ? {
-                        seriesId: item.seriesId || null,
-                        seasonNumber: item.seasonNumber || null,
-                        episodeNumber: item.episodeNumber || null,
-                        episodeName: item.episodeName || null,
-                        series_name: item.series_name || null,
-                        still_path: item.still_path || null,
-                    } : {}),
-                    order: index,
-                    createdAt: new Date().toISOString(),
+            if (items.length > 0) {
+                const rows = items.map((item, index) => {
+                    const row = {
+                        id: `${user.uid}_${item.mediaId}`,
+                        userId: user.uid,
+                        category,
+                        mediaId: String(item.mediaId),
+                        mediaType: item.mediaType || type,
+                        title: item.title,
+                        poster_path: item.poster_path || null,
+                        release_date: item.release_date || null,
+                        order: index,
+                        createdAt: new Date().toISOString(),
+                    };
+                    // Store episode-specific data in metadata JSONB column
+                    if (type === "episode") {
+                        row.metadata = {
+                            seriesId: item.seriesId || null,
+                            seasonNumber: item.seasonNumber || null,
+                            episodeNumber: item.episodeNumber || null,
+                            episodeName: item.episodeName || null,
+                            series_name: item.series_name || null,
+                            still_path: item.still_path || null,
+                            air_date: item.air_date || null,
+                        };
+                    }
+                    return row;
                 });
-            });
-
-            await batch.commit();
+                await supabase.from("favorites").upsert(rows);
+            }
 
             // Update local state
             if (type === "movie") {
@@ -206,7 +211,7 @@ export default function SettingsPage() {
         }
     };
 
-    if (authLoading || loading) {
+    if (authLoading || (!user && loading)) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="text-2xl text-textSecondary">Loading...</div>
@@ -308,6 +313,12 @@ export default function SettingsPage() {
                     </button>
                 </section>
 
+                {/* ─── Social & Location Section ─── */}
+                <section className="mb-10">
+                    <SectionLabel icon={User} title="Social & Location" />
+                    <SocialLinksEditor />
+                </section>
+
                 {/* ─── Favorites Section ─── */}
                 <section className="mb-10">
                     <SectionLabel icon={Film} title="Favorites" />
@@ -352,6 +363,12 @@ export default function SettingsPage() {
                         </div>
                         <LetterboxdImportSection />
                     </div>
+                </section>
+
+                {/* ─── Security Section ─── */}
+                <section className="mb-10">
+                    <SectionLabel icon={Shield} title="Security" />
+                    <SecuritySection />
                 </section>
 
                 {/* ─── Account Section ─── */}

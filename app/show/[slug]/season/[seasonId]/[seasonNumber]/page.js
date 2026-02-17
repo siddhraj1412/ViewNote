@@ -18,8 +18,7 @@ import SectionTabs from "@/components/SectionTabs";
 import { useMediaCustomization } from "@/hooks/useMediaCustomization";
 import ExpandableText from "@/components/ExpandableText";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { Eye, EyeOff, Star } from "lucide-react";
 import showToast from "@/lib/toast";
 
@@ -88,26 +87,44 @@ export default function SeasonPage() {
             setWatchedEpisodes(new Set());
             return;
         }
-        const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(tvId)}`);
-        const unsub = onSnapshot(progressRef, (snap) => {
-            if (snap.exists()) {
-                const data = snap.data() || {};
-                const epMap = data.watchedEpisodes || {};
-                const epList = Array.isArray(epMap[String(seasonNumber)]) ? epMap[String(seasonNumber)].map(Number) : [];
-                setWatchedEpisodes(new Set(epList));
-            } else {
+        const progressId = `${user.uid}_${Number(tvId)}`;
+        const fetchProgress = async () => {
+            const { data, error } = await supabase
+                .from("user_series_progress")
+                .select("*")
+                .eq("id", progressId)
+                .single();
+            if (error || !data) {
                 setWatchedEpisodes(new Set());
+                return;
             }
-        }, () => setWatchedEpisodes(new Set()));
-        return () => { try { unsub(); } catch (_) {} };
+            const epMap = data.watchedEpisodes || {};
+            const epList = Array.isArray(epMap[String(seasonNumber)]) ? epMap[String(seasonNumber)].map(Number) : [];
+            setWatchedEpisodes(new Set(epList));
+        };
+
+        fetchProgress();
+
+        const channel = supabase
+            .channel(`season-progress-${progressId}-${seasonNumber}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "user_series_progress", filter: `id=eq.${progressId}` }, () => {
+                fetchProgress();
+            })
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
     }, [user?.uid, tvId, seasonNumber]);
 
     const handleToggleEpisodeWatched = useCallback(async (epNum) => {
         if (!user) { showToast.info("Please sign in"); return; }
-        const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(tvId)}`);
+        const progressId = `${user.uid}_${Number(tvId)}`;
         try {
-            const snap = await getDoc(progressRef);
-            const data = snap.exists() ? snap.data() : {};
+            const { data: existing } = await supabase
+                .from("user_series_progress")
+                .select("*")
+                .eq("id", progressId)
+                .single();
+            const data = existing || {};
             const epMap = data.watchedEpisodes || {};
             const current = Array.isArray(epMap[String(seasonNumber)]) ? epMap[String(seasonNumber)].map(Number) : [];
             const currentSet = new Set(current);
@@ -128,12 +145,13 @@ export default function SeasonPage() {
             }
             // Do NOT delete season from watchedSeasons when an episode is unchecked
 
-            await setDoc(progressRef, {
+            await supabase.from("user_series_progress").upsert({
+                id: progressId,
                 watchedEpisodes: newEpMap,
                 watchedSeasons: Array.from(watchedSeasons),
                 userId: user.uid,
                 seriesId: Number(tvId),
-            }, { merge: true });
+            });
         } catch (err) {
             console.error("Error toggling episode watched:", err);
             showToast.error("Failed to update");
@@ -222,6 +240,7 @@ export default function SeasonPage() {
                             customizationMediaType="tv"
                             customizationPosterPath={season.poster_path || tv.poster_path}
                             posterTmdbEndpoint={`tv/${tvId}/season/${seasonNumber}/images`}
+                            customPoster={customPoster}
                         />
 
                         <Link

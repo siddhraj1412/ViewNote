@@ -1,16 +1,16 @@
-import { useState, useEffect } from "react";
+"use client";
+
+import { useState, useEffect, useRef } from "react";
 import { useStore } from "@/store/useStore";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 
 /**
  * Hook for media detail pages to get and subscribe to live customization updates.
  * Returns custom poster/banner if available, with live updates.
- * 
+ *
  * Cross-user visibility: When profileUserId is provided, fetches THAT user's
- * customizations (so user2 sees user1's custom poster). When omitted, uses
- * the current authenticated user.
+ * customizations. When omitted, uses the current authenticated user.
  */
 export function useMediaCustomization(mediaId, mediaType, defaultPoster, defaultBanner, profileUserId) {
     const { user } = useAuth();
@@ -19,104 +19,119 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
     const [customBanner, setCustomBanner] = useState(defaultBanner);
     const [loading, setLoading] = useState(true);
 
-    // The owner whose customizations we display
     const ownerId = profileUserId || user?.uid;
+
+    // Track defaults in refs so effect doesn't re-fire when they change
+    const defaultPosterRef = useRef(defaultPoster);
+    const defaultBannerRef = useRef(defaultBanner);
+    useEffect(() => {
+        defaultPosterRef.current = defaultPoster;
+        defaultBannerRef.current = defaultBanner;
+        // Sync state if no custom value was ever set
+        setCustomPoster((prev) => prev === defaultPosterRef.current || !prev ? defaultPoster : prev);
+        setCustomBanner((prev) => prev === defaultBannerRef.current || !prev ? defaultBanner : prev);
+    }, [defaultPoster, defaultBanner]);
 
     useEffect(() => {
         if (!ownerId || !mediaId) {
-            setCustomPoster(defaultPoster);
-            setCustomBanner(defaultBanner);
+            setCustomPoster(defaultPosterRef.current);
+            setCustomBanner(defaultBannerRef.current);
             setLoading(false);
             return;
         }
 
-        // Seed immediately (store or one-time fetch) while snapshot spins up.
+        const prefId = `${ownerId}_${mediaType}_${mediaId}`;
+        const dp = defaultPosterRef.current;
+        const db = defaultBannerRef.current;
+
+        // Initial fetch
+        const loadCustomization = async () => {
+            setLoading(true);
+            try {
+                // Check store first (for own profile)
+                if (user?.uid === ownerId) {
+                    const storeCustomization = store.getCustomization(mediaId, mediaType);
+                    if (storeCustomization) {
+                        setCustomPoster(storeCustomization.customPoster || dp);
+                        setCustomBanner(storeCustomization.customBanner || db);
+                        setLoading(false);
+                        return;
+                    }
+                }
+
+                const { data, error } = await supabase
+                    .from("user_media_preferences")
+                    .select("*")
+                    .eq("id", prefId)
+                    .single();
+
+                if (error && error.code !== "PGRST116") throw error;
+
+                if (data) {
+                    setCustomPoster(data.customPoster || dp);
+                    setCustomBanner(data.customBanner || db);
+                    if (user?.uid === ownerId) {
+                        store.setCustomization(mediaId, mediaType, {
+                            customPoster: data.customPoster,
+                            customBanner: data.customBanner,
+                        });
+                    }
+                } else {
+                    setCustomPoster(dp);
+                    setCustomBanner(db);
+                    if (user?.uid === ownerId) {
+                        store.setCustomization(mediaId, mediaType, { customPoster: null, customBanner: null });
+                    }
+                }
+            } catch (error) {
+                console.error("Customization load error:", error);
+                setCustomPoster(dp);
+                setCustomBanner(db);
+            } finally {
+                setLoading(false);
+            }
+        };
+
         loadCustomization();
 
-        const prefRef = doc(db, "user_media_preferences", `${ownerId}_${mediaType}_${mediaId}`);
-        const unsub = onSnapshot(prefRef, (snap) => {
-            if (snap.exists()) {
-                const data = snap.data() || {};
-                setCustomPoster(data.customPoster || defaultPoster);
-                setCustomBanner(data.customBanner || defaultBanner);
-
-                if (user?.uid === ownerId) {
-                    store.setCustomization(mediaId, mediaType, {
-                        customPoster: data.customPoster,
-                        customBanner: data.customBanner,
-                    });
+        // Realtime subscription
+        const channel = supabase
+            .channel(`prefs_${prefId}`)
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "user_media_preferences",
+                    filter: `id=eq.${prefId}`,
+                },
+                (payload) => {
+                    if (payload.eventType === "DELETE") {
+                        setCustomPoster(defaultPosterRef.current);
+                        setCustomBanner(defaultBannerRef.current);
+                        if (user?.uid === ownerId) {
+                            store.setCustomization(mediaId, mediaType, { customPoster: null, customBanner: null });
+                        }
+                    } else {
+                        const data = payload.new;
+                        setCustomPoster(data.customPoster || defaultPosterRef.current);
+                        setCustomBanner(data.customBanner || defaultBannerRef.current);
+                        if (user?.uid === ownerId) {
+                            store.setCustomization(mediaId, mediaType, {
+                                customPoster: data.customPoster,
+                                customBanner: data.customBanner,
+                            });
+                        }
+                    }
+                    setLoading(false);
                 }
-            } else {
-                setCustomPoster(defaultPoster);
-                setCustomBanner(defaultBanner);
-                if (user?.uid === ownerId) {
-                    store.setCustomization(mediaId, mediaType, {
-                        customPoster: null,
-                        customBanner: null,
-                    });
-                }
-            }
-            setLoading(false);
-        }, (error) => {
-            console.error("Customization snapshot error:", error);
-            setCustomPoster(defaultPoster);
-            setCustomBanner(defaultBanner);
-            setLoading(false);
-        });
+            )
+            .subscribe();
 
         return () => {
-            try { unsub(); } catch (_) {}
+            supabase.removeChannel(channel);
         };
-    }, [ownerId, mediaId, mediaType, defaultPoster, defaultBanner]);
+    }, [ownerId, mediaId, mediaType]);
 
-    const loadCustomization = async () => {
-        setLoading(true);
-
-        try {
-            // If viewing own profile, check store first
-            if (user?.uid === ownerId) {
-                const storeCustomization = store.getCustomization(mediaId, mediaType);
-                if (storeCustomization) {
-                    setCustomPoster(storeCustomization.customPoster || defaultPoster);
-                    setCustomBanner(storeCustomization.customBanner || defaultBanner);
-                    setLoading(false);
-                    return;
-                }
-            }
-
-            // Always fetch from Firestore using the OWNER's id
-            const prefRef = doc(db, "user_media_preferences", `${ownerId}_${mediaType}_${mediaId}`);
-            const prefSnap = await getDoc(prefRef);
-
-            if (prefSnap.exists()) {
-                const data = prefSnap.data();
-                setCustomPoster(data.customPoster || defaultPoster);
-                setCustomBanner(data.customBanner || defaultBanner);
-
-                // Cache in store only if the current user is the owner
-                if (user?.uid === ownerId) {
-                    store.setCustomization(mediaId, mediaType, {
-                        customPoster: data.customPoster,
-                        customBanner: data.customBanner,
-                    });
-                }
-            } else {
-                setCustomPoster(defaultPoster);
-                setCustomBanner(defaultBanner);
-            }
-        } catch (error) {
-            console.error("Error loading customization:", error);
-            setCustomPoster(defaultPoster);
-            setCustomBanner(defaultBanner);
-        } finally {
-            // Loading will also be ended by the snapshot; keep this as fallback.
-            setLoading(false);
-        }
-    };
-
-    return {
-        customPoster,
-        customBanner,
-        loading,
-    };
+    return { customPoster, customBanner, loading };
 }

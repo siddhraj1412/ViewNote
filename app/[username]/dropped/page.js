@@ -4,8 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { collection, getDocs, limit, orderBy, query, startAfter, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import supabase from "@/lib/supabase";
 import { tmdb } from "@/lib/tmdb";
 import { getMediaUrl } from "@/lib/slugify";
 
@@ -41,8 +40,8 @@ function sortItems(items, sortBy) {
     switch (sortBy) {
         case "oldest":
             return copy.sort((a, b) => {
-                const aT = a.droppedAt?.seconds || a.addedAt?.seconds || 0;
-                const bT = b.droppedAt?.seconds || b.addedAt?.seconds || 0;
+                const aT = new Date(a.droppedAt || a.addedAt || 0).getTime();
+                const bT = new Date(b.droppedAt || b.addedAt || 0).getTime();
                 return aT - bT;
             });
         case "a-z":
@@ -52,8 +51,8 @@ function sortItems(items, sortBy) {
         case "newest":
         default:
             return copy.sort((a, b) => {
-                const aT = a.droppedAt?.seconds || a.addedAt?.seconds || 0;
-                const bT = b.droppedAt?.seconds || b.addedAt?.seconds || 0;
+                const aT = new Date(a.droppedAt || a.addedAt || 0).getTime();
+                const bT = new Date(b.droppedAt || b.addedAt || 0).getTime();
                 return bT - aT;
             });
     }
@@ -72,7 +71,7 @@ export default function DroppedAllPage() {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const [cursorDoc, setCursorDoc] = useState(null);
+    const [offset, setOffset] = useState(0);
 
     useEffect(() => {
         let mounted = true;
@@ -93,20 +92,19 @@ export default function DroppedAllPage() {
         if (!userId) return;
         setLoading(true);
         try {
-            const q1 = query(
-                collection(db, "user_dropped"),
-                where("userId", "==", userId),
-                orderBy("droppedAt", "desc"),
-                limit(PAGE_SIZE)
-            );
-            const snap = await getDocs(q1);
-            const next = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const { data } = await supabase
+                .from("user_dropped")
+                .select("*")
+                .eq("userId", userId)
+                .order("droppedAt", { ascending: false })
+                .range(0, PAGE_SIZE - 1);
+            const next = data || [];
             setItems(next);
-            setCursorDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
-            setHasMore(snap.docs.length === PAGE_SIZE);
+            setOffset(next.length);
+            setHasMore(next.length === PAGE_SIZE);
         } catch {
             setItems([]);
-            setCursorDoc(null);
+            setOffset(0);
             setHasMore(false);
         } finally {
             setLoading(false);
@@ -119,27 +117,25 @@ export default function DroppedAllPage() {
     }, [uid, loadFirst]);
 
     const loadMore = useCallback(async () => {
-        if (!uid || !cursorDoc || loadingMore || !hasMore) return;
+        if (!uid || loadingMore || !hasMore) return;
         setLoadingMore(true);
         try {
-            const q2 = query(
-                collection(db, "user_dropped"),
-                where("userId", "==", uid),
-                orderBy("droppedAt", "desc"),
-                startAfter(cursorDoc),
-                limit(PAGE_SIZE)
-            );
-            const snap = await getDocs(q2);
-            const next = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const { data } = await supabase
+                .from("user_dropped")
+                .select("*")
+                .eq("userId", uid)
+                .order("droppedAt", { ascending: false })
+                .range(offset, offset + PAGE_SIZE - 1);
+            const next = data || [];
             setItems((prev) => [...prev, ...next]);
-            setCursorDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : cursorDoc);
-            setHasMore(snap.docs.length === PAGE_SIZE);
+            setOffset((prev) => prev + next.length);
+            setHasMore(next.length === PAGE_SIZE);
         } catch {
             setHasMore(false);
         } finally {
             setLoadingMore(false);
         }
-    }, [uid, cursorDoc, loadingMore, hasMore]);
+    }, [uid, offset, loadingMore, hasMore]);
 
     const backHref = useMemo(() => {
         return username ? `/${encodeURIComponent(username)}?tab=dropped` : "/";

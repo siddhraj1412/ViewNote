@@ -1,13 +1,6 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { createClient } from "@/lib/supabaseServer";
 
-/**
- * GET /api/users/[username]
- * 
- * Look up a user profile by username.
- * Returns public profile data (no sensitive fields).
- */
 export async function GET(request, { params }) {
     try {
         const { username } = await params;
@@ -20,35 +13,33 @@ export async function GET(request, { params }) {
         }
 
         const lowerUsername = username.toLowerCase();
+        const supabase = await createClient();
 
-        const q = query(
-            collection(db, "user_profiles"),
-            where("username_lowercase", "==", lowerUsername)
-        );
-        const snapshot = await getDocs(q);
+        const { data, error } = await supabase
+            .from("profiles")
+            .select("id, username, displayName, profile_picture_url, profile_banner_url, bio, createdAt")
+            .eq("username_lowercase", lowerUsername)
+            .single();
 
-        if (snapshot.empty) {
+        if (error && error.code === "PGRST116") {
             return NextResponse.json(
                 { error: "User not found" },
                 { status: 404 }
             );
         }
+        if (error) throw error;
 
-        const userDoc = snapshot.docs[0];
-        const userData = userDoc.data();
-
-        // Return public profile data only
         return NextResponse.json({
-            uid: userDoc.id,
-            username: userData.username || userData.displayName,
-            displayName: userData.displayName,
-            profile_picture_url: userData.profile_picture_url || null,
-            profile_banner_url: userData.profile_banner_url || null,
-            bio: userData.bio || null,
-            createdAt: userData.createdAt || null,
+            uid: data.id,
+            username: data.username || data.displayName,
+            displayName: data.displayName,
+            profile_picture_url: data.profile_picture_url || null,
+            profile_banner_url: data.profile_banner_url || null,
+            bio: data.bio || null,
+            createdAt: data.createdAt || null,
         });
     } catch (error) {
-        console.error("Error looking up user:", error);
+        console.error("Error fetching user:", error);
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }

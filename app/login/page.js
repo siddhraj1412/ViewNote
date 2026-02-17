@@ -14,7 +14,7 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
-    const { signIn, signInWithGoogle, getFirebaseErrorMessage } = useAuth();
+    const { signIn, signInWithGoogle, getAuthErrorMessage } = useAuth();
     const router = useRouter();
 
     const handleEmailLogin = async (e) => {
@@ -25,7 +25,7 @@ export default function LoginPage() {
             await signIn(email, password);
             router.replace("/");
         } catch (err) {
-            setError(getFirebaseErrorMessage(err));
+            setError(getAuthErrorMessage(err));
         } finally {
             setLoading(false);
         }
@@ -42,7 +42,7 @@ export default function LoginPage() {
                 router.replace("/");
             }
         } catch (err) {
-            setError(getFirebaseErrorMessage(err));
+            setError(getAuthErrorMessage(err));
         } finally {
             setGoogleLoading(false);
         }

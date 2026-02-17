@@ -100,8 +100,8 @@ export default function WatchedSection({ userId }) {
                             {item.title || item.name}
                         </h3>
                         <p className="text-xs text-textSecondary">
-                            {item.addedAt?.seconds
-                                ? new Date(item.addedAt.seconds * 1000).toLocaleDateString()
+                            {item.addedAt
+                                ? new Date(item.addedAt).toLocaleDateString()
                                 : "Watched"}
                         </p>
                     </div>

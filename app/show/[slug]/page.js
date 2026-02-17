@@ -21,8 +21,7 @@ import ExpandableText from "@/components/ExpandableText";
 import { useAuth } from "@/context/AuthContext";
 import { useMediaCustomization } from "@/hooks/useMediaCustomization";
 import { parseSlugId, getMovieUrl, getShowUrl } from "@/lib/slugify";
-import { db } from "@/lib/firebase";
-import { collection, doc, getDoc, onSnapshot, query, setDoc, where } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import showToast from "@/lib/toast";
 
 const RatingModal = dynamic(() => import("@/components/RatingModal"), { ssr: false, loading: () => null });
@@ -45,6 +44,8 @@ export default function ShowSlugPage() {
 
     // Season watch tracking
     const [watchedSeasons, setWatchedSeasons] = useState(new Set());
+    // Season-level user ratings map { seasonNum: rating }
+    const [seasonRatingsMap, setSeasonRatingsMap] = useState({});
     // Quick rate state
     const [quickRateOpen, setQuickRateOpen] = useState(false);
     const [quickRateSeasonNum, setQuickRateSeasonNum] = useState(null);
@@ -64,6 +65,19 @@ export default function ShowSlugPage() {
             setLoading(false);
             return;
         }
+
+        // Reset state when navigating between shows (React reuses component instance)
+        setTv(null);
+        setStronglyRelated([]);
+        setSimilarFilter("all");
+        setMediaImages({ posters: [], backdrops: [] });
+        setActiveTab("seasons");
+        setAggregatedRating(0);
+        setWatchedSeasons(new Set());
+        setSeasonRatingsMap({});
+        setQuickRateOpen(false);
+        setQuickRateSeasonNum(null);
+        setError(null);
 
         const fetchTV = async () => {
             try {
@@ -112,18 +126,18 @@ export default function ShowSlugPage() {
             return;
         }
 
-        const q = query(
-            collection(db, "user_ratings"),
-            where("userId", "==", user.uid),
-            where("mediaType", "==", "tv"),
-            where("seriesId", "==", Number(tvId))
-        );
-
-        const unsub = onSnapshot(q, (snap) => {
-            const ratings = snap.docs
-                .map((d) => d.data() || {})
+        const processRatings = (rows) => {
+            const ratings = rows
                 .filter((r) => (r.targetType === "season" || r.targetType === "episode"))
                 .filter((r) => Number(r.rating || 0) > 0);
+
+            const sMap = {};
+            rows.forEach((r) => {
+                if (r.targetType === "season" && Number(r.rating || 0) > 0 && r.seasonNumber != null) {
+                    sMap[Number(r.seasonNumber)] = Number(r.rating);
+                }
+            });
+            setSeasonRatingsMap(sMap);
 
             if (ratings.length === 0) {
                 setAggregatedRating(0);
@@ -157,12 +171,29 @@ export default function ShowSlugPage() {
 
             const avg = weightSum > 0 ? (sum / weightSum) : 0;
             setAggregatedRating(Number.isFinite(avg) ? avg : 0);
-        }, () => {
-            setAggregatedRating(0);
-        });
+        };
+
+        const fetchRatings = async () => {
+            const { data } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", user.uid)
+                .eq("mediaType", "tv")
+                .eq("seriesId", Number(tvId));
+            processRatings(data || []);
+        };
+
+        fetchRatings();
+
+        const channel = supabase
+            .channel(`show-ratings-${user.uid}-${tvId}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "user_ratings", filter: `userId=eq.${user.uid}` }, () => {
+                fetchRatings();
+            })
+            .subscribe();
 
         return () => {
-            try { unsub(); } catch (_) {}
+            supabase.removeChannel(channel);
         };
     }, [user?.uid, tvId, tv]);
 
@@ -172,25 +203,43 @@ export default function ShowSlugPage() {
             setWatchedSeasons(new Set());
             return;
         }
-        const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(tvId)}`);
-        const unsub = onSnapshot(progressRef, (snap) => {
-            if (snap.exists()) {
-                const data = snap.data() || {};
-                const ws = Array.isArray(data.watchedSeasons) ? new Set(data.watchedSeasons.map(Number)) : new Set();
-                setWatchedSeasons(ws);
-            } else {
+        const progressId = `${user.uid}_${Number(tvId)}`;
+        const fetchProgress = async () => {
+            const { data, error } = await supabase
+                .from("user_series_progress")
+                .select("*")
+                .eq("id", progressId)
+                .single();
+            if (error || !data) {
                 setWatchedSeasons(new Set());
+                return;
             }
-        }, () => setWatchedSeasons(new Set()));
-        return () => { try { unsub(); } catch (_) {} };
+            const ws = Array.isArray(data.watchedSeasons) ? new Set(data.watchedSeasons.map(Number)) : new Set();
+            setWatchedSeasons(ws);
+        };
+
+        fetchProgress();
+
+        const channel = supabase
+            .channel(`progress-${progressId}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "user_series_progress", filter: `id=eq.${progressId}` }, () => {
+                fetchProgress();
+            })
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
     }, [user?.uid, tvId]);
 
     const handleToggleSeasonWatched = useCallback(async (seasonNum) => {
         if (!user) { showToast.info("Please sign in"); return; }
-        const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(tvId)}`);
+        const progressId = `${user.uid}_${Number(tvId)}`;
         try {
-            const snap = await getDoc(progressRef);
-            const data = snap.exists() ? snap.data() : {};
+            const { data: existing } = await supabase
+                .from("user_series_progress")
+                .select("*")
+                .eq("id", progressId)
+                .single();
+            const data = existing || {};
             const current = Array.isArray(data.watchedSeasons) ? data.watchedSeasons.map(Number) : [];
             const currentSet = new Set(current);
             const existingEpMap = data.watchedEpisodes && typeof data.watchedEpisodes === "object" ? { ...data.watchedEpisodes } : {};
@@ -209,7 +258,7 @@ export default function ShowSlugPage() {
                 }
                 showToast.success(`Season ${seasonNum} marked as watched`);
             }
-            await setDoc(progressRef, { watchedSeasons: Array.from(currentSet), watchedEpisodes: existingEpMap, userId: user.uid, seriesId: Number(tvId) }, { merge: true });
+            await supabase.from("user_series_progress").upsert({ id: progressId, watchedSeasons: Array.from(currentSet), watchedEpisodes: existingEpMap, userId: user.uid, seriesId: Number(tvId) });
         } catch (err) {
             console.error("Error toggling season watched:", err);
             showToast.error("Failed to update");
@@ -379,6 +428,8 @@ export default function ShowSlugPage() {
                                         .filter((s) => s?.season_number != null)
                                         .map((s) => [String(s.season_number), Number(s.episode_count || 0)])
                                 )}
+                                customPoster={customPoster}
+                                customBanner={customBanner}
                             />
                         </div>
                     </div>
@@ -431,6 +482,7 @@ export default function ShowSlugPage() {
                                                     isWatched={watchedSeasons.has(Number(s.season_number))}
                                                     onToggleWatched={user ? handleToggleSeasonWatched : undefined}
                                                     onQuickRate={user ? handleQuickRateSeason : undefined}
+                                                    userRating={seasonRatingsMap[Number(s.season_number)] || 0}
                                                 />
                                             ))}
                                         </div>
@@ -509,11 +561,6 @@ export default function ShowSlugPage() {
                                                                 fill
                                                                 className="object-cover"
                                                             />
-                                                            {related.similarityScore && (
-                                                                <div className="absolute top-2 right-2 bg-accent text-background px-2 py-1 rounded text-xs font-bold">
-                                                                    {related.similarityScore}%
-                                                                </div>
-                                                            )}
                                                         </div>
                                                         <h3 className="font-medium text-sm line-clamp-2">{relatedTitle}</h3>
                                                     </Link>

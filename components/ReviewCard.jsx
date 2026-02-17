@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { Heart, MessageSquare, EyeOff } from "lucide-react";
 import StarRating from "@/components/StarRating";
 import { reviewService } from "@/services/reviewService";
@@ -37,20 +36,43 @@ export default function ReviewCard({ review, href = null, showPoster = true, sho
     useEffect(() => {
         if (!reviewId) return;
 
-        const likesQ = query(collection(db, "review_likes"), where("reviewDocId", "==", reviewId));
-        const commentsQ = query(collection(db, "review_comments"), where("reviewDocId", "==", reviewId));
+        // Initial fetch
+        const fetchCounts = async () => {
+            try {
+                const { count: likesCount } = await supabase
+                    .from("review_likes")
+                    .select("*", { count: "exact", head: true })
+                    .eq("reviewDocId", reviewId);
+                setLikeCount(likesCount || 0);
+            } catch { setLikeCount(0); }
+            try {
+                const { count: commentsCount } = await supabase
+                    .from("review_comments")
+                    .select("*", { count: "exact", head: true })
+                    .eq("reviewDocId", reviewId);
+                setCommentCount(commentsCount || 0);
+            } catch { setCommentCount(0); }
+        };
+        fetchCounts();
 
-        const unsubLikes = onSnapshot(likesQ, (snap) => {
-            setLikeCount(snap.size);
-        }, () => setLikeCount(0));
+        // Realtime subscriptions
+        const likesChannel = supabase
+            .channel(`review_likes_${reviewId}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "review_likes", filter: `reviewDocId=eq.${reviewId}` }, () => {
+                fetchCounts();
+            })
+            .subscribe();
 
-        const unsubComments = onSnapshot(commentsQ, (snap) => {
-            setCommentCount(snap.size);
-        }, () => setCommentCount(0));
+        const commentsChannel = supabase
+            .channel(`review_comments_${reviewId}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "review_comments", filter: `reviewDocId=eq.${reviewId}` }, () => {
+                fetchCounts();
+            })
+            .subscribe();
 
         return () => {
-            try { unsubLikes(); } catch (_) {}
-            try { unsubComments(); } catch (_) {}
+            supabase.removeChannel(likesChannel);
+            supabase.removeChannel(commentsChannel);
         };
     }, [reviewId]);
 

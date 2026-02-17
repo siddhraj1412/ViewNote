@@ -4,8 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { collection, getDocs, limit, orderBy, query, startAfter, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import supabase from "@/lib/supabase";
 import { tmdb } from "@/lib/tmdb";
 import { getMediaUrl } from "@/lib/slugify";
 import { Heart } from "lucide-react";
@@ -44,7 +43,7 @@ export default function LikesAllPage() {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const [cursorDoc, setCursorDoc] = useState(null);
+    const [offset, setOffset] = useState(0);
 
     useEffect(() => {
         let mounted = true;
@@ -65,23 +64,25 @@ export default function LikesAllPage() {
         if (!userId) return;
         setLoading(true);
         try {
-            const constraints = [
-                where("userId", "==", userId),
-                where("liked", "==", true),
-            ];
+            let q = supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", userId)
+                .eq("liked", true);
             if (mediaFilter && mediaFilter !== "all") {
-                constraints.push(where("mediaType", "==", mediaFilter));
+                q = q.eq("mediaType", mediaFilter);
             }
-            constraints.push(orderBy("ratedAt", "desc"), limit(PAGE_SIZE));
-            const q1 = query(collection(db, "user_ratings"), ...constraints);
-            const snap = await getDocs(q1);
-            const next = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const { data, error } = await q
+                .order("ratedAt", { ascending: false })
+                .range(0, PAGE_SIZE - 1);
+            if (error) throw error;
+            const next = data || [];
             setItems(next);
-            setCursorDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
-            setHasMore(snap.docs.length === PAGE_SIZE);
+            setOffset(next.length);
+            setHasMore(next.length === PAGE_SIZE);
         } catch {
             setItems([]);
-            setCursorDoc(null);
+            setOffset(0);
             setHasMore(false);
         } finally {
             setLoading(false);
@@ -94,29 +95,31 @@ export default function LikesAllPage() {
     }, [uid, filter, loadFirst]);
 
     const loadMore = useCallback(async () => {
-        if (!uid || !cursorDoc || loadingMore || !hasMore) return;
+        if (!uid || loadingMore || !hasMore) return;
         setLoadingMore(true);
         try {
-            const constraints = [
-                where("userId", "==", uid),
-                where("liked", "==", true),
-            ];
+            let q = supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", uid)
+                .eq("liked", true);
             if (filter && filter !== "all") {
-                constraints.push(where("mediaType", "==", filter));
+                q = q.eq("mediaType", filter);
             }
-            constraints.push(orderBy("ratedAt", "desc"), startAfter(cursorDoc), limit(PAGE_SIZE));
-            const q2 = query(collection(db, "user_ratings"), ...constraints);
-            const snap = await getDocs(q2);
-            const next = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const { data, error } = await q
+                .order("ratedAt", { ascending: false })
+                .range(offset, offset + PAGE_SIZE - 1);
+            if (error) throw error;
+            const next = data || [];
             setItems((prev) => [...prev, ...next]);
-            setCursorDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : cursorDoc);
-            setHasMore(snap.docs.length === PAGE_SIZE);
+            setOffset((prev) => prev + next.length);
+            setHasMore(next.length === PAGE_SIZE);
         } catch {
             setHasMore(false);
         } finally {
             setLoadingMore(false);
         }
-    }, [uid, cursorDoc, loadingMore, hasMore, filter]);
+    }, [uid, offset, loadingMore, hasMore, filter]);
 
     const backHref = useMemo(() => {
         return username ? `/${encodeURIComponent(username)}?tab=likes` : "/";
@@ -127,8 +130,8 @@ export default function LikesAllPage() {
         switch (sortBy) {
             case "oldest":
                 return copy.sort((a, b) => {
-                    const aT = a.ratedAt?.seconds || 0;
-                    const bT = b.ratedAt?.seconds || 0;
+                    const aT = a.ratedAt ? new Date(a.ratedAt).getTime() : 0;
+                    const bT = b.ratedAt ? new Date(b.ratedAt).getTime() : 0;
                     return aT - bT;
                 });
             case "a-z":

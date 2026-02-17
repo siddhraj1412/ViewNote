@@ -5,12 +5,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { tmdb } from "@/lib/tmdb";
 import { getMediaUrl, getEpisodeUrl } from "@/lib/slugify";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, limit, orderBy } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import eventBus from "@/lib/eventBus";
-import { Clock, Eye, Bookmark, Pause, XCircle, Star, RotateCcw, Film, Tv, Layers } from "lucide-react";
+import { Clock, Eye, Bookmark, Pause, XCircle, Star, Film, Tv } from "lucide-react";
 
-const ACTIVITY_LIMIT = 6; // 3×2 grid
+const ACTIVITY_LIMIT = 6; // 6 × 1 row
 
 const ACTIVITY_SOURCES = [
     { collection: "user_watched", timestampField: "addedAt", label: "Watched", icon: Eye, color: "text-green-400" },
@@ -20,40 +19,75 @@ const ACTIVITY_SOURCES = [
     { collection: "user_dropped", timestampField: "droppedAt", label: "Dropped", icon: XCircle, color: "text-red-400" },
 ];
 
+/**
+ * Fetch season poster from TMDB for season-level ratings.
+ * Returns poster path string or null.
+ */
+async function fetchSeasonPoster(seriesId, seasonNumber) {
+    if (!seriesId || seasonNumber == null) return null;
+    try {
+        const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
+        const res = await fetch(
+            `https://api.themoviedb.org/3/tv/${seriesId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}`
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.poster_path || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Fetch episode still from TMDB for episode-level ratings.
+ */
+async function fetchEpisodeStill(seriesId, seasonNumber, episodeNumber) {
+    if (!seriesId || seasonNumber == null || episodeNumber == null) return null;
+    try {
+        const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
+        const res = await fetch(
+            `https://api.themoviedb.org/3/tv/${seriesId}/season/${seasonNumber}/episode/${episodeNumber}?api_key=${TMDB_API_KEY}`
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        return {
+            still_path: data.still_path || null,
+            name: data.name || null,
+            poster_path: null, // episodes don't have poster_path, use season's
+        };
+    } catch {
+        return null;
+    }
+}
+
 export default function RecentActivity({ userId }) {
     const [activities, setActivities] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const fetchActivity = useCallback(async () => {
-        if (!userId) { setLoading(false); return; }
+        if (!userId) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const promises = ACTIVITY_SOURCES.map(async (source) => {
                 try {
-                    let snap;
-                    try {
-                        const q = query(
-                            collection(db, source.collection),
-                            where("userId", "==", userId),
-                            orderBy(source.timestampField, "desc"),
-                            limit(ACTIVITY_LIMIT)
-                        );
-                        snap = await getDocs(q);
-                    } catch {
-                        // Fallback without orderBy if index missing
-                        const q = query(
-                            collection(db, source.collection),
-                            where("userId", "==", userId),
-                            limit(50)
-                        );
-                        snap = await getDocs(q);
-                    }
-                    return snap.docs.map((d) => {
-                        const data = d.data();
-                        const ts = data[source.timestampField]?.seconds || data.createdAt?.seconds || 0;
+                    const { data } = await supabase
+                        .from(source.collection)
+                        .select("*")
+                        .eq("userId", userId)
+                        .order(source.timestampField, { ascending: false })
+                        .limit(ACTIVITY_LIMIT);
+
+                    return (data || []).map((row) => {
+                        const ts = row[source.timestampField]
+                            ? Math.floor(new Date(row[source.timestampField]).getTime() / 1000)
+                            : row.createdAt
+                                ? Math.floor(new Date(row.createdAt).getTime() / 1000)
+                                : 0;
                         return {
-                            id: d.id,
-                            ...data,
+                            ...row,
                             activityType: source.label,
                             activityIcon: source.icon,
                             activityColor: source.color,
@@ -68,20 +102,52 @@ export default function RecentActivity({ userId }) {
             const results = await Promise.all(promises);
             const allItems = results.flat();
 
-            // Sort by timestamp descending and deduplicate by mediaId+mediaType (keep most recent)
+            // Sort by timestamp descending and deduplicate
             allItems.sort((a, b) => b.timestamp - a.timestamp);
             const seen = new Set();
             const unique = [];
             for (const item of allItems) {
-                const key = `${item.mediaType}_${item.mediaId}`;
-                if (!seen.has(key)) {
-                    seen.add(key);
+                // For ratings, use scoped key (series vs season vs episode)
+                const scopeKey = item.tvTargetType
+                    ? `${item.mediaType}_${item.mediaId}_${item.tvTargetType}_${item.tvSeasonNumber || ""}_${item.tvEpisodeNumber || ""}`
+                    : `${item.mediaType}_${item.mediaId}`;
+                if (!seen.has(scopeKey)) {
+                    seen.add(scopeKey);
                     unique.push(item);
                 }
                 if (unique.length >= ACTIVITY_LIMIT) break;
             }
 
-            setActivities(unique);
+            // Enrich season/episode items with posters from TMDB
+            const enriched = await Promise.all(
+                unique.map(async (item) => {
+                    const isSeason = item.tvTargetType === "season" && item.tvSeasonNumber != null;
+                    const isEpisode = item.tvTargetType === "episode" && item.tvSeasonNumber != null && item.tvEpisodeNumber != null;
+                    const seriesId = item.seriesId || item.mediaId;
+
+                    if (isSeason && !item._seasonPoster) {
+                        const posterPath = await fetchSeasonPoster(seriesId, item.tvSeasonNumber);
+                        if (posterPath) {
+                            return { ...item, _seasonPoster: posterPath };
+                        }
+                    }
+                    if (isEpisode && !item._episodeStill) {
+                        const [epData, seasonPoster] = await Promise.all([
+                            fetchEpisodeStill(seriesId, item.tvSeasonNumber, item.tvEpisodeNumber),
+                            fetchSeasonPoster(seriesId, item.tvSeasonNumber),
+                        ]);
+                        return {
+                            ...item,
+                            _episodeStill: epData?.still_path || null,
+                            _episodeName: epData?.name || null,
+                            _seasonPoster: seasonPoster || null,
+                        };
+                    }
+                    return item;
+                })
+            );
+
+            setActivities(enriched);
         } catch (error) {
             console.error("Error fetching recent activity:", error);
         } finally {
@@ -107,7 +173,7 @@ export default function RecentActivity({ userId }) {
         return (
             <div>
                 <h3 className="text-lg font-bold mb-4">Recent Activity</h3>
-                <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-6 gap-3">
                     {Array.from({ length: 6 }).map((_, i) => (
                         <div key={i} className="aspect-[2/3] rounded-xl bg-secondary animate-pulse" />
                     ))}
@@ -142,12 +208,14 @@ export default function RecentActivity({ userId }) {
     return (
         <div>
             <h3 className="text-lg font-bold mb-4">Recent Activity</h3>
-            <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-6 gap-4">
+            {/* 6 × 1 grid — always 6 items in one row */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                 {activities.map((item) => {
                     const IconComp = item.activityIcon;
-                    // Use episode-aware routing
-                    const isEpisode = item.mediaType === "episode" || (item.seasonNumber != null && item.episodeNumber != null);
-                    const isSeason = item.targetType === "season" || (item.seasonNumber != null && item.episodeNumber == null && item.mediaType !== "episode");
+                    const isSeason = item.tvTargetType === "season" && item.tvSeasonNumber != null;
+                    const isEpisode = item.tvTargetType === "episode" && item.tvSeasonNumber != null && item.tvEpisodeNumber != null;
+
+                    // URL routing
                     const url = isEpisode
                         ? getEpisodeUrl(item)
                         : getMediaUrl(
@@ -155,23 +223,42 @@ export default function RecentActivity({ userId }) {
                             item.mediaType
                         );
 
-                    // Poster priority: user custom → episode still → season poster → series poster → TMDB fallback
-                    const posterUrl = item.customPoster
-                        ? item.customPoster
-                        : isEpisode && item.episodeStill
-                            ? tmdb.getImageUrl(item.episodeStill, "w500")
-                            : (isSeason || isEpisode) && item.seasonPoster
-                                ? tmdb.getImageUrl(item.seasonPoster, "w500")
-                                : item.poster_path
-                                    ? tmdb.getImageUrl(item.poster_path)
-                                    : null;
+                    // Poster priority:
+                    // Episode: episode still → season poster → series poster → fallback
+                    // Season: season poster → series poster → fallback
+                    // Movie/Series: poster_path → fallback
+                    let posterUrl = null;
+                    if (isEpisode) {
+                        posterUrl = item._seasonPoster
+                            ? tmdb.getImageUrl(item._seasonPoster)
+                            : item.poster_path
+                                ? tmdb.getImageUrl(item.poster_path)
+                                : null;
+                    } else if (isSeason) {
+                        posterUrl = item._seasonPoster
+                            ? tmdb.getImageUrl(item._seasonPoster)
+                            : item.poster_path
+                                ? tmdb.getImageUrl(item.poster_path)
+                                : null;
+                    } else {
+                        posterUrl = item.poster_path
+                            ? tmdb.getImageUrl(item.poster_path)
+                            : null;
+                    }
 
-                    // Determine scope label
+                    // Scope label
                     const scopeLabel = isEpisode
-                        ? `S${item.seasonNumber || "?"}E${item.episodeNumber || "?"}`
+                        ? `S${item.tvSeasonNumber}E${item.tvEpisodeNumber}`
                         : isSeason
-                            ? `S${item.seasonNumber || "?"}`
+                            ? `Season ${item.tvSeasonNumber}`
                             : item.mediaType === "movie" ? "Movie" : item.mediaType === "tv" ? "Series" : "";
+
+                    // Season/episode name for hover
+                    const subTitle = isEpisode
+                        ? item._episodeName || `Episode ${item.tvEpisodeNumber}`
+                        : isSeason
+                            ? `Season ${item.tvSeasonNumber}`
+                            : "";
 
                     return (
                         <Link key={item.id} href={url} className="group">
@@ -187,10 +274,15 @@ export default function RecentActivity({ userId }) {
                                     />
                                 ) : (
                                     <div className="absolute inset-0 flex items-center justify-center bg-zinc-800">
-                                        <span className="text-xs text-white/40 text-center px-2 line-clamp-3">{item.title || "No poster"}</span>
+                                        {item.mediaType === "movie" ? (
+                                            <Film size={24} className="text-white/20" />
+                                        ) : (
+                                            <Tv size={24} className="text-white/20" />
+                                        )}
                                     </div>
                                 )}
-                                {/* Activity badge */}
+
+                                {/* Activity badge — top left */}
                                 <div className="absolute top-1.5 left-1.5">
                                     <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-sm border border-white/10 ${item.activityColor}`}>
                                         <IconComp size={10} />
@@ -199,7 +291,8 @@ export default function RecentActivity({ userId }) {
                                         </span>
                                     </div>
                                 </div>
-                                {/* Scope tag (top-right) */}
+
+                                {/* Scope tag — top right */}
                                 {scopeLabel && (
                                     <div className="absolute top-1.5 right-1.5">
                                         <span className="px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-sm border border-white/10 text-[9px] font-bold text-white/80">
@@ -207,16 +300,26 @@ export default function RecentActivity({ userId }) {
                                         </span>
                                     </div>
                                 )}
-                                {/* Hover overlay */}
-                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-colors flex flex-col justify-end p-2 opacity-0 group-hover:opacity-100">
-                                    <h4 className="text-xs font-semibold text-white line-clamp-2 leading-tight">{item.title || item.name}</h4>
-                                    <p className="text-[10px] text-white/60 mt-0.5">{formatTimeAgo(item.timestamp)}</p>
-                                    {item.rating > 0 && (
-                                        <div className="flex items-center gap-0.5 mt-0.5">
-                                            <Star size={9} className="text-accent fill-accent" />
+
+                                {/* Rating badge — bottom left (always visible) */}
+                                {item.rating > 0 && (
+                                    <div className="absolute bottom-1.5 left-1.5">
+                                        <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-sm border border-white/10">
+                                            <Star size={10} className="text-accent fill-accent" />
                                             <span className="text-[10px] text-accent font-bold">{item.rating}</span>
                                         </div>
+                                    </div>
+                                )}
+
+                                {/* Hover overlay — expanded info */}
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/70 transition-colors flex flex-col justify-end p-2 opacity-0 group-hover:opacity-100">
+                                    <h4 className="text-xs font-semibold text-white line-clamp-2 leading-tight">
+                                        {item.title || item.name}
+                                    </h4>
+                                    {subTitle && (
+                                        <p className="text-[10px] text-accent/80 font-medium mt-0.5 line-clamp-1">{subTitle}</p>
                                     )}
+                                    <p className="text-[10px] text-white/60 mt-0.5">{formatTimeAgo(item.timestamp)}</p>
                                 </div>
                             </div>
                         </Link>

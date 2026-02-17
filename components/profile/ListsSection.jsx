@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { List, Plus, Edit2, Search, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { detectListType, getListTypeInfo } from "@/lib/listUtils";
 import CreateListModal from "./CreateListModal";
 
@@ -27,15 +26,13 @@ export default function ListsSection({ ownerId, isOwnProfile }) {
         if (!ownerId) return;
         setLoading(true);
         try {
-            const q = query(
-                collection(db, "user_lists"),
-                where("userId", "==", ownerId)
-            );
-            const snap = await getDocs(q);
-            const data = snap.docs
-                .map((d) => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-            setLists(data);
+            const { data, error } = await supabase
+                .from("user_lists")
+                .select("*")
+                .eq("userId", ownerId)
+                .order("createdAt", { ascending: false });
+
+            setLists(data || []);
         } catch (error) {
             console.error("Error loading lists:", error);
         } finally {
@@ -61,7 +58,7 @@ export default function ListsSection({ ownerId, isOwnProfile }) {
         // Sort
         switch (sortBy) {
             case "oldest":
-                result.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+                result.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
                 break;
             case "name":
                 result.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -71,7 +68,7 @@ export default function ListsSection({ ownerId, isOwnProfile }) {
                 break;
             case "newest":
             default:
-                result.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+                result.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
                 break;
         }
         return result;

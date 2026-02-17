@@ -2,17 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
-import {
-    collection,
-    addDoc,
-    updateDoc,
-    doc,
-    query,
-    where,
-    getDocs,
-    serverTimestamp,
-} from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import eventBus from "@/lib/eventBus";
 import showToast from "@/lib/toast";
 
@@ -24,16 +14,13 @@ export function useRatings() {
     const fetchRatings = useCallback(async () => {
         if (!user) return;
         try {
-            const q = query(
-                collection(db, "user_ratings"),
-                where("userId", "==", user.uid)
-            );
-            const snapshot = await getDocs(q);
-            const items = snapshot.docs.map((d) => ({
-                id: d.id,
-                ...d.data(),
-            }));
-            setRatings(items);
+            const { data, error } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", user.uid);
+
+            if (error) throw error;
+            setRatings(data || []);
         } catch (error) {
             console.error("Error fetching ratings:", error);
             showToast.error("Failed to load your ratings");
@@ -48,11 +35,9 @@ export function useRatings() {
             setLoading(false);
             return;
         }
-
         fetchRatings();
     }, [user, fetchRatings]);
 
-    // Re-fetch when ratings change externally
     useEffect(() => {
         const handler = () => fetchRatings();
         eventBus.on("MEDIA_UPDATED", handler);
@@ -71,56 +56,40 @@ export function useRatings() {
     const setRating = async (mediaId, mediaType, rating, title, poster_path) => {
         if (!user) throw new Error("User not authenticated");
 
+        const existingRating = ratings.find((r) => r.mediaId === mediaId);
+        const id = existingRating?.id || `${user.uid}_${mediaType}_${mediaId}`;
+        const now = new Date().toISOString();
+
+        // Optimistic update — update UI immediately
+        const optimisticRating = existingRating
+            ? { ...existingRating, rating, ratedAt: now }
+            : { id, userId: user.uid, mediaId, mediaType, rating, title, poster_path, watched: true, ratedAt: now };
+
+        const previousRatings = [...ratings];
+        setRatings(prev =>
+            existingRating
+                ? prev.map((r) => r.mediaId === mediaId ? optimisticRating : r)
+                : [...prev, optimisticRating]
+        );
+
         try {
-            const existingRating = ratings.find((r) => r.mediaId === mediaId);
-
             if (existingRating) {
-                await updateDoc(doc(db, "user_ratings", existingRating.id), {
-                    rating,
-                    ratedAt: serverTimestamp(),
-                });
-
-                setRatings(prev =>
-                    prev.map((r) =>
-                        r.mediaId === mediaId ? { ...r, rating, ratedAt: new Date() } : r
-                    )
-                );
+                const { error } = await supabase
+                    .from("user_ratings")
+                    .update({ rating, ratedAt: now })
+                    .eq("id", existingRating.id);
+                if (error) throw error;
             } else {
-                const docRef = await addDoc(collection(db, "user_ratings"), {
-                    userId: user.uid,
-                    mediaId,
-                    mediaType,
-                    rating,
-                    title,
-                    poster_path,
-                    watched: true, // Auto-mark as watched when rating
-                    ratedAt: serverTimestamp(),
-                });
-
-                const newRating = {
-                    id: docRef.id,
-                    userId: user.uid,
-                    mediaId,
-                    mediaType,
-                    rating,
-                    title,
-                    poster_path,
-                    watched: true,
-                    ratedAt: new Date(),
-                };
-
-                setRatings(prev => [...prev, newRating]);
+                const { error } = await supabase.from("user_ratings").upsert(optimisticRating);
+                if (error) throw error;
             }
         } catch (error) {
+            // Rollback on failure
+            setRatings(previousRatings);
             console.error("Error setting rating:", error);
             throw error;
         }
     };
 
-    return {
-        ratings,
-        loading,
-        getRating,
-        setRating,
-    };
+    return { ratings, loading, getRating, setRating };
 }

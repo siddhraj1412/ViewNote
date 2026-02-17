@@ -53,6 +53,14 @@ export default function MovieSlugPage() {
             return;
         }
 
+        // Reset state when navigating between movies (React reuses component instance)
+        setMovie(null);
+        setStronglyRelated([]);
+        setSimilarFilter("all");
+        setMediaImages({ posters: [], backdrops: [] });
+        setActiveTab("cast");
+        setError(null);
+
         const fetchMovie = async () => {
             setLoading(true);
             setError(null);
@@ -241,6 +249,8 @@ export default function MovieSlugPage() {
                                 posterPath={movie.poster_path}
                                 currentRating={userRating}
                                 releaseYear={movie.release_date ? movie.release_date.slice(0, 4) : ""}
+                                customPoster={customPoster}
+                                customBanner={customBanner}
                             />
                         </div>
                     </div>
@@ -351,11 +361,6 @@ export default function MovieSlugPage() {
                                                                 fill
                                                                 className="object-cover"
                                                             />
-                                                            {related.similarityScore && (
-                                                                <div className="absolute top-2 right-2 bg-accent text-background px-2 py-1 rounded text-xs font-bold">
-                                                                    {related.similarityScore}%
-                                                                </div>
-                                                            )}
                                                         </div>
                                                         <h3 className="font-medium text-sm line-clamp-2">{relatedTitle}</h3>
                                                     </Link>

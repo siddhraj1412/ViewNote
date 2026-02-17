@@ -3,8 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, deleteDoc } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import { detectListType, getListTypeInfo } from "@/lib/listUtils";
 import { Crown, ArrowLeft, Grid3X3, List, Heart, MessageCircle, Send, Loader2 } from "lucide-react";
@@ -35,13 +34,20 @@ export default function ListPage() {
         const fetchList = async () => {
             setLoading(true);
             try {
-                const snap = await getDoc(doc(db, "user_lists", listId));
-                if (snap.exists()) {
-                    const data = { id: snap.id, ...snap.data() };
-                    setList(data);
-                    if (data.userId) {
-                        const profileSnap = await getDoc(doc(db, "user_profiles", data.userId));
-                        if (profileSnap.exists()) setOwnerProfile(profileSnap.data());
+                const { data: listData } = await supabase
+                    .from("user_lists")
+                    .select("*")
+                    .eq("id", listId)
+                    .single();
+                if (listData) {
+                    setList(listData);
+                    if (listData.userId) {
+                        const { data: profileData } = await supabase
+                            .from("profiles")
+                            .select("*")
+                            .eq("id", listData.userId)
+                            .single();
+                        if (profileData) setOwnerProfile(profileData);
                     }
                 }
             } catch (error) {

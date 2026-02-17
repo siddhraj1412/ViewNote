@@ -2,10 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Upload, X, ZoomIn, ZoomOut, Loader2, RotateCcw } from "lucide-react";
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { doc, updateDoc } from "firebase/firestore";
-import { updateProfile } from "firebase/auth";
-import { db, auth } from "@/lib/firebase";
+import supabase from "@/lib/supabase";
 import showToast from "@/lib/toast";
 import eventBus from "@/lib/eventBus";
 
@@ -81,7 +78,6 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
     const [posStart, setPosStart] = useState({ x: 0, y: 0 });
 
     const fileInputRef = useRef(null);
-    const uploadTaskRef = useRef(null);
     const cropAreaRef = useRef(null);
 
     // Reset state when modal opens/closes
@@ -227,103 +223,61 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
             return;
         }
 
-        const attemptUpload = (attempt = 1) => {
-            const storage = getStorage();
-            const storageRef = ref(storage, `users/${userId}/avatar.webp`);
+        const attemptUpload = async (attempt = 1) => {
+            try {
+                const filePath = `${userId}/avatar.webp`;
 
-            const uploadTask = uploadBytesResumable(storageRef, compressed, {
-                contentType: compressed.type || "image/webp",
-                customMetadata: { uploadedBy: userId },
-            });
-            uploadTaskRef.current = uploadTask;
+                setProgress(30);
 
-            let lastProgress = 0;
-            let lastProgressTime = Date.now();
+                const { data, error } = await supabase.storage
+                    .from("avatars")
+                    .upload(filePath, compressed, {
+                        contentType: compressed.type || "image/webp",
+                        upsert: true,
+                    });
 
-            // Stall detection: if progress doesn't change for 15s, cancel
-            const stallCheck = setInterval(() => {
-                const now = Date.now();
-                if (now - lastProgressTime > 15000 && lastProgress < 100) {
-                    clearInterval(stallCheck);
-                    uploadTask.cancel();
-                    if (attempt < 3) {
-                        showToast.error(`Upload stalled, retrying (${attempt}/3)...`);
-                        setProgress(0);
-                        setTimeout(() => attemptUpload(attempt + 1), 1000 * attempt);
-                    } else {
-                        showToast.error("Upload stalled after 3 attempts. Please try again.");
-                        setUploading(false);
-                        setProgress(0);
-                    }
-                }
-            }, 3000);
+                if (error) throw error;
 
-            const timeout = setTimeout(() => {
-                clearInterval(stallCheck);
-                uploadTask.cancel();
-                showToast.error("Upload timed out. Please try again.");
+                setProgress(70);
+
+                const { data: { publicUrl } } = supabase.storage
+                    .from("avatars")
+                    .getPublicUrl(data.path);
+
+                // Cache-bust so the new image appears instantly without page refresh
+                const cacheBustedUrl = `${publicUrl}?t=${Date.now()}`;
+
+                // Update profile in Supabase
+                await supabase
+                    .from("profiles")
+                    .update({
+                        profile_picture_url: cacheBustedUrl,
+                        updatedAt: new Date().toISOString(),
+                    })
+                    .eq("id", userId);
+
+                // Update Supabase auth user metadata
+                await supabase.auth.updateUser({ data: { avatar_url: cacheBustedUrl } });
+
+                setProgress(100);
+                showToast.success("Profile photo updated!");
+                if (onUploadSuccess) onUploadSuccess(cacheBustedUrl);
+                eventBus.emit("PROFILE_UPDATED", { type: "avatar", url: cacheBustedUrl });
+                onClose();
                 setUploading(false);
                 setProgress(0);
-            }, 60000);
-
-            uploadTask.on(
-                "state_changed",
-                (snapshot) => {
-                    const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-                    setProgress(pct);
-                    if (pct > lastProgress) {
-                        lastProgress = pct;
-                        lastProgressTime = Date.now();
-                    }
-                },
-                (error) => {
-                    clearTimeout(timeout);
-                    clearInterval(stallCheck);
-                    if (error.code === "storage/canceled") {
-                        // Only reset if we're not retrying
-                        if (attempt >= 3) {
-                            setUploading(false);
-                            setProgress(0);
-                        }
-                        return;
-                    }
-                    if (attempt < 3) {
-                        showToast.error(`Upload failed, retrying (${attempt}/3)...`);
-                        setTimeout(() => attemptUpload(attempt + 1), 1000 * attempt);
-                    } else {
-                        console.error("Upload failed after retries:", error);
-                        showToast.error("Failed to upload after 3 attempts.");
-                        setUploading(false);
-                        setProgress(0);
-                    }
-                },
-                async () => {
-                    clearTimeout(timeout);
-                    clearInterval(stallCheck);
-                    try {
-                        const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                        const profileRef = doc(db, "user_profiles", userId);
-                        await updateDoc(profileRef, {
-                            profile_picture_url: downloadUrl,
-                            updatedAt: new Date(),
-                        });
-                        // Also update Firebase Auth photoURL
-                        if (auth.currentUser) {
-                            try { await updateProfile(auth.currentUser, { photoURL: downloadUrl }); } catch {}
-                        }
-                        showToast.success("Profile photo updated!");
-                        if (onUploadSuccess) onUploadSuccess(downloadUrl);
-                        eventBus.emit("PROFILE_UPDATED", { type: "avatar", url: downloadUrl });
-                        onClose();
-                    } catch (err) {
-                        console.error("Post-upload failed:", err);
-                        showToast.error("Photo uploaded but profile update failed.");
-                    } finally {
-                        setUploading(false);
-                        setProgress(0);
-                    }
+            } catch (err) {
+                if (attempt < 3) {
+                    showToast.error(`Upload failed, retrying (${attempt}/3)...`);
+                    setProgress(0);
+                    setTimeout(() => attemptUpload(attempt + 1), 1000 * attempt);
+                } else {
+                    console.error("Upload failed after retries:", err);
+                    showToast.error("Failed to upload after 3 attempts.");
+                    setUploading(false);
+                    setProgress(0);
                 }
-            );
+            }
         };
 
         attemptUpload();

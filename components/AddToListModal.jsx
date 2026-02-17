@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { X, Plus, Check, Loader2, List } from "lucide-react";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, doc, updateDoc, arrayUnion, addDoc, serverTimestamp } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import showToast from "@/lib/toast";
 
 const NAME_MAX = 80;
@@ -20,12 +19,14 @@ export default function AddToListModal({ isOpen, onClose, userId, mediaId, media
         if (!userId) return;
         setLoading(true);
         try {
-            const q = query(collection(db, "user_lists"), where("userId", "==", userId));
-            const snap = await getDocs(q);
-            const data = snap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-            setLists(data);
+            const q = await supabase
+                .from("user_lists")
+                .select("*")
+                .eq("userId", userId)
+                .order("createdAt", { ascending: false });
+            const { data, error } = q;
+            if (error) throw error;
+            setLists(data || []);
         } catch (error) {
             console.error("Error loading lists:", error);
         } finally {
@@ -62,12 +63,15 @@ export default function AddToListModal({ isOpen, onClose, userId, mediaId, media
                 poster_path: posterPath || "",
                 mediaType: mediaType || "movie",
             };
-            const listRef = doc(db, "user_lists", list.id);
             const updatedItems = [...(list.items || []), newItem];
-            await updateDoc(listRef, {
-                items: updatedItems,
-                updatedAt: serverTimestamp(),
-            });
+            const { error } = await supabase
+                .from("user_lists")
+                .update({
+                    items: updatedItems,
+                    updatedAt: new Date().toISOString(),
+                })
+                .eq("id", list.id);
+            if (error) throw error;
             // Update local state
             setLists(prev => prev.map(l =>
                 l.id === list.id ? { ...l, items: updatedItems } : l
@@ -97,11 +101,16 @@ export default function AddToListModal({ isOpen, onClose, userId, mediaId, media
                 description: "",
                 ranked: false,
                 items: [newItem],
-                createdAt: serverTimestamp(),
+                createdAt: new Date().toISOString(),
             };
-            const docRef = await addDoc(collection(db, "user_lists"), payload);
-            setLists(prev => [{ id: docRef.id, ...payload, items: [newItem] }, ...prev]);
-            showToast.linked(`Created "${newListName.trim()}" and added`, `/list/${docRef.id}`);
+            const { data: newDoc, error } = await supabase
+                .from("user_lists")
+                .insert(payload)
+                .select()
+                .single();
+            if (error) throw error;
+            setLists(prev => [{ ...newDoc, items: [newItem] }, ...prev]);
+            showToast.linked(`Created "${newListName.trim()}" and added`, `/list/${newDoc.id}`);
             setShowCreate(false);
             setNewListName("");
         } catch (error) {

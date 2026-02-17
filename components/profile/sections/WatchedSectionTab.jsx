@@ -10,8 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useParams } from "next/navigation";
 import eventBus from "@/lib/eventBus";
 import { mediaService } from "@/services/mediaService";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import supabase from "@/lib/supabase";
 import { Star, Heart, MessageSquare, RotateCcw } from "lucide-react";
 
 const PREVIEW_SIZE = 24;
@@ -76,14 +75,13 @@ export default function WatchedSectionTab() {
     const fetchRatings = useCallback(async () => {
         if (!profileUserId) return;
         try {
-            const q = query(
-                collection(db, "user_ratings"),
-                where("userId", "==", profileUserId)
-            );
-            const snap = await getDocs(q);
+            const { data: ratingsData, error } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", profileUserId);
+            if (error) throw error;
             const map = {};
-            snap.docs.forEach((d) => {
-                const data = d.data();
+            (ratingsData || []).forEach((data) => {
                 const key = `${data.mediaType}_${data.mediaId}`;
                 // For series-level, use the base key
                 if (!map[key] || (data.targetType || data.tvTargetType || "series") === "series") {
@@ -149,7 +147,7 @@ export default function WatchedSectionTab() {
         const sorted = [...items];
         switch (sortBy) {
             case "oldest":
-                sorted.sort((a, b) => (a.addedAt?.seconds || 0) - (b.addedAt?.seconds || 0));
+                sorted.sort((a, b) => new Date(a.addedAt || 0).getTime() - new Date(b.addedAt || 0).getTime());
                 break;
             case "a-z":
                 sorted.sort((a, b) => (a.title || a.name || "").localeCompare(b.title || b.name || ""));
@@ -173,7 +171,7 @@ export default function WatchedSectionTab() {
                 break;
             case "newest":
             default:
-                sorted.sort((a, b) => (b.addedAt?.seconds || 0) - (a.addedAt?.seconds || 0));
+                sorted.sort((a, b) => new Date(b.addedAt || 0).getTime() - new Date(a.addedAt || 0).getTime());
                 break;
         }
         return sorted;

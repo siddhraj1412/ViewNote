@@ -3,8 +3,7 @@
 import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 
 /**
  * /profile → redirects to /{username} or /profile/{uid} as fallback
@@ -27,15 +26,16 @@ export default function ProfileRedirect() {
                 return;
             }
 
-            // Fallback: look up in Firestore
+            // Fallback: look up in database
             try {
-                const userDocSnap = await getDoc(doc(db, "user_profiles", user.uid));
-                if (userDocSnap.exists()) {
-                    const data = userDocSnap.data();
-                    if (data.username) {
-                        router.replace(`/${data.username}`);
-                        return;
-                    }
+                const { data } = await supabase
+                    .from("profiles")
+                    .select("*")
+                    .eq("id", user.uid)
+                    .single();
+                if (data && data.username) {
+                    router.replace(`/${data.username}`);
+                    return;
                 }
             } catch (e) {
                 console.error("Error fetching profile for redirect:", e);

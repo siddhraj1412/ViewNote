@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, onSnapshot, orderBy } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import StarRating from "@/components/StarRating";
 import { Heart, Calendar, Eye, ArrowLeft, Tag, MessageCircle, Send, Trash2, ThumbsUp, Edit3 } from "lucide-react";
@@ -51,43 +50,45 @@ export default function ReviewDetailPage() {
             setLoading(true);
             setError(null);
             try {
-                const profilesRef = collection(db, "user_profiles");
-                const profileQuery = query(profilesRef, where("username", "==", username));
-                const profileSnap = await getDocs(profileQuery);
+                const { data: profiles, error: profileError } = await supabase
+                    .from("profiles")
+                    .select("*")
+                    .eq("username", username);
 
-                if (profileSnap.empty) {
+                if (profileError || !profiles || profiles.length === 0) {
                     setError("User not found");
                     setLoading(false);
                     return;
                 }
 
-                const profileDoc = profileSnap.docs[0];
-                const userId = profileDoc.data().userId || profileDoc.id;
-                setProfileData(profileDoc.data());
+                const profileDoc = profiles[0];
+                const userId = profileDoc.userId || profileDoc.id;
+                setProfileData(profileDoc);
                 setReviewOwnerId(userId);
 
-                const ratingsRef = collection(db, "user_ratings");
-                const ratingsQuery = query(ratingsRef, where("userId", "==", userId));
-                const ratingsSnap = await getDocs(ratingsQuery);
+                const { data: ratingsData } = await supabase
+                    .from("user_ratings")
+                    .select("*")
+                    .eq("userId", userId);
+                const ratings = ratingsData || [];
 
                 let matchedReview = null;
                 const docIdSuffix = mediaSlug.split("-").pop();
                 if (docIdSuffix) {
-                    for (const d of ratingsSnap.docs) {
+                    for (const d of ratings) {
                         if (d.id === docIdSuffix) {
-                            matchedReview = { id: d.id, ...d.data() };
+                            matchedReview = d;
                             break;
                         }
                     }
                 }
 
                 if (!matchedReview) {
-                for (const doc of ratingsSnap.docs) {
-                    const data = doc.data();
-                    const titleSlug = generateSlugFromTitle(data.title || "");
-                    const slugWithId = `${titleSlug}-${data.mediaId}`;
+                for (const item of ratings) {
+                    const titleSlug = generateSlugFromTitle(item.title || "");
+                    const slugWithId = `${titleSlug}-${item.mediaId}`;
                     if (slugWithId === mediaSlug || titleSlug === mediaSlug) {
-                        matchedReview = { id: doc.id, ...data };
+                        matchedReview = item;
                         break;
                     }
                 }
@@ -97,10 +98,9 @@ export default function ReviewDetailPage() {
                     const idMatch = mediaSlug.match(/-(\d+)$/);
                     if (idMatch) {
                         const mediaId = parseInt(idMatch[1]);
-                        for (const doc of ratingsSnap.docs) {
-                            const data = doc.data();
-                            if (data.mediaId === mediaId) {
-                                matchedReview = { id: doc.id, ...data };
+                        for (const item of ratings) {
+                            if (item.mediaId === mediaId) {
+                                matchedReview = item;
                                 break;
                             }
                         }
@@ -134,46 +134,49 @@ export default function ReviewDetailPage() {
         });
         reviewService.getComments(review.id).then(setComments);
 
-        const likesQ = query(collection(db, "review_likes"), where("reviewDocId", "==", review.id));
+        const fetchLikesCount = async () => {
+            const { count } = await supabase
+                .from("review_likes")
+                .select("*", { count: "exact", head: true })
+                .eq("reviewDocId", review.id);
+            setLikeCount(count || 0);
+        };
 
-        // Prefer ordered query; fallback if index missing
-        let commentsQ;
-        try {
-            commentsQ = query(
-                collection(db, "review_comments"),
-                where("reviewDocId", "==", review.id),
-                orderBy("createdAt", "desc")
-            );
-        } catch {
-            commentsQ = query(collection(db, "review_comments"), where("reviewDocId", "==", review.id));
-        }
-
-        const unsubLikes = onSnapshot(likesQ, (snap) => {
-            setLikeCount(snap.size);
-        }, () => setLikeCount(0));
-
-        const unsubComments = onSnapshot(commentsQ, (snap) => {
-            const next = snap.docs.map((d) => {
-                const data = d.data() || {};
-                return {
-                    id: d.id,
-                    ...data,
-                    createdAt: data.createdAt?.toDate?.() || new Date(),
-                };
-            });
-            // If we had to fallback to an unordered query, sort client-side.
-            next.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            // De-dupe by id (prevents duplicate keys if optimistic comment is already in state)
+        const fetchComments = async () => {
+            const { data } = await supabase
+                .from("review_comments")
+                .select("*")
+                .eq("reviewDocId", review.id)
+                .order("createdAt", { ascending: false });
+            const next = (data || []).map((d) => ({
+                ...d,
+                createdAt: d.createdAt ? new Date(d.createdAt) : new Date(),
+            }));
             const unique = new Map();
             for (const c of next) unique.set(String(c.id), c);
             setComments(Array.from(unique.values()));
-        }, () => {
-            setComments([]);
-        });
+        };
+
+        fetchLikesCount();
+        fetchComments();
+
+        const likesChannel = supabase
+            .channel(`review-likes-${review.id}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "review_likes", filter: `reviewDocId=eq.${review.id}` }, () => {
+                fetchLikesCount();
+            })
+            .subscribe();
+
+        const commentsChannel = supabase
+            .channel(`review-comments-${review.id}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "review_comments", filter: `reviewDocId=eq.${review.id}` }, () => {
+                fetchComments();
+            })
+            .subscribe();
 
         return () => {
-            try { unsubLikes(); } catch (_) {}
-            try { unsubComments(); } catch (_) {}
+            supabase.removeChannel(likesChannel);
+            supabase.removeChannel(commentsChannel);
         };
     }, [review?.id, user?.uid]);
 
@@ -259,8 +262,8 @@ export default function ReviewDetailPage() {
 
     const watchedDate = review.watchedDate
         ? new Date(review.watchedDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
-        : review.ratedAt?.toDate
-            ? review.ratedAt.toDate().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+        : review.ratedAt
+            ? new Date(review.ratedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
             : null;
 
     const mediaUrl = getMediaUrl(

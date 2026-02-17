@@ -2,15 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
-import {
-    collection,
-    query,
-    where,
-    getDocs,
-    doc,
-    getDoc,
-} from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import showToast from "@/lib/toast";
 
 export function useUserActions() {
@@ -26,16 +18,28 @@ export function useUserActions() {
         }
 
         try {
-            const q = query(
-                collection(db, "user_actions"),
-                where("userId", "==", user.uid)
-            );
-            const snapshot = await getDocs(q);
+            const [watchedRes, watchlistRes, pausedRes, droppedRes] = await Promise.all([
+                supabase.from("user_watched").select("mediaId").eq("userId", user.uid),
+                supabase.from("user_watchlist").select("mediaId").eq("userId", user.uid),
+                supabase.from("user_paused").select("mediaId").eq("userId", user.uid),
+                supabase.from("user_dropped").select("mediaId").eq("userId", user.uid),
+            ]);
+
             const actionsMap = {};
-            snapshot.forEach((doc) => {
-                const data = doc.data();
-                actionsMap[data.mediaId] = data;
+
+            (watchedRes.data || []).forEach((row) => {
+                actionsMap[row.mediaId] = { ...actionsMap[row.mediaId], watched: true };
             });
+            (watchlistRes.data || []).forEach((row) => {
+                actionsMap[row.mediaId] = { ...actionsMap[row.mediaId], saved: true };
+            });
+            (pausedRes.data || []).forEach((row) => {
+                actionsMap[row.mediaId] = { ...actionsMap[row.mediaId], paused: true };
+            });
+            (droppedRes.data || []).forEach((row) => {
+                actionsMap[row.mediaId] = { ...actionsMap[row.mediaId], dropped: true };
+            });
+
             setActions(actionsMap);
         } catch (error) {
             console.error("Error fetching user actions:", error);
@@ -50,48 +54,29 @@ export function useUserActions() {
     }, [fetchActions]);
 
     const getAction = useCallback(
-        (mediaId) => {
-            return actions[mediaId] || {};
-        },
+        (mediaId) => actions[mediaId] || {},
         [actions]
     );
 
     const isWatched = useCallback(
-        (mediaId) => {
-            return actions[mediaId]?.watched || false;
-        },
+        (mediaId) => actions[mediaId]?.watched || false,
         [actions]
     );
 
     const isSaved = useCallback(
-        (mediaId) => {
-            return actions[mediaId]?.saved || false;
-        },
+        (mediaId) => actions[mediaId]?.saved || false,
         [actions]
     );
 
     const isPaused = useCallback(
-        (mediaId) => {
-            return actions[mediaId]?.paused || false;
-        },
+        (mediaId) => actions[mediaId]?.paused || false,
         [actions]
     );
 
     const isDropped = useCallback(
-        (mediaId) => {
-            return actions[mediaId]?.dropped || false;
-        },
+        (mediaId) => actions[mediaId]?.dropped || false,
         [actions]
     );
 
-    return {
-        actions,
-        loading,
-        getAction,
-        isWatched,
-        isSaved,
-        isPaused,
-        isDropped,
-        refetch: fetchActions,
-    };
+    return { actions, loading, getAction, isWatched, isSaved, isPaused, isDropped, refetch: fetchActions };
 }

@@ -98,8 +98,8 @@ export default function WatchingSection() {
                             {item.title || item.name}
                         </h3>
                         <p className="text-xs text-textSecondary">
-                            {item.startedAt?.seconds
-                                ? new Date(item.startedAt.seconds * 1000).toLocaleDateString()
+                            {item.startedAt
+                                ? new Date(item.startedAt).toLocaleDateString()
                                 : "Watching"}
                         </p>
                     </div>

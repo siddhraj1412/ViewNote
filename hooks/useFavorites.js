@@ -2,8 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
-import { collection, doc, setDoc, deleteDoc, getDocs, query, where, updateDoc } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import showToast from "@/lib/toast";
 import eventBus from "@/lib/eventBus";
 
@@ -16,27 +15,23 @@ export function useFavorites() {
     });
     const [loading, setLoading] = useState(false);
 
-    // Load all favorites
     const loadFavorites = useCallback(async () => {
         if (!user) return;
-
         setLoading(true);
         try {
-            const [moviesSnap, showsSnap, episodesSnap] = await Promise.all([
-                getDocs(query(collection(db, "favorites_movies"), where("userId", "==", user.uid))),
-                getDocs(query(collection(db, "favorites_shows"), where("userId", "==", user.uid))),
-                getDocs(query(collection(db, "favorites_episodes"), where("userId", "==", user.uid))),
-            ]);
+            const { data, error } = await supabase
+                .from("favorites")
+                .select("*")
+                .eq("userId", user.uid)
+                .order("order", { ascending: true });
 
-            const moviesData = moviesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.order - b.order);
-            const showsData = showsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.order - b.order);
-            const episodesData = episodesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.order - b.order);
+            if (error) throw error;
 
-            setFavorites({
-                movies: moviesData,
-                shows: showsData,
-                episodes: episodesData,
+            const grouped = { movies: [], shows: [], episodes: [] };
+            (data || []).forEach((row) => {
+                if (grouped[row.category]) grouped[row.category].push(row);
             });
+            setFavorites(grouped);
         } catch (error) {
             console.error("Error loading favorites:", error);
             showToast.error("Failed to load favorites");
@@ -45,106 +40,111 @@ export function useFavorites() {
         }
     }, [user]);
 
-    // Add favorite
     const addFavorite = useCallback(async (type, media) => {
         if (!user) return;
-
-        const collectionName = `favorites_${type}`;
         const currentList = favorites[type];
 
         if (currentList.length >= 5) {
             showToast.error(`Maximum 5 ${type} allowed`);
             return;
         }
-
         if (currentList.some(item => item.mediaId === media.id)) {
             showToast.error("Already in favorites");
             return;
         }
 
+        const id = `${user.uid}_${type}_${media.id}`;
+        const favoriteData = {
+            id,
+            userId: user.uid,
+            mediaId: media.id,
+            mediaType: type === "movies" ? "movie" : type === "shows" ? "tv" : "episode",
+            category: type,
+            title: media.title || media.name,
+            poster_path: media.poster_path,
+            release_date: media.release_date || media.first_air_date,
+            order: currentList.length,
+            createdAt: new Date().toISOString(),
+        };
+
+        // Optimistic update
+        const previousFavorites = { ...favorites };
+        setFavorites(prev => ({
+            ...prev,
+            [type]: [...prev[type], favoriteData],
+        }));
+
         try {
-            const docRef = doc(db, collectionName, `${user.uid}_${media.id}`);
-            const favoriteData = {
-                userId: user.uid,
-                mediaId: media.id,
-                mediaType: type === "movies" ? "movie" : type === "shows" ? "tv" : "episode",
-                title: media.title || media.name,
-                poster_path: media.poster_path,
-                release_date: media.release_date || media.first_air_date,
-                order: currentList.length,
-                createdAt: new Date().toISOString(),
-            };
-
-            await setDoc(docRef, favoriteData);
-
-            setFavorites(prev => ({
-                ...prev,
-                [type]: [...prev[type], { id: docRef.id, ...favoriteData }],
-            }));
+            const { error } = await supabase.from("favorites").upsert(favoriteData);
+            if (error) throw error;
 
             eventBus.emit("FAVORITES_UPDATED", { type });
             showToast.success(`Added to Favorite ${type.charAt(0).toUpperCase() + type.slice(1)}`);
         } catch (error) {
+            setFavorites(previousFavorites); // Rollback
             console.error("Error adding favorite:", error);
             showToast.error("Failed to add favorite");
         }
     }, [user, favorites]);
 
-    // Remove favorite
     const removeFavorite = useCallback(async (type, id) => {
         if (!user) return;
 
-        const collectionName = `favorites_${type}`;
+        // Optimistic update
+        const previousFavorites = { ...favorites };
+        setFavorites(prev => ({
+            ...prev,
+            [type]: prev[type].filter(item => item.id !== id),
+        }));
 
         try {
-            await deleteDoc(doc(db, collectionName, id));
-
-            setFavorites(prev => ({
-                ...prev,
-                [type]: prev[type].filter(item => item.id !== id),
-            }));
+            const { error } = await supabase.from("favorites").delete().eq("id", id);
+            if (error) throw error;
 
             eventBus.emit("FAVORITES_UPDATED", { type });
             showToast.success(`Removed from Favorite ${type.charAt(0).toUpperCase() + type.slice(1)}`);
         } catch (error) {
+            setFavorites(previousFavorites); // Rollback
             console.error("Error removing favorite:", error);
             showToast.error("Failed to remove favorite");
         }
-    }, [user]);
+    }, [user, favorites]);
 
-    // Reorder favorites
     const reorderFavorites = useCallback(async (type, newOrder) => {
         if (!user) return;
 
-        const collectionName = `favorites_${type}`;
+        // Optimistic update
+        const previousFavorites = { ...favorites };
+        setFavorites(prev => ({
+            ...prev,
+            [type]: newOrder.map((item, index) => ({ ...item, order: index })),
+        }));
 
         try {
-            // Update order in Firestore
-            const updatePromises = newOrder.map((item, index) =>
-                updateDoc(doc(db, collectionName, item.id), { order: index })
-            );
-
-            await Promise.all(updatePromises);
-
-            setFavorites(prev => ({
-                ...prev,
-                [type]: newOrder.map((item, index) => ({ ...item, order: index })),
+            // Batch update with upsert instead of N individual updates
+            const updates = newOrder.map((item, index) => ({
+                id: item.id,
+                userId: user.uid,
+                mediaId: item.mediaId,
+                mediaType: item.mediaType,
+                category: item.category,
+                title: item.title,
+                poster_path: item.poster_path,
+                release_date: item.release_date,
+                order: index,
+                createdAt: item.createdAt,
             }));
+            const { error } = await supabase.from("favorites").upsert(updates);
+            if (error) throw error;
 
             eventBus.emit("FAVORITES_UPDATED", { type });
             showToast.success("Reordered Favorites");
         } catch (error) {
+            setFavorites(previousFavorites); // Rollback
             console.error("Error reordering favorites:", error);
             showToast.error("Failed to reorder");
         }
-    }, [user]);
+    }, [user, favorites]);
 
-    return {
-        favorites,
-        loading,
-        loadFavorites,
-        addFavorite,
-        removeFavorite,
-        reorderFavorites,
-    };
+    return { favorites, loading, loadFavorites, addFavorite, removeFavorite, reorderFavorites };
 }

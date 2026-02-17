@@ -1,15 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/context/AuthContext";
 import showToast from "@/lib/toast";
 import { mediaService } from "@/services/mediaService";
 import eventBus from "@/lib/eventBus";
-import { useMediaCustomization } from "@/hooks/useMediaCustomization";
 import Modal from "@/components/ui/Modal";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import {
     Eye,
     Star,
@@ -27,23 +25,23 @@ import {
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 
-// Lazy load heavy interaction components
-const RatingModal = dynamic(() => import("@/components/RatingModal"), {
-    ssr: false,
-    loading: () => null
-});
-const PosterSelector = dynamic(() => import("@/components/PosterSelector"), {
-    ssr: false,
-    loading: () => null
-});
-const BannerSelector = dynamic(() => import("@/components/BannerSelector"), {
-    ssr: false,
-    loading: () => null
-});
-const AddToListModal = dynamic(() => import("@/components/AddToListModal"), {
-    ssr: false,
-    loading: () => null
-});
+// Lazy load heavy interaction components (with chunk-load error fallback)
+const RatingModal = dynamic(
+    () => import("@/components/RatingModal").catch(() => ({ default: () => null })),
+    { ssr: false, loading: () => null }
+);
+const PosterSelector = dynamic(
+    () => import("@/components/PosterSelector").catch(() => ({ default: () => null })),
+    { ssr: false, loading: () => null }
+);
+const BannerSelector = dynamic(
+    () => import("@/components/BannerSelector").catch(() => ({ default: () => null })),
+    { ssr: false, loading: () => null }
+);
+const AddToListModal = dynamic(
+    () => import("@/components/AddToListModal").catch(() => ({ default: () => null })),
+    { ssr: false, loading: () => null }
+);
 
 export default function ActionBar({
     mediaId,
@@ -65,6 +63,8 @@ export default function ActionBar({
     customizationMediaType = null,
     customizationPosterPath = null,
     customizationBannerPath = null,
+    customPoster: customPosterProp = null,
+    customBanner: customBannerProp = null,
     posterTmdbEndpoint = null,
     bannerTmdbEndpoint = null,
     initialSeasonNumber = null,
@@ -97,83 +97,71 @@ export default function ActionBar({
     const [includeSpecials, setIncludeSpecials] = useState(false);
     const [watchHover, setWatchHover] = useState(false);
 
-    // Initial load of status
-    useEffect(() => {
-        const loadStatus = async () => {
-            if (!user) {
-                setLoading(false);
-                return;
-            }
-            const s = await mediaService.getMediaStatus(
-                user,
-                mediaId,
-                mediaType,
-                mediaType === "tv"
-                    ? {
-                        targetType: tvTargetType,
-                        seasonNumber: tvSeasonNumber,
-                        episodeNumber: tvEpisodeNumber,
-                        seasonEpisodeCounts: seasonEpisodeCounts,
-                    }
-                    : {}
-            );
-            setStatus(prev => ({ ...prev, ...s }));
-            setLoading(false);
-        };
-        loadStatus();
+    // Shared refresh function — used by initial load, realtime, and eventBus
+    const refreshStatus = useCallback(async () => {
+        if (!user) return;
+        const s = await mediaService.getMediaStatus(
+            user,
+            mediaId,
+            mediaType,
+            mediaType === "tv"
+                ? {
+                    targetType: tvTargetType,
+                    seasonNumber: tvSeasonNumber,
+                    episodeNumber: tvEpisodeNumber,
+                    seasonEpisodeCounts: seasonEpisodeCounts,
+                }
+                : {}
+        );
+        setStatus(prev => ({ ...prev, ...s }));
     }, [user, mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber, seasonEpisodeCounts]);
 
-    // Real-time sync for watched/progress so series edits update season/episode pages instantly.
+    // Initial load + realtime sync + eventBus — all consolidated into one effect
     useEffect(() => {
-        if (!user || !mediaId || !mediaType) return;
-
-        const refresh = async () => {
-            const s = await mediaService.getMediaStatus(
-                user,
-                mediaId,
-                mediaType,
-                mediaType === "tv"
-                    ? {
-                        targetType: tvTargetType,
-                        seasonNumber: tvSeasonNumber,
-                        episodeNumber: tvEpisodeNumber,
-                        seasonEpisodeCounts: seasonEpisodeCounts,
-                    }
-                    : {}
-            );
-            setStatus((prev) => ({ ...prev, ...s }));
-        };
-
-        const unsubscribers = [];
-
-        if (mediaType === "tv") {
-            const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(mediaId)}`);
-            unsubscribers.push(onSnapshot(progressRef, () => { refresh(); }));
-            const watchedSeriesRef = doc(db, "user_watched", `${user.uid}_tv_${Number(mediaId)}`);
-            unsubscribers.push(onSnapshot(watchedSeriesRef, () => { refresh(); }));
-        } else {
-            const watchedRef = doc(db, "user_watched", `${user.uid}_${mediaType}_${Number(mediaId)}`);
-            unsubscribers.push(onSnapshot(watchedRef, () => { refresh(); }));
+        if (!user) {
+            setLoading(false);
+            return;
         }
 
-        return () => {
-            unsubscribers.forEach((u) => {
-                try { u(); } catch (_) {}
-            });
+        // Initial load
+        refreshStatus().finally(() => setLoading(false));
+
+        // Realtime channels — one multiplexed channel per ActionBar instance
+        const channelName = `actionbar_${user.uid}_${mediaType}_${Number(mediaId)}`;
+        let channel = supabase.channel(channelName);
+
+        if (mediaType === "tv") {
+            channel = channel
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_series_progress", filter: `id=eq.${user.uid}_${Number(mediaId)}` }, () => refreshStatus())
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_watched", filter: `id=eq.${user.uid}_tv_${Number(mediaId)}` }, () => refreshStatus());
+        } else {
+            channel = channel
+                .on("postgres_changes", { event: "*", schema: "public", table: "user_watched", filter: `id=eq.${user.uid}_${mediaType}_${Number(mediaId)}` }, () => refreshStatus());
+        }
+        channel.subscribe();
+
+        // EventBus listener for cross-component updates
+        const handleUpdate = (data) => {
+            if (String(data.mediaId) === String(mediaId) && data.mediaType === mediaType) {
+                refreshStatus();
+            }
         };
-    }, [user, mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber, seasonEpisodeCounts]);
+        eventBus.on("MEDIA_UPDATED", handleUpdate);
+
+        return () => {
+            supabase.removeChannel(channel);
+            eventBus.off("MEDIA_UPDATED", handleUpdate);
+        };
+    }, [user, mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber, seasonEpisodeCounts, refreshStatus]);
 
     const customizationId = customizationMediaId ?? mediaId;
     const customizationType = customizationMediaType ?? mediaType;
     const customizationPosterBase = customizationPosterPath ?? posterPath;
     const customizationBannerBase = customizationBannerPath ?? bannerPath ?? posterPath;
 
-    const { customPoster, customBanner } = useMediaCustomization(
-        customizationId,
-        customizationType,
-        customizationPosterBase,
-        customizationBannerBase
-    );
+    // Use customization values from props (provided by parent's useMediaCustomization)
+    const customPoster = customPosterProp ?? customizationPosterBase;
+    const customBanner = customBannerProp ?? customizationBannerBase;
 
     const canChangePoster = !disableCustomization && allowPosterCustomization;
     const canChangeBanner = !disableCustomization && allowBannerCustomization;
@@ -181,31 +169,6 @@ export default function ActionBar({
     // Determine if customized
     const isPosterCustomized = customPoster && customPoster !== customizationPosterBase;
     const isBannerCustomized = !!customBanner;
-
-    // Listen for global updates
-    useEffect(() => {
-        const handleUpdate = (data) => {
-            if (String(data.mediaId) === String(mediaId) && data.mediaType === mediaType) {
-                if (user) {
-                    mediaService.getMediaStatus(
-                        user,
-                        mediaId,
-                        mediaType,
-                        mediaType === "tv"
-                            ? {
-                                targetType: tvTargetType,
-                                seasonNumber: tvSeasonNumber,
-                                episodeNumber: tvEpisodeNumber,
-                                seasonEpisodeCounts: seasonEpisodeCounts,
-                            }
-                            : {}
-                    ).then(s => setStatus(prev => ({ ...prev, ...s })));
-                }
-            }
-        };
-        eventBus.on("MEDIA_UPDATED", handleUpdate);
-        return () => eventBus.off("MEDIA_UPDATED", handleUpdate);
-    }, [user, mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber, seasonEpisodeCounts]);
 
     const tvSeasonEpisodeCounts = useMemo(() => {
         if (seasonEpisodeCounts && typeof seasonEpisodeCounts === "object") return seasonEpisodeCounts;
@@ -252,27 +215,6 @@ export default function ActionBar({
         seedFromProgressOrDefaults();
         return () => { isMounted = false; };
     }, [showSeriesWatchModal, seasons]);
-
-    // Keep series watch button in sync with saved progress
-    useEffect(() => {
-        if (!user?.uid || mediaType !== "tv" || tvTargetType !== "series" || !mediaId) return;
-        const progressRef = doc(db, "user_series_progress", `${user.uid}_${Number(mediaId)}`);
-        const unsub = onSnapshot(progressRef, (snap) => {
-            if (snap.exists()) {
-                const data = snap.data() || {};
-                const ws = Array.isArray(data.watchedSeasons) ? data.watchedSeasons : [];
-                const we = data.watchedEpisodes && typeof data.watchedEpisodes === "object" ? data.watchedEpisodes : {};
-                const hasAny = ws.length > 0 || Object.keys(we).length > 0;
-                setStatus((prev) => ({ ...prev, isWatched: Boolean(hasAny) }));
-            } else {
-                setStatus((prev) => ({ ...prev, isWatched: false }));
-            }
-        }, () => {
-            setStatus((prev) => ({ ...prev, isWatched: false }));
-        });
-        return () => { try { unsub(); } catch (_) {} };
-    }, [user?.uid, mediaType, tvTargetType, mediaId]);
-
 
     const handleWatchedToggle = async () => {
         if (!user) { showToast.info("Please sign in"); return; }
@@ -460,27 +402,38 @@ export default function ActionBar({
         const prevStatus = { ...status };
         setStatus((prev) => ({ ...prev, isWatched: false, isWatchlist: true, isPaused: false, isDropped: false }));
 
-        const success = await mediaService.addToWatchlist(user, mediaId, mediaType, { title, poster_path: posterPath });
-        if (!success) {
+        try {
+            const success = await mediaService.addToWatchlist(user, mediaId, mediaType, { title, poster_path: posterPath });
+            if (!success) setStatus(prevStatus);
+        } catch {
             setStatus(prevStatus);
+            showToast.error("Failed to update. Please try again.");
         }
     };
 
     const handlePause = async () => {
         if (!user) { showToast.info("Please sign in"); return; }
-        const success = await mediaService.pauseMedia(user, mediaId, mediaType, { title, poster_path: posterPath });
-        if (success) {
-            setStatus(prev => ({ ...prev, isWatched: false, isWatchlist: false, isPaused: true, isDropped: false }));
-            setShowMoreMenu(false);
+        try {
+            const success = await mediaService.pauseMedia(user, mediaId, mediaType, { title, poster_path: posterPath });
+            if (success) {
+                setStatus(prev => ({ ...prev, isWatched: false, isWatchlist: false, isPaused: true, isDropped: false }));
+                setShowMoreMenu(false);
+            }
+        } catch {
+            showToast.error("Failed to update. Please try again.");
         }
     };
 
     const handleDrop = async () => {
         if (!user) { showToast.info("Please sign in"); return; }
-        const success = await mediaService.dropMedia(user, mediaId, mediaType, { title, poster_path: posterPath });
-        if (success) {
-            setStatus(prev => ({ ...prev, isWatched: false, isWatchlist: false, isPaused: false, isDropped: true }));
-            setShowMoreMenu(false);
+        try {
+            const success = await mediaService.dropMedia(user, mediaId, mediaType, { title, poster_path: posterPath });
+            if (success) {
+                setStatus(prev => ({ ...prev, isWatched: false, isWatchlist: false, isPaused: false, isDropped: true }));
+                setShowMoreMenu(false);
+            }
+        } catch {
+            showToast.error("Failed to update. Please try again.");
         }
     };
 

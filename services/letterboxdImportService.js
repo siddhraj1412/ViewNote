@@ -1,7 +1,6 @@
 import JSZip from "jszip";
 import Papa from "papaparse";
-import { db } from "@/lib/firebase";
-import { doc, writeBatch, collection, query, where, getDocs, serverTimestamp, getDoc, setDoc, Timestamp } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { tmdb } from "@/lib/tmdb";
 import eventBus from "@/lib/eventBus";
 
@@ -30,10 +29,10 @@ function parseDate(dateStr) {
 }
 
 function dateToTimestamp(dateStr) {
-    if (!dateStr) return serverTimestamp();
+    if (!dateStr) return new Date().toISOString();
     const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return serverTimestamp();
-    return Timestamp.fromDate(d);
+    if (isNaN(d.getTime())) return new Date().toISOString();
+    return d.toISOString();
 }
 
 function sleep(ms) {
@@ -291,6 +290,14 @@ async function extractZip(file) {
     for (const [path, zipEntry] of Object.entries(zip.files)) {
         if (zipEntry.dir) continue;
         const filename = path.split("/").pop().toLowerCase();
+        const pathLower = path.toLowerCase();
+
+        // Handle likes/films.csv specifically (Letterboxd exports likes in a likes/ subfolder)
+        if (pathLower.includes("likes/") && filename === "films.csv" && !parsed.likes) {
+            const text = await zipEntry.async("text");
+            parsed.likes = parseCSV(text);
+            continue;
+        }
 
         if (fileMap[filename] && !parsed[fileMap[filename]]) {
             const text = await zipEntry.async("text");
@@ -298,7 +305,7 @@ async function extractZip(file) {
             continue;
         }
 
-        if (path.toLowerCase().includes("likes") && filename.endsWith(".csv")) {
+        if (pathLower.includes("likes") && filename.endsWith(".csv") && !parsed.likes) {
             const text = await zipEntry.async("text");
             parsed.likes = parseCSV(text);
         }
@@ -315,15 +322,15 @@ async function getExistingImportedIds(userId) {
     };
 
     try {
-        const [watchedSnap, ratingsSnap, watchlistSnap] = await Promise.all([
-            getDocs(query(collection(db, "user_watched"), where("userId", "==", userId))),
-            getDocs(query(collection(db, "user_ratings"), where("userId", "==", userId))),
-            getDocs(query(collection(db, "user_watchlist"), where("userId", "==", userId))),
+        const [watchedRes, ratingsRes, watchlistRes] = await Promise.all([
+            supabase.from("user_watched").select('*').eq("userId", userId),
+            supabase.from("user_ratings").select('*').eq("userId", userId),
+            supabase.from("user_watchlist").select('*').eq("userId", userId),
         ]);
 
-        watchedSnap.docs.forEach((d) => existing.watched.add(d.data().mediaId));
-        ratingsSnap.docs.forEach((d) => existing.ratings.set(d.id, d.data()));
-        watchlistSnap.docs.forEach((d) => existing.watchlist.add(d.data().mediaId));
+        (watchedRes.data || []).forEach((d) => existing.watched.add(d.mediaId));
+        (ratingsRes.data || []).forEach((d) => existing.ratings.set(d.id, d));
+        (watchlistRes.data || []).forEach((d) => existing.watchlist.add(d.mediaId));
     } catch (err) {
         console.warn("[LBImport] Error fetching existing data:", err);
     }
@@ -332,19 +339,29 @@ async function getExistingImportedIds(userId) {
 }
 
 async function commitBatches(operations) {
-    const chunks = [];
-    for (let i = 0; i < operations.length; i += BATCH_LIMIT) {
-        chunks.push(operations.slice(i, i + BATCH_LIMIT));
+    // Group operations by collection for bulk upserts
+    const grouped = {};
+    for (const op of operations) {
+        if (op.type === "set") {
+            if (!grouped[op.collection]) grouped[op.collection] = [];
+            grouped[op.collection].push({ id: op.docId, ...op.data });
+        }
     }
 
-    for (const chunk of chunks) {
-        const batch = writeBatch(db);
-        for (const op of chunk) {
-            if (op.type === "set") {
-                batch.set(doc(db, op.collection, op.docId), op.data, { merge: true });
+    for (const [table, rows] of Object.entries(grouped)) {
+        // Upsert in chunks of 500 (Supabase limit)
+        const CHUNK_SIZE = 500;
+        for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+            const chunk = rows.slice(i, i + CHUNK_SIZE);
+            const { error } = await supabase
+                .from(table)
+                .upsert(chunk, { onConflict: 'id' });
+
+            if (error) {
+                console.error(`[LBImport] Upsert error for ${table}:`, error);
+                throw error;
             }
         }
-        await batch.commit();
     }
 }
 
@@ -489,7 +506,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                 mediaType,
                 title: tmdbData.title || tmdbData.name || "",
                 poster_path: tmdbData.poster_path || "",
-                addedAt: serverTimestamp(),
+                addedAt: new Date().toISOString(),
                 importedFrom: "letterboxd",
             },
         });
@@ -648,12 +665,12 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                     data,
                 });
                 existing.ratings.set(ratingDocId, { rating, review: reviewText });
+                summary.diary.imported++;
             } else {
                 summary.diary.skipped++;
             }
 
             ensureWatched(mediaId, mediaType, tmdbData);
-            summary.diary.imported++;
         }
     }
 
@@ -696,7 +713,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                     poster_path: tmdbData.poster_path || "",
                     liked: true,
                     username,
-                    ...(existing.ratings.has(ratingDocId) ? {} : { ratedAt: serverTimestamp() }),
+                    ...(existing.ratings.has(ratingDocId) ? {} : { ratedAt: new Date().toISOString() }),
                     importedFrom: "letterboxd",
                 },
             });
@@ -763,22 +780,25 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
 
     // Save import record
     try {
-        await setDoc(doc(db, "user_imports", `${userId}_letterboxd`), {
-            userId,
-            source: "letterboxd",
-            importedAt: serverTimestamp(),
-            summary: {
-                watched: summary.watched.imported,
-                ratings: summary.ratings.imported,
-                reviews: summary.reviews.imported,
-                likes: summary.likes.imported,
-                watchlist: summary.watchlist.imported,
-                diary: summary.diary.imported,
-                tmdbMatches: summary.tmdbMatches,
-                tmdbMisses: summary.tmdbMisses,
-                errorCount: summary.errors.length,
-            },
-        }, { merge: true });
+        await supabase
+            .from("user_imports")
+            .upsert({
+                id: `${userId}_letterboxd`,
+                userId,
+                source: "letterboxd",
+                importedAt: new Date().toISOString(),
+                summary: {
+                    watched: summary.watched.imported,
+                    ratings: summary.ratings.imported,
+                    reviews: summary.reviews.imported,
+                    likes: summary.likes.imported,
+                    watchlist: summary.watchlist.imported,
+                    diary: summary.diary.imported,
+                    tmdbMatches: summary.tmdbMatches,
+                    tmdbMisses: summary.tmdbMisses,
+                    errorCount: summary.errors.length,
+                },
+            }, { onConflict: 'id' });
     } catch (_) {
         // Non-critical
     }
@@ -795,9 +815,14 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
  */
 export async function getImportHistory(userId) {
     try {
-        const snap = await getDoc(doc(db, "user_imports", `${userId}_letterboxd`));
-        if (snap.exists()) return snap.data();
-        return null;
+        const { data, error } = await supabase
+            .from("user_imports")
+            .select('*')
+            .eq('id', `${userId}_letterboxd`)
+            .single();
+
+        if (error && error.code === 'PGRST116') return null;
+        return data || null;
     } catch {
         return null;
     }

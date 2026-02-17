@@ -83,12 +83,6 @@ function NavbarContent() {
 
     const dropdownItems = getDropdownItems();
 
-    const handleDropdownNav = (e, item) => {
-        e.preventDefault();
-        setDropdownOpen(false);
-        router.push(item.href);
-    };
-
     const isDropdownItemActive = (item) => {
         if (item.href === "/settings") return pathname === "/settings";
         const [path, qs] = item.href.split("?");
@@ -196,7 +190,7 @@ function NavbarContent() {
                                                     const Icon = item.icon;
                                                     const isActive = isDropdownItemActive(item);
                                                     return (
-                                                        <a
+                                                        <Link
                                                             key={item.label}
                                                             href={item.href}
                                                             className={`flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${isActive
@@ -204,11 +198,11 @@ function NavbarContent() {
                                                                 : "text-white/80 hover:bg-white/10 hover:text-white"
                                                                 }`}
                                                             role="menuitem"
-                                                            onClick={(e) => handleDropdownNav(e, item)}
+                                                            onClick={() => setDropdownOpen(false)}
                                                         >
                                                             <Icon size={16} className="flex-shrink-0" />
                                                             <span>{item.label}</span>
-                                                        </a>
+                                                        </Link>
                                                     );
                                                 })}
                                             </div>

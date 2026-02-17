@@ -2,8 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { X, Search, Loader2, GripVertical, ChevronRight, ChevronDown, Plus, Film, Tv, Clapperboard, Layers, Trash2 } from "lucide-react";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import showToast from "@/lib/toast";
 import { listService } from "@/services/listService";
 
@@ -301,13 +300,22 @@ export default function CreateListModal({ isOpen, onClose, userId, onCreated, ed
                 })),
             };
             if (isEdit) {
-                payload.updatedAt = serverTimestamp();
-                await updateDoc(doc(db, "user_lists", editList.id), payload);
+                payload.updatedAt = new Date().toISOString();
+                const { error } = await supabase
+                    .from("user_lists")
+                    .update(payload)
+                    .eq("id", editList.id);
+                if (error) throw error;
                 showToast.success("List updated!");
             } else {
-                payload.createdAt = serverTimestamp();
-                const docRef = await addDoc(collection(db, "user_lists"), payload);
-                showToast.linked("List created!", `/list/${docRef.id}`);
+                payload.createdAt = new Date().toISOString();
+                const { data: newList, error } = await supabase
+                    .from("user_lists")
+                    .insert(payload)
+                    .select()
+                    .single();
+                if (error) throw error;
+                showToast.linked("List created!", `/list/${newList.id}`);
             }
             if (onCreated) onCreated();
             onClose();

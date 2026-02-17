@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { MessageSquare, Heart, Calendar, ThumbsUp, Send, ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import StarRating from "@/components/StarRating";
 import { reviewService } from "@/services/reviewService";
 import { useAuth } from "@/context/AuthContext";
@@ -43,36 +42,38 @@ export default function ReviewsSection({ userId, username }) {
         if (!userId) return;
         setLoading(true);
         try {
-            const q = query(
-                collection(db, "user_ratings"),
-                where("userId", "==", userId)
-            );
-            const snap = await getDocs(q);
-            const items = snap.docs
-                .map((d) => ({ id: d.id, ...d.data() }))
+            const { data, error } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", userId);
+
+            const items = (data || [])
                 .filter((r) => r.review && r.review.trim().length > 0)
-                .sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
+                .sort((a, b) => new Date(b.ratedAt || 0).getTime() - new Date(a.ratedAt || 0).getTime());
             setReviews(items);
 
-            // Fetch like and comment counts + whether current user liked each
-            const counts = {};
-            const myLikes = {};
-            await Promise.all(items.map(async (item) => {
-                try {
-                    const [likeCount, comments, iLiked] = await Promise.all([
-                        reviewService.getLikeCount(item.id),
-                        reviewService.getComments(item.id),
-                        currentUser ? reviewService.hasUserLiked(item.id, currentUser.uid) : Promise.resolve(false),
-                    ]);
-                    counts[item.id] = { likes: likeCount, comments: comments.length };
-                    myLikes[item.id] = iLiked;
-                } catch {
-                    counts[item.id] = { likes: 0, comments: 0 };
-                    myLikes[item.id] = false;
+            // Batch-fetch like states + comment counts (2 queries instead of 2N)
+            if (items.length > 0) {
+                const ids = items.map((r) => r.id);
+                const [likeStates, commentCounts] = await Promise.all([
+                    reviewService.getBatchLikeStates(ids, currentUser?.uid),
+                    reviewService.getBatchCommentCounts(ids),
+                ]);
+                const counts = {};
+                const myLikes = {};
+                for (const id of ids) {
+                    counts[id] = {
+                        likes: likeStates[id]?.count ?? 0,
+                        comments: commentCounts[id] ?? 0,
+                    };
+                    myLikes[id] = likeStates[id]?.liked ?? false;
                 }
-            }));
-            setSocialCounts(counts);
-            setLikedByMe(myLikes);
+                setSocialCounts(counts);
+                setLikedByMe(myLikes);
+            } else {
+                setSocialCounts({});
+                setLikedByMe({});
+            }
         } catch (error) {
             console.error("Error loading reviews:", error);
         } finally {
@@ -91,7 +92,7 @@ export default function ReviewsSection({ userId, username }) {
         if (!currentUser || liking[reviewId]) return;
         setLiking((p) => ({ ...p, [reviewId]: true }));
         try {
-            const result = await reviewService.toggleLike(reviewId, currentUser.uid);
+            const result = await reviewService.toggleLike(reviewId, currentUser);
             setLikedByMe((p) => ({ ...p, [reviewId]: result.liked }));
             setSocialCounts((p) => ({
                 ...p,
@@ -156,8 +157,8 @@ export default function ReviewsSection({ userId, username }) {
     };
 
     const formatDate = (timestamp) => {
-        if (!timestamp?.seconds) return "";
-        return new Date(timestamp.seconds * 1000).toLocaleDateString("en-US", {
+        if (!timestamp) return "";
+        return new Date(timestamp).toLocaleDateString("en-US", {
             month: "short", day: "numeric", year: "numeric",
         });
     };
@@ -166,7 +167,7 @@ export default function ReviewsSection({ userId, username }) {
         const copy = [...reviews];
         switch (sortBy) {
             case "oldest":
-                copy.sort((a, b) => (a.ratedAt?.seconds || 0) - (b.ratedAt?.seconds || 0));
+                copy.sort((a, b) => new Date(a.ratedAt || 0).getTime() - new Date(b.ratedAt || 0).getTime());
                 break;
             case "a-z":
                 copy.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
@@ -185,7 +186,7 @@ export default function ReviewsSection({ userId, username }) {
                 break;
             case "newest":
             default:
-                copy.sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
+                copy.sort((a, b) => new Date(b.ratedAt || 0).getTime() - new Date(a.ratedAt || 0).getTime());
                 break;
         }
         return copy;

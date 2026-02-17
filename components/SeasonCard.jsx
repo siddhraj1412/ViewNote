@@ -11,6 +11,7 @@ export default function SeasonCard({
     seriesId,
     season,
     isWatched = false,
+    userRating = 0,
     onToggleWatched,
     onQuickRate,
 }) {
@@ -76,6 +77,15 @@ export default function SeasonCard({
                             </button>
                         )}
                     </div>
+                    {/* User rating badge */}
+                    {userRating > 0 && (
+                        <div className="absolute bottom-2 left-2 flex items-center gap-0.5 bg-black/70 backdrop-blur-sm rounded-md px-1.5 py-0.5 z-10">
+                            <Star size={10} className="text-accent fill-accent" />
+                            <span className="text-[10px] text-accent font-bold">
+                                {userRating % 1 === 0 ? userRating : userRating.toFixed(1)}
+                            </span>
+                        </div>
+                    )}
                 </div>
                 <div className="p-4">
                     <div className="font-bold text-white line-clamp-1">

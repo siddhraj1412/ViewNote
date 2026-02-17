@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { Check, X, Loader2, AtSign } from "lucide-react";
 import { validateUsername } from "@/lib/slugify";
 
@@ -23,6 +22,10 @@ export default function UsernameOnboardingPage() {
     useEffect(() => {
         if (!authLoading && !user) {
             router.replace("/login");
+        }
+        // Skip onboarding if user already has a username and onboarding is complete
+        if (!authLoading && user && user.username && user.onboardingComplete && !user.needsUsername) {
+            router.replace(`/${user.username}`);
         }
     }, [user, authLoading, router]);
 
@@ -100,16 +103,14 @@ export default function UsernameOnboardingPage() {
         setSaving(true);
         try {
             const trimmed = username.trim();
-            const profileRef = doc(db, "user_profiles", user.uid);
-            await setDoc(
-                profileRef,
-                {
+            await supabase
+                .from("profiles")
+                .update({
                     username: trimmed,
                     username_lowercase: trimmed.toLowerCase(),
                     onboardingComplete: true,
-                },
-                { merge: true }
-            );
+                })
+                .eq("id", user.uid);
             // Update local user state so needsUsername is cleared
             if (user) {
                 user.username = trimmed;

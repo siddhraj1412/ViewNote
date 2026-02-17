@@ -7,8 +7,7 @@ import Link from "next/link";
 import { Search, X, Film, Tv, User, Users } from "lucide-react";
 import { tmdb } from "@/lib/tmdb";
 import { getMovieUrl, getShowUrl, getPersonUrl } from "@/lib/slugify";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 
 export default function SearchOverlay({ isOpen, onClose }) {
     const [searchQuery, setSearchQuery] = useState("");
@@ -284,16 +283,13 @@ export default function SearchOverlay({ isOpen, onClose }) {
 async function searchUsers(term) {
     if (!term || term.length < 2) return [];
     try {
-        const profilesRef = collection(db, "user_profiles");
-        const endTerm = term + "\uf8ff";
-        const q = query(
-            profilesRef,
-            where("username", ">=", term),
-            where("username", "<=", endTerm),
-            limit(5)
-        );
-        const snap = await getDocs(q);
-        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const { data, error } = await supabase
+            .from("profiles")
+            .select("*")
+            .ilike("username", term + "%")
+            .limit(5);
+        if (error) throw error;
+        return data || [];
     } catch (err) {
         console.error("User search error:", err);
         return [];

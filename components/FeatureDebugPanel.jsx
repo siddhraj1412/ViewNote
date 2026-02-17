@@ -15,9 +15,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
-import { aggregateAndWriteStats } from "@/components/RatingDistribution";
+import supabase from "@/lib/supabase";
+import { aggregateAndWriteStats } from "@/lib/statsService";
 
 const BUCKETS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
 
@@ -29,11 +28,14 @@ async function verifyStats(mediaType, mediaId) {
 
     try {
         // Check media_stats doc
-        const statsRef = doc(db, "media_stats", statsKey);
-        const statsSnap = await getDoc(statsRef);
+        const { data: statsData, error: statsError } = await supabase
+            .from("media_stats")
+            .select("*")
+            .eq("id", statsKey)
+            .single();
 
-        if (statsSnap.exists()) {
-            const data = statsSnap.data();
+        if (statsData && !statsError) {
+            const data = statsData;
             console.log("✅ media_stats doc exists:", data);
             console.log("  ratingBuckets:", data.ratingBuckets || data.buckets || "MISSING");
             console.log("  totalRatings:", data.totalRatings);
@@ -48,19 +50,17 @@ async function verifyStats(mediaType, mediaId) {
         }
 
         // Cross-check with user_ratings
-        const ratingsQ = query(
-            collection(db, "user_ratings"),
-            where("mediaId", "==", Number(mediaId))
-        );
-        const ratingsSnap = await getDocs(ratingsQ);
-        const filtered = ratingsSnap.docs.filter((d) => d.data().mediaType === mediaType);
+        const { data: ratingsData } = await supabase
+            .from("user_ratings")
+            .select("*")
+            .eq("mediaId", Number(mediaId));
+        const filtered = (ratingsData || []).filter((d) => d.mediaType === mediaType);
         console.log(`  Raw user_ratings for this media: ${filtered.length} docs`);
 
         const buckets = Object.fromEntries(BUCKETS.map((b) => [String(b), 0]));
         let countWithReview = 0;
         let countLiked = 0;
-        filtered.forEach((d) => {
-            const data = d.data();
+        filtered.forEach((data) => {
             const r = Number(data.rating);
             if (r > 0 && r <= 5) {
                 const bucket = Math.round(r * 2) / 2;
@@ -74,12 +74,11 @@ async function verifyStats(mediaType, mediaId) {
         console.log(`  Computed totalReviews: ${countWithReview}, totalLikes: ${countLiked}`);
 
         // Check user_watched count
-        const watchedQ = query(
-            collection(db, "user_watched"),
-            where("mediaId", "==", Number(mediaId))
-        );
-        const watchedSnap = await getDocs(watchedQ);
-        const watchedFiltered = watchedSnap.docs.filter((d) => d.data().mediaType === mediaType);
+        const { data: watchedData } = await supabase
+            .from("user_watched")
+            .select("*")
+            .eq("mediaId", Number(mediaId));
+        const watchedFiltered = (watchedData || []).filter((d) => d.mediaType === mediaType);
         console.log(`  Computed totalWatchers: ${watchedFiltered.length}`);
     } catch (error) {
         console.error("❌ Error verifying stats:", error);
@@ -91,25 +90,26 @@ async function verifyStats(mediaType, mediaId) {
 async function verifyLikes(reviewDocId) {
     console.group(`[FeatureVerify] Likes for review ${reviewDocId}`);
     try {
-        const likesQ = query(
-            collection(db, "review_likes"),
-            where("reviewDocId", "==", reviewDocId)
-        );
-        const likesSnap = await getDocs(likesQ);
-        console.log(`✅ Like count: ${likesSnap.size}`);
-        likesSnap.docs.forEach((d) => {
-            const data = d.data();
-            console.log(`  - ${data.username || data.userId} (${d.id})`);
+        const { data: likesData } = await supabase
+            .from("review_likes")
+            .select("*")
+            .eq("reviewDocId", reviewDocId);
+        const likes = likesData || [];
+        console.log(`✅ Like count: ${likes.length}`);
+        likes.forEach((data) => {
+            console.log(`  - ${data.username || data.userId} (${data.id})`);
         });
 
         // Check likeCount on review doc
-        const reviewRef = doc(db, "user_ratings", reviewDocId);
-        const reviewSnap = await getDoc(reviewRef);
-        if (reviewSnap.exists()) {
-            const reviewData = reviewSnap.data();
+        const { data: reviewData } = await supabase
+            .from("user_ratings")
+            .select("*")
+            .eq("id", reviewDocId)
+            .single();
+        if (reviewData) {
             console.log(`  Review doc likeCount field: ${reviewData.likeCount ?? "not set"}`);
-            if (Number(reviewData.likeCount || 0) !== likesSnap.size) {
-                console.warn(`  ⚠️ Mismatch: likeCount=${reviewData.likeCount} vs actual=${likesSnap.size}`);
+            if (Number(reviewData.likeCount || 0) !== likes.length) {
+                console.warn(`  ⚠️ Mismatch: likeCount=${reviewData.likeCount} vs actual=${likes.length}`);
             }
         }
     } catch (error) {

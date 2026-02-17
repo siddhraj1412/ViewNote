@@ -18,21 +18,21 @@ export default function PrivacyPage() {
                             <li><strong className="text-white/80">Account data:</strong> Email address, display name, username, and profile picture.</li>
                             <li><strong className="text-white/80">Activity data:</strong> Ratings, reviews, watchlist entries, watch history, favorites, and custom lists you create.</li>
                             <li><strong className="text-white/80">Import data:</strong> If you import from Letterboxd or other services, we process the uploaded file to extract your media history.</li>
-                            <li><strong className="text-white/80">Usage data:</strong> Basic analytics such as page views and feature usage, collected via Firebase Analytics.</li>
+                            <li><strong className="text-white/80">Usage data:</strong> Basic analytics such as page views and feature usage.</li>
                         </ul>
                     </section>
 
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">2. Authentication</h2>
                         <p className="text-textSecondary">
-                            We use Firebase Authentication to manage user accounts. You can sign up with email/password or Google Sign-In. We do not store your password directly — Firebase handles authentication securely. When using Google Sign-In, we receive your name, email, and profile photo from Google.
+                            We use Supabase Authentication to manage user accounts. You can sign up with email/password or Google Sign-In. We do not store your password directly — authentication is handled securely by our infrastructure. When using Google Sign-In, we receive your name, email, and profile photo from Google.
                         </p>
                     </section>
 
                     <section>
                         <h2 className="text-xl font-bold text-white mb-3">3. Data Storage</h2>
                         <p className="text-textSecondary">
-                            Your data is stored in Google Cloud Firestore and Firebase Storage. All data is transmitted over HTTPS. Profile pictures and import files are stored in Firebase Storage with access controls. We retain your data for as long as your account is active.
+                            Your data is stored in Supabase (PostgreSQL) and Supabase Storage. All data is transmitted over HTTPS. Profile pictures and import files are stored in Supabase Storage with access controls. We retain your data for as long as your account is active.
                         </p>
                     </section>
 

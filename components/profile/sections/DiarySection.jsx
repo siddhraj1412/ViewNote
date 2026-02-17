@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Calendar, Heart } from "lucide-react";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import { getMediaUrl } from "@/lib/slugify";
 import StarRating from "@/components/StarRating";
@@ -25,34 +24,14 @@ export default function DiarySection({ userId }) {
         if (!ownerId) { setLoading(false); return; }
         setLoading(true);
         try {
-            // Try with orderBy first (requires composite index)
-            let snap;
-            try {
-                const q = query(
-                    collection(db, "user_ratings"),
-                    where("userId", "==", ownerId),
-                    orderBy("ratedAt", "desc"),
-                    limit(200)
-                );
-                snap = await getDocs(q);
-            } catch (indexErr) {
-                // Fallback: query without orderBy if index isn't deployed yet
-                console.warn("Diary index not ready, falling back:", indexErr.message);
-                const fallbackQ = query(
-                    collection(db, "user_ratings"),
-                    where("userId", "==", ownerId),
-                    limit(200)
-                );
-                snap = await getDocs(fallbackQ);
-            }
-            const items = snap.docs
-                .map((d) => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => {
-                    const timeA = a.ratedAt?.seconds || 0;
-                    const timeB = b.ratedAt?.seconds || 0;
-                    return timeB - timeA;
-                });
-            setEntries(items);
+            const { data: items, error } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", ownerId)
+                .order("ratedAt", { ascending: false })
+                .limit(200);
+            if (error) throw error;
+            setEntries(items || []);
         } catch (error) {
             console.error("Error loading diary:", error);
         } finally {
@@ -81,8 +60,8 @@ export default function DiarySection({ userId }) {
                 month: "short", day: "numeric", year: "numeric",
             });
         }
-        if (item.ratedAt?.seconds) {
-            return new Date(item.ratedAt.seconds * 1000).toLocaleDateString("en-US", {
+        if (item.ratedAt) {
+            return new Date(item.ratedAt).toLocaleDateString("en-US", {
                 month: "short", day: "numeric", year: "numeric",
             });
         }
@@ -93,7 +72,7 @@ export default function DiarySection({ userId }) {
         const copy = [...entries];
         switch (sortBy) {
             case "oldest":
-                copy.sort((a, b) => (a.ratedAt?.seconds || 0) - (b.ratedAt?.seconds || 0));
+                copy.sort((a, b) => new Date(a.ratedAt || 0).getTime() - new Date(b.ratedAt || 0).getTime());
                 break;
             case "a-z":
                 copy.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
@@ -109,7 +88,7 @@ export default function DiarySection({ userId }) {
                 break;
             case "newest":
             default:
-                copy.sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
+                copy.sort((a, b) => new Date(b.ratedAt || 0).getTime() - new Date(a.ratedAt || 0).getTime());
                 break;
         }
         return copy;

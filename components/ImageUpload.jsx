@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { storage } from "@/lib/firebase";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import supabase from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
+import showToast from "@/lib/toast";
 import Button from "./ui/Button";
 import { Upload, X } from "lucide-react";
 
@@ -18,54 +18,55 @@ export default function ImageUpload({ mediaId, mediaType, imageType, onUploadCom
 
         // Validate file type
         if (!file.type.startsWith("image/")) {
-            alert("Please select an image file");
+            showToast.error("Please select an image file");
             return;
         }
 
         // Validate file size (max 5MB)
         if (file.size > 5 * 1024 * 1024) {
-            alert("File size must be less than 5MB");
+            showToast.error("File size must be less than 5MB");
             return;
         }
 
         setUploading(true);
-        setProgress(0);
+        setProgress(10);
 
         try {
-            // Create storage reference
-            const storageRef = ref(
-                storage,
-                `customMedia/${user.uid}/${mediaType}/${mediaId}/${imageType}.jpg`
-            );
+            const filePath = `${user.uid}/${mediaType}/${mediaId}/${imageType}.jpg`;
 
-            // Upload file
-            const uploadTask = uploadBytesResumable(storageRef, file);
+            setProgress(30);
 
-            uploadTask.on(
-                "state_changed",
-                (snapshot) => {
-                    const prog = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                    setProgress(prog);
-                },
-                (error) => {
-                    console.error("Upload error:", error);
-                    alert("Upload failed. Please try again.");
-                    setUploading(false);
-                },
-                async () => {
-                    // Upload complete
-                    const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                    setUploading(false);
-                    setProgress(0);
-                    if (onUploadComplete) {
-                        onUploadComplete(downloadURL);
-                    }
-                }
-            );
+            const { data, error } = await supabase.storage
+                .from("custom-media")
+                .upload(filePath, file, {
+                    contentType: file.type,
+                    upsert: true,
+                });
+
+            if (error) throw error;
+
+            setProgress(80);
+
+            const { data: { publicUrl } } = supabase.storage
+                .from("custom-media")
+                .getPublicUrl(data.path);
+
+            // Cache-bust so the new image appears instantly
+            const url = `${publicUrl}?t=${Date.now()}`;
+
+            setProgress(100);
+            setUploading(false);
+            setProgress(0);
+            showToast.success(`${imageType === "poster" ? "Poster" : "Banner"} updated!`);
+
+            if (onUploadComplete) {
+                onUploadComplete(url);
+            }
         } catch (error) {
             console.error("Upload error:", error);
-            alert("Upload failed. Please try again.");
+            showToast.error("Upload failed. Please try again.");
             setUploading(false);
+            setProgress(0);
         }
     };
 

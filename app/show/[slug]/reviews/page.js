@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { collection, getDocs, limit, orderBy, query, startAfter, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import supabase from "@/lib/supabase";
 import { tmdb } from "@/lib/tmdb";
 import { parseSlugId, getShowUrl } from "@/lib/slugify";
 import ReviewCard from "@/components/ReviewCard";
@@ -22,7 +21,7 @@ export default function ShowReviewsPage() {
     const [reviews, setReviews] = useState([]);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const [cursorDoc, setCursorDoc] = useState(null);
+    const [offset, setOffset] = useState(0);
 
     useEffect(() => {
         let mounted = true;
@@ -49,66 +48,59 @@ export default function ShowReviewsPage() {
         };
     }, [tvId]);
 
-    const baseQuery = useMemo(() => {
-        if (!tvId) return null;
-        return query(
-            collection(db, "user_ratings"),
-            where("mediaId", "==", Number(tvId)),
-            where("mediaType", "==", "tv"),
-            orderBy("ratedAt", "desc"),
-            limit(PAGE_SIZE)
-        );
-    }, [tvId]);
-
     const loadFirstPage = useCallback(async () => {
-        if (!baseQuery) return;
+        if (!tvId) return;
         setLoadingMore(true);
         try {
-            const snap = await getDocs(baseQuery);
-            const items = snap.docs
-                .map((d) => ({ id: d.id, ...d.data() }))
-                .filter((r) => r.review && r.review.trim().length > 0);
+            const { data, error } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("mediaId", Number(tvId))
+                .eq("mediaType", "tv")
+                .order("ratedAt", { ascending: false })
+                .range(0, PAGE_SIZE - 1);
+            if (error) throw error;
+            const all = data || [];
+            const items = all.filter((r) => r.review && r.review.trim().length > 0);
             setReviews(items);
-            setCursorDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
-            setHasMore(snap.docs.length === PAGE_SIZE);
+            setOffset(all.length);
+            setHasMore(all.length === PAGE_SIZE);
         } catch {
             setReviews([]);
-            setCursorDoc(null);
+            setOffset(0);
             setHasMore(false);
         } finally {
             setLoadingMore(false);
         }
-    }, [baseQuery]);
+    }, [tvId]);
 
     useEffect(() => {
         loadFirstPage();
     }, [loadFirstPage]);
 
     const loadMore = useCallback(async () => {
-        if (!tvId || !cursorDoc || loadingMore || !hasMore) return;
+        if (!tvId || loadingMore || !hasMore) return;
         setLoadingMore(true);
         try {
-            const q2 = query(
-                collection(db, "user_ratings"),
-                where("mediaId", "==", Number(tvId)),
-                where("mediaType", "==", "tv"),
-                orderBy("ratedAt", "desc"),
-                startAfter(cursorDoc),
-                limit(PAGE_SIZE)
-            );
-            const snap = await getDocs(q2);
-            const items = snap.docs
-                .map((d) => ({ id: d.id, ...d.data() }))
-                .filter((r) => r.review && r.review.trim().length > 0);
+            const { data, error } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("mediaId", Number(tvId))
+                .eq("mediaType", "tv")
+                .order("ratedAt", { ascending: false })
+                .range(offset, offset + PAGE_SIZE - 1);
+            if (error) throw error;
+            const all = data || [];
+            const items = all.filter((r) => r.review && r.review.trim().length > 0);
             setReviews((prev) => [...prev, ...items]);
-            setCursorDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : cursorDoc);
-            setHasMore(snap.docs.length === PAGE_SIZE);
+            setOffset((prev) => prev + all.length);
+            setHasMore(all.length === PAGE_SIZE);
         } catch {
             setHasMore(false);
         } finally {
             setLoadingMore(false);
         }
-    }, [tvId, cursorDoc, loadingMore, hasMore]);
+    }, [tvId, offset, loadingMore, hasMore]);
 
     if (loading) {
         return (

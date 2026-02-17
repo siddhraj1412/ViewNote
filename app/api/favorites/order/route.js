@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import { doc, updateDoc } from "firebase/firestore";
+import { createClient } from "@/lib/supabaseServer";
 
-// PUT /api/favorites/order - Update favorites order
 export async function PUT(request) {
     try {
         const body = await request.json();
@@ -12,11 +10,10 @@ export async function PUT(request) {
             return NextResponse.json({ error: "Invalid request" }, { status: 400 });
         }
 
-        const collectionName = `favorites_${type}`;
+        const supabase = await createClient();
 
-        // Update order for each favorite
         const updatePromises = favorites.map((item, index) =>
-            updateDoc(doc(db, collectionName, item.id), { order: index })
+            supabase.from("favorites").update({ order: index }).eq("id", item.id)
         );
 
         await Promise.all(updatePromises);

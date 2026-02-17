@@ -6,7 +6,8 @@ import { AlertTriangle, RefreshCcw } from "lucide-react";
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false, error: null };
+        this.state = { hasError: false, error: null, retryCount: 0 };
+        this.maxAutoRetries = props.maxAutoRetries ?? 1;
     }
 
     static getDerivedStateFromError(error) {
@@ -14,8 +15,33 @@ class ErrorBoundary extends React.Component {
     }
 
     componentDidCatch(error, errorInfo) {
-        // You could log the error to an error reporting service here
         console.error("ErrorBoundary captured error:", error, errorInfo);
+
+        // Log to monitoring (extensible — add Sentry/Analytics here)
+        if (typeof window !== "undefined") {
+            try {
+                const errorLog = JSON.parse(sessionStorage.getItem("vn_error_log") || "[]");
+                errorLog.push({
+                    message: error?.message || "Unknown",
+                    component: errorInfo?.componentStack?.slice(0, 200),
+                    timestamp: Date.now(),
+                    url: window.location.href,
+                });
+                // Keep last 20 errors
+                sessionStorage.setItem("vn_error_log", JSON.stringify(errorLog.slice(-20)));
+            } catch {}
+        }
+
+        // Auto-retry once if under threshold
+        if (this.state.retryCount < this.maxAutoRetries) {
+            setTimeout(() => {
+                this.setState((prev) => ({
+                    hasError: false,
+                    error: null,
+                    retryCount: prev.retryCount + 1,
+                }));
+            }, 500);
+        }
     }
 
     handleRetry = () => {

@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { createClient } from "@/lib/supabaseServer";
 
-// GET /api/profile - Get user profile
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -12,12 +10,14 @@ export async function GET(request) {
             return NextResponse.json({ error: "User ID required" }, { status: 400 });
         }
 
-        const profileRef = doc(db, "user_profiles", userId);
-        const profileSnap = await getDoc(profileRef);
+        const supabase = await createClient();
+        const { data, error } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", userId)
+            .single();
 
-        if (profileSnap.exists()) {
-            return NextResponse.json(profileSnap.data());
-        } else {
+        if (error && error.code === "PGRST116") {
             return NextResponse.json({
                 profile_picture_url: "",
                 bio: "",
@@ -27,13 +27,15 @@ export async function GET(request) {
                 profile_banner_url: "",
             });
         }
+        if (error) throw error;
+
+        return NextResponse.json(data);
     } catch (error) {
         console.error("Error fetching profile:", error);
         return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 });
     }
 }
 
-// POST /api/profile - Update user profile
 export async function POST(request) {
     try {
         const body = await request.json();
@@ -43,8 +45,13 @@ export async function POST(request) {
             return NextResponse.json({ error: "User ID required" }, { status: 400 });
         }
 
-        const profileRef = doc(db, "user_profiles", userId);
-        await setDoc(profileRef, { ...updates, userId, updatedAt: new Date().toISOString() }, { merge: true });
+        const supabase = await createClient();
+        const { error } = await supabase
+            .from("profiles")
+            .update({ ...updates, updatedAt: new Date().toISOString() })
+            .eq("id", userId);
+
+        if (error) throw error;
 
         return NextResponse.json({ success: true });
     } catch (error) {

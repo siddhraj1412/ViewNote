@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { X, Edit2, Trash2, Crown } from "lucide-react";
-import { db } from "@/lib/firebase";
-import { doc, deleteDoc } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { detectListType, getListTypeInfo } from "@/lib/listUtils";
 import showToast from "@/lib/toast";
 import Link from "next/link";
@@ -20,7 +19,8 @@ export default function ViewListModal({ isOpen, onClose, list, isOwnProfile, onE
     const handleDelete = async () => {
         setDeleting(true);
         try {
-            await deleteDoc(doc(db, "user_lists", list.id));
+            const { error } = await supabase.from("user_lists").delete().eq("id", list.id);
+            if (error) throw error;
             showToast.success("List deleted");
             if (onDeleted) onDeleted();
             onClose();

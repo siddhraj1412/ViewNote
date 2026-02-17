@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { collection, getDocs, limit, orderBy, query, startAfter, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import supabase from "@/lib/supabase";
 import { getMediaUrl } from "@/lib/slugify";
 import { tmdb } from "@/lib/tmdb";
 import StarRating from "@/components/StarRating";
@@ -32,8 +31,8 @@ function formatDate(item) {
             year: "numeric",
         });
     }
-    if (item.ratedAt?.seconds) {
-        return new Date(item.ratedAt.seconds * 1000).toLocaleDateString("en-US", {
+    if (item.ratedAt) {
+        return new Date(item.ratedAt).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
             year: "numeric",
@@ -53,7 +52,7 @@ export default function DiaryAllPage() {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const [cursorDoc, setCursorDoc] = useState(null);
+    const [offset, setOffset] = useState(0);
 
     useEffect(() => {
         let mounted = true;
@@ -74,20 +73,20 @@ export default function DiaryAllPage() {
         if (!userId) return;
         setLoading(true);
         try {
-            const q1 = query(
-                collection(db, "user_ratings"),
-                where("userId", "==", userId),
-                orderBy("ratedAt", "desc"),
-                limit(PAGE_SIZE)
-            );
-            const snap = await getDocs(q1);
-            const next = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const { data, error } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", userId)
+                .order("ratedAt", { ascending: false })
+                .range(0, PAGE_SIZE - 1);
+            if (error) throw error;
+            const next = data || [];
             setItems(next);
-            setCursorDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
-            setHasMore(snap.docs.length === PAGE_SIZE);
+            setOffset(next.length);
+            setHasMore(next.length === PAGE_SIZE);
         } catch {
             setItems([]);
-            setCursorDoc(null);
+            setOffset(0);
             setHasMore(false);
         } finally {
             setLoading(false);
@@ -100,27 +99,26 @@ export default function DiaryAllPage() {
     }, [uid, loadFirst]);
 
     const loadMore = useCallback(async () => {
-        if (!uid || !cursorDoc || loadingMore || !hasMore) return;
+        if (!uid || loadingMore || !hasMore) return;
         setLoadingMore(true);
         try {
-            const q2 = query(
-                collection(db, "user_ratings"),
-                where("userId", "==", uid),
-                orderBy("ratedAt", "desc"),
-                startAfter(cursorDoc),
-                limit(PAGE_SIZE)
-            );
-            const snap = await getDocs(q2);
-            const next = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const { data, error } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", uid)
+                .order("ratedAt", { ascending: false })
+                .range(offset, offset + PAGE_SIZE - 1);
+            if (error) throw error;
+            const next = data || [];
             setItems((prev) => [...prev, ...next]);
-            setCursorDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : cursorDoc);
-            setHasMore(snap.docs.length === PAGE_SIZE);
+            setOffset((prev) => prev + next.length);
+            setHasMore(next.length === PAGE_SIZE);
         } catch {
             setHasMore(false);
         } finally {
             setLoadingMore(false);
         }
-    }, [uid, cursorDoc, loadingMore, hasMore]);
+    }, [uid, offset, loadingMore, hasMore]);
 
     const backHref = useMemo(() => {
         return username ? `/${encodeURIComponent(username)}?tab=diary` : "/";

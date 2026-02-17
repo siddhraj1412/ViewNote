@@ -188,6 +188,7 @@ export default function EpisodePage() {
                                 bannerTmdbEndpoint={`tv/${tvId}/season/${seasonNumber}/episode/${episodeNumber}/images`}
                                 initialSeasonNumber={seasonNumber}
                                 initialEpisodeNumber={episodeNumber}
+                                customBanner={customBanner}
                             />
 
                             <div className="flex flex-wrap gap-3">

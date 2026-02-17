@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
-import { db } from "@/lib/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import StarRating from "@/components/StarRating";
 import { Heart, MessageSquare, ChevronDown, Loader2, Send, Trash2, EyeOff, Eye } from "lucide-react";
 import eventBus from "@/lib/eventBus";
@@ -29,7 +28,8 @@ function generateSlugFromTitle(text) {
 function timeAgo(date) {
     if (!date) return "";
     const now = new Date();
-    const d = date instanceof Date ? date : date?.toDate?.() || new Date(date?.seconds * 1000);
+    const d = date instanceof Date ? date : typeof date === "string" ? new Date(date) : new Date(date?.seconds ? date.seconds * 1000 : 0);
+    if (isNaN(d.getTime())) return "";
     const diff = Math.floor((now - d) / 1000);
     if (diff < 60) return "just now";
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
@@ -39,18 +39,16 @@ function timeAgo(date) {
 }
 
 /* ── Inline Like Button ── */
-function InlineLikeButton({ reviewId, user }) {
-    const [liked, setLiked] = useState(false);
-    const [count, setCount] = useState(0);
+function InlineLikeButton({ reviewId, user, initialLiked = false, initialCount = 0 }) {
+    const [liked, setLiked] = useState(initialLiked);
+    const [count, setCount] = useState(initialCount);
     const [busy, setBusy] = useState(false);
 
+    // Sync when parent batch data arrives / changes
     useEffect(() => {
-        let cancelled = false;
-        reviewService.getReviewLikeState(reviewId, user?.uid).then((s) => {
-            if (!cancelled) { setLiked(s.liked); setCount(s.count); }
-        });
-        return () => { cancelled = true; };
-    }, [reviewId, user?.uid]);
+        setLiked(initialLiked);
+        setCount(initialCount);
+    }, [initialLiked, initialCount]);
 
     // Listen for like updates from other components
     useEffect(() => {
@@ -92,23 +90,34 @@ function InlineLikeButton({ reviewId, user }) {
 }
 
 /* ── Inline Comment Section ── */
-function InlineComments({ reviewId, user }) {
+function InlineComments({ reviewId, user, initialCommentCount = 0 }) {
     const [open, setOpen] = useState(false);
     const [comments, setComments] = useState([]);
-    const [commentCount, setCommentCount] = useState(0);
+    const [commentCount, setCommentCount] = useState(initialCommentCount);
     const [loadingComments, setLoadingComments] = useState(false);
     const [newComment, setNewComment] = useState("");
     const [posting, setPosting] = useState(false);
     const inputRef = useRef(null);
 
-    // Fetch count on mount (lightweight)
+    // Sync when parent batch data arrives
     useEffect(() => {
+        setCommentCount(initialCommentCount);
+    }, [initialCommentCount]);
+
+    // Lazy-load comments only when the section is opened
+    useEffect(() => {
+        if (!open) return;
         let cancelled = false;
+        setLoadingComments(true);
         reviewService.getComments(reviewId).then((c) => {
-            if (!cancelled) { setComments(c); setCommentCount(c.length); }
+            if (!cancelled) {
+                setComments(c);
+                setCommentCount(c.length);
+                setLoadingComments(false);
+            }
         });
         return () => { cancelled = true; };
-    }, [reviewId]);
+    }, [reviewId, open]);
 
     const toggleOpen = (e) => {
         e.stopPropagation();
@@ -253,41 +262,58 @@ export default function ReviewsForMedia({ mediaId, mediaType, title, tvTargetTyp
     const [reviewSort, setReviewSort] = useState("recent");
     const [visibleCount, setVisibleCount] = useState(REVIEWS_PER_PAGE);
     const [loadingMore, setLoadingMore] = useState(false);
+    // Batch-fetched interaction data
+    const [likeStates, setLikeStates] = useState({});
+    const [commentCounts, setCommentCounts] = useState({});
 
     const fetchReviews = useCallback(async () => {
         if (!mediaId) return;
         setLoading(true);
         try {
-            const q = query(
-                collection(db, "user_ratings"),
-                where("mediaId", "==", Number(mediaId))
-            );
-            const snap = await getDocs(q);
-            const items = snap.docs
-                .map((d) => ({ id: d.id, ...d.data() }))
-                .filter((r) => {
-                    if (!r.review || r.review.trim().length === 0) return false;
-                    if (mediaType && r.mediaType !== mediaType) return false;
-                    // Filter by target scope for TV content
-                    if (tvTargetType === "season" && typeof tvSeasonNumber === "number") {
-                        return r.tvTargetType === "season" && r.tvSeasonNumber === tvSeasonNumber;
-                    }
-                    if (tvTargetType === "episode" && typeof tvSeasonNumber === "number" && typeof tvEpisodeNumber === "number") {
-                        return r.tvTargetType === "episode" && r.tvSeasonNumber === tvSeasonNumber && r.tvEpisodeNumber === tvEpisodeNumber;
-                    }
-                    // For series-level reviews, show only those without season/episode scope
-                    if (tvTargetType === "series" || (!tvTargetType && mediaType === "tv")) {
-                        return !r.tvTargetType || r.tvTargetType === "series";
-                    }
-                    return true;
-                });
+            // Build server-side query with proper filters
+            let query = supabase
+                .from("user_ratings")
+                .select("id, userId, username, rating, review, spoiler, likeCount, ratedAt, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber")
+                .eq("mediaId", Number(mediaId))
+                .not("review", "is", null)
+                .neq("review", "");
+
+            if (mediaType) {
+                query = query.eq("mediaType", mediaType);
+            }
+
+            // Server-side TV scope filtering
+            if (tvTargetType === "season" && typeof tvSeasonNumber === "number") {
+                query = query.eq("tvTargetType", "season").eq("tvSeasonNumber", tvSeasonNumber);
+            } else if (tvTargetType === "episode" && typeof tvSeasonNumber === "number" && typeof tvEpisodeNumber === "number") {
+                query = query.eq("tvTargetType", "episode").eq("tvSeasonNumber", tvSeasonNumber).eq("tvEpisodeNumber", tvEpisodeNumber);
+            } else if (tvTargetType === "series" || (!tvTargetType && mediaType === "tv")) {
+                query = query.or("tvTargetType.is.null,tvTargetType.eq.series");
+            }
+
+            const { data: rawItems, error } = await query;
+            if (error) throw error;
+
+            // Minimal client-side trim filter (whitespace-only reviews)
+            const items = (rawItems || []).filter((r) => r.review.trim().length > 0);
             setReviews(items);
+
+            // Batch-fetch like states + comment counts (2 queries instead of 2N)
+            if (items.length > 0) {
+                const ids = items.map((r) => r.id);
+                const [likes, counts] = await Promise.all([
+                    reviewService.getBatchLikeStates(ids, user?.uid),
+                    reviewService.getBatchCommentCounts(ids),
+                ]);
+                setLikeStates(likes);
+                setCommentCounts(counts);
+            }
         } catch {
             setReviews([]);
         } finally {
             setLoading(false);
         }
-    }, [mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber]);
+    }, [mediaId, mediaType, tvTargetType, tvSeasonNumber, tvEpisodeNumber, user?.uid]);
 
     useEffect(() => {
         fetchReviews();
@@ -312,21 +338,16 @@ export default function ReviewsForMedia({ mediaId, mediaType, title, tvTargetTyp
 
     const sortedReviews = useMemo(() => {
         const copy = [...reviews];
+        const getTs = (r) => new Date(r.ratedAt || 0).getTime();
         if (reviewSort === "popular") {
             copy.sort((a, b) => {
                 const aLikes = Number(a.likeCount || 0);
                 const bLikes = Number(b.likeCount || 0);
                 if (bLikes !== aLikes) return bLikes - aLikes;
-                const aTime = a.createdAt?.seconds || a.ratedAt?.seconds || 0;
-                const bTime = b.createdAt?.seconds || b.ratedAt?.seconds || 0;
-                return bTime - aTime;
+                return getTs(b) - getTs(a);
             });
         } else {
-            copy.sort((a, b) => {
-                const aTime = a.createdAt?.seconds || a.ratedAt?.seconds || 0;
-                const bTime = b.createdAt?.seconds || b.ratedAt?.seconds || 0;
-                return bTime - aTime;
-            });
+            copy.sort((a, b) => getTs(b) - getTs(a));
         }
         return copy;
     }, [reviews, reviewSort]);
@@ -427,7 +448,7 @@ export default function ReviewsForMedia({ mediaId, mediaType, title, tvTargetTyp
                                         @{username}
                                     </Link>
                                     <div className="text-[11px] text-textSecondary">
-                                        {timeAgo(r.createdAt || r.ratedAt)}
+                                        {timeAgo(r.ratedAt)}
                                     </div>
                                 </div>
                                 {r.spoiler && (
@@ -447,8 +468,17 @@ export default function ReviewsForMedia({ mediaId, mediaType, title, tvTargetTyp
 
                             {/* Interaction row */}
                             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/5">
-                                <InlineLikeButton reviewId={r.id} user={user} />
-                                <InlineComments reviewId={r.id} user={user} />
+                                <InlineLikeButton
+                                    reviewId={r.id}
+                                    user={user}
+                                    initialLiked={likeStates[r.id]?.liked ?? false}
+                                    initialCount={likeStates[r.id]?.count ?? 0}
+                                />
+                                <InlineComments
+                                    reviewId={r.id}
+                                    user={user}
+                                    initialCommentCount={commentCounts[r.id] ?? 0}
+                                />
                             </div>
                         </div>
                     );

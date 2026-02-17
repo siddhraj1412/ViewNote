@@ -1,43 +1,30 @@
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 
 /**
  * Profile Service
  * Fetches user profile data with customization joins
- * Includes retry logic for index errors
  */
-
-async function retryQuery(queryFn, fallbackFn, label) {
-    try {
-        return await queryFn();
-    } catch (error) {
-        if (error.code === "failed-precondition") {
-            console.warn(`[ProfileService] Missing index for ${label}. Using fallback query.`);
-            try {
-                return await fallbackFn();
-            } catch (fallbackError) {
-                console.error(`[ProfileService] Fallback also failed for ${label}:`, fallbackError);
-                return [];
-            }
-        }
-        console.error(`[ProfileService] Error in ${label}:`, error);
-        return [];
-    }
-}
 
 export const profileService = {
 
     async getCustomizationsMap(userId) {
         if (!userId) return {};
         try {
-            const q = query(collection(db, "user_media_preferences"), where("userId", "==", userId));
-            const snap = await getDocs(q);
+            const { data, error } = await supabase
+                .from("user_media_preferences")
+                .select('mediaType, mediaId, customPoster, customBanner')
+                .eq("userId", userId);
+
+            if (error) {
+                console.error("Error fetching customizations:", error);
+                return {};
+            }
+
             const map = {};
-            snap.forEach(doc => {
-                const data = doc.data();
-                map[`${data.mediaType}_${data.mediaId}`] = {
-                    customPoster: data.customPoster,
-                    customBanner: data.customBanner
+            (data || []).forEach(row => {
+                map[`${row.mediaType}_${row.mediaId}`] = {
+                    customPoster: row.customPoster,
+                    customBanner: row.customBanner,
                 };
             });
             return map;
@@ -66,21 +53,31 @@ export const profileService = {
     async getFavorites(userId) {
         if (!userId) return { movies: [], shows: [], episodes: [] };
         try {
-            const [moviesSnap, showsSnap, episodesSnap, customizationsMap] = await Promise.all([
-                getDocs(query(collection(db, "favorites_movies"), where("userId", "==", userId))),
-                getDocs(query(collection(db, "favorites_shows"), where("userId", "==", userId))),
-                getDocs(query(collection(db, "favorites_episodes"), where("userId", "==", userId))),
-                this.getCustomizationsMap(userId)
+            const [favsResult, customizationsMap] = await Promise.all([
+                supabase
+                    .from("favorites")
+                    .select('*')
+                    .eq("userId", userId),
+                this.getCustomizationsMap(userId),
             ]);
-            const movies = moviesSnap.docs
-                .map(doc => ({ id: doc.id, ...doc.data(), mediaType: "movie" }))
+
+            const allFavs = favsResult.data || [];
+
+            const movies = allFavs
+                .filter(f => f.category === 'movies')
+                .map(f => ({ id: f.id, ...f, mediaType: "movie" }))
                 .sort((a, b) => (a.order || 0) - (b.order || 0));
-            const shows = showsSnap.docs
-                .map(doc => ({ id: doc.id, ...doc.data(), mediaType: "tv" }))
+
+            const shows = allFavs
+                .filter(f => f.category === 'shows')
+                .map(f => ({ id: f.id, ...f, mediaType: "tv" }))
                 .sort((a, b) => (a.order || 0) - (b.order || 0));
-            const episodes = episodesSnap.docs
-                .map(doc => ({ id: doc.id, ...doc.data(), mediaType: "episode" }))
+
+            const episodes = allFavs
+                .filter(f => f.category === 'episodes')
+                .map(f => ({ id: f.id, ...f, mediaType: "episode" }))
                 .sort((a, b) => (a.order || 0) - (b.order || 0));
+
             return {
                 movies: this.applyCustomizations(movies, customizationsMap),
                 shows: this.applyCustomizations(shows, customizationsMap),
@@ -96,201 +93,171 @@ export const profileService = {
         if (!userId) return [];
         const customizationsMap = await this.getCustomizationsMap(userId);
 
-        const items = await retryQuery(
-            async () => {
-                const q = query(
-                    collection(db, "user_watched"),
-                    where("userId", "==", userId),
-                    orderBy("addedAt", "desc")
-                );
-                const snap = await getDocs(q);
-                return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            },
-            async () => {
-                // Fallback: no orderBy (works without index)
-                const q = query(
-                    collection(db, "user_watched"),
-                    where("userId", "==", userId)
-                );
-                const snap = await getDocs(q);
-                const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                // Sort client-side
-                return docs.sort((a, b) => {
-                    const aTime = a.addedAt?.seconds || 0;
-                    const bTime = b.addedAt?.seconds || 0;
-                    return bTime - aTime;
-                });
-            },
-            "user_watched"
-        );
+        try {
+            const { data, error } = await supabase
+                .from("user_watched")
+                .select('*')
+                .eq("userId", userId)
+                .order("addedAt", { ascending: false });
 
-        return this.applyCustomizations(items, customizationsMap);
+            if (error) {
+                console.error("[ProfileService] Error in user_watched:", error);
+                return [];
+            }
+
+            const items = (data || []).map(row => ({ id: row.id, ...row }));
+            return this.applyCustomizations(items, customizationsMap);
+        } catch (error) {
+            console.error("[ProfileService] Error in user_watched:", error);
+            return [];
+        }
     },
 
     async getWatching(userId) {
         if (!userId) return [];
         const customizationsMap = await this.getCustomizationsMap(userId);
 
-        const items = await retryQuery(
-            async () => {
-                const q = query(
-                    collection(db, "user_watching"),
-                    where("userId", "==", userId),
-                    orderBy("startedAt", "desc")
-                );
-                const snap = await getDocs(q);
-                return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            },
-            async () => {
-                const q = query(
-                    collection(db, "user_watching"),
-                    where("userId", "==", userId)
-                );
-                const snap = await getDocs(q);
-                const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                return docs.sort((a, b) => {
-                    const aTime = a.startedAt?.seconds || 0;
-                    const bTime = b.startedAt?.seconds || 0;
-                    return bTime - aTime;
-                });
-            },
-            "user_watching"
-        );
+        try {
+            const { data, error } = await supabase
+                .from("user_watching")
+                .select('*')
+                .eq("userId", userId)
+                .order("startedAt", { ascending: false });
 
-        // Stored as tv only, but keep mediaType consistent for rendering.
-        const normalized = items.map((i) => ({ ...i, mediaType: i.mediaType || "tv", mediaId: i.seriesId ?? i.mediaId }));
-        return this.applyCustomizations(normalized, customizationsMap);
+            if (error) {
+                // Fallback without ordering
+                const { data: fallbackData } = await supabase
+                    .from("user_watching")
+                    .select('*')
+                    .eq("userId", userId);
+
+                const items = (fallbackData || [])
+                    .map(row => ({ id: row.id, ...row }))
+                    .sort((a, b) => {
+                        const aTime = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+                        const bTime = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+                        return bTime - aTime;
+                    });
+
+                const normalized = items.map((i) => ({ ...i, mediaType: i.mediaType || "tv", mediaId: i.seriesId ?? i.mediaId }));
+                return this.applyCustomizations(normalized, customizationsMap);
+            }
+
+            const items = (data || []).map(row => ({ id: row.id, ...row }));
+            const normalized = items.map((i) => ({ ...i, mediaType: i.mediaType || "tv", mediaId: i.seriesId ?? i.mediaId }));
+            return this.applyCustomizations(normalized, customizationsMap);
+        } catch (error) {
+            console.error("[ProfileService] Error in user_watching:", error);
+            return [];
+        }
     },
 
     async getWatchlist(userId) {
         if (!userId) return [];
         const customizationsMap = await this.getCustomizationsMap(userId);
 
-        const items = await retryQuery(
-            async () => {
-                const q = query(
-                    collection(db, "user_watchlist"),
-                    where("userId", "==", userId),
-                    orderBy("addedAt", "desc")
-                );
-                const snap = await getDocs(q);
-                return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            },
-            async () => {
-                const q = query(
-                    collection(db, "user_watchlist"),
-                    where("userId", "==", userId)
-                );
-                const snap = await getDocs(q);
-                const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                return docs.sort((a, b) => {
-                    const aTime = a.addedAt?.seconds || 0;
-                    const bTime = b.addedAt?.seconds || 0;
-                    return bTime - aTime;
-                });
-            },
-            "user_watchlist"
-        );
+        try {
+            const { data, error } = await supabase
+                .from("user_watchlist")
+                .select('*')
+                .eq("userId", userId)
+                .order("addedAt", { ascending: false });
 
-        return this.applyCustomizations(items, customizationsMap);
+            if (error) {
+                console.error("[ProfileService] Error in user_watchlist:", error);
+                return [];
+            }
+
+            const items = (data || []).map(row => ({ id: row.id, ...row }));
+            return this.applyCustomizations(items, customizationsMap);
+        } catch (error) {
+            console.error("[ProfileService] Error in user_watchlist:", error);
+            return [];
+        }
     },
 
     async getRatings(userId) {
         if (!userId) return [];
         const customizationsMap = await this.getCustomizationsMap(userId);
 
-        const items = await retryQuery(
-            async () => {
-                const q = query(
-                    collection(db, "user_ratings"),
-                    where("userId", "==", userId),
-                    orderBy("createdAt", "desc")
-                );
-                const snap = await getDocs(q);
-                return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            },
-            async () => {
-                const q = query(
-                    collection(db, "user_ratings"),
-                    where("userId", "==", userId)
-                );
-                const snap = await getDocs(q);
-                const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                return docs.sort((a, b) => {
-                    const aTime = a.createdAt?.seconds || a.ratedAt?.seconds || 0;
-                    const bTime = b.createdAt?.seconds || b.ratedAt?.seconds || 0;
-                    return bTime - aTime;
-                });
-            },
-            "user_ratings"
-        );
+        try {
+            const { data, error } = await supabase
+                .from("user_ratings")
+                .select('*')
+                .eq("userId", userId)
+                .order("createdAt", { ascending: false });
 
-        return this.applyCustomizations(items, customizationsMap);
+            if (error) {
+                // Fallback: try without ordering
+                const { data: fallbackData } = await supabase
+                    .from("user_ratings")
+                    .select('*')
+                    .eq("userId", userId);
+
+                const items = (fallbackData || [])
+                    .map(row => ({ id: row.id, ...row }))
+                    .sort((a, b) => {
+                        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : (a.ratedAt ? new Date(a.ratedAt).getTime() : 0);
+                        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : (b.ratedAt ? new Date(b.ratedAt).getTime() : 0);
+                        return bTime - aTime;
+                    });
+
+                return this.applyCustomizations(items, customizationsMap);
+            }
+
+            const items = (data || []).map(row => ({ id: row.id, ...row }));
+            return this.applyCustomizations(items, customizationsMap);
+        } catch (error) {
+            console.error("[ProfileService] Error in user_ratings:", error);
+            return [];
+        }
     },
 
     async getPaused(userId) {
         if (!userId) return [];
         const customizationsMap = await this.getCustomizationsMap(userId);
 
-        const items = await retryQuery(
-            async () => {
-                const q = query(
-                    collection(db, "user_paused"),
-                    where("userId", "==", userId),
-                    orderBy("pausedAt", "desc")
-                );
-                const snap = await getDocs(q);
-                return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            },
-            async () => {
-                const q = query(
-                    collection(db, "user_paused"),
-                    where("userId", "==", userId)
-                );
-                const snap = await getDocs(q);
-                const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                return docs.sort((a, b) => {
-                    const aTime = a.pausedAt?.seconds || 0;
-                    const bTime = b.pausedAt?.seconds || 0;
-                    return bTime - aTime;
-                });
-            },
-            "user_paused"
-        );
+        try {
+            const { data, error } = await supabase
+                .from("user_paused")
+                .select('*')
+                .eq("userId", userId)
+                .order("pausedAt", { ascending: false });
 
-        return this.applyCustomizations(items, customizationsMap);
+            if (error) {
+                console.error("[ProfileService] Error in user_paused:", error);
+                return [];
+            }
+
+            const items = (data || []).map(row => ({ id: row.id, ...row }));
+            return this.applyCustomizations(items, customizationsMap);
+        } catch (error) {
+            console.error("[ProfileService] Error in user_paused:", error);
+            return [];
+        }
     },
 
     async getDropped(userId) {
         if (!userId) return [];
         const customizationsMap = await this.getCustomizationsMap(userId);
 
-        const items = await retryQuery(
-            async () => {
-                const q = query(
-                    collection(db, "user_dropped"),
-                    where("userId", "==", userId),
-                    orderBy("droppedAt", "desc")
-                );
-                const snap = await getDocs(q);
-                return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            },
-            async () => {
-                const q = query(
-                    collection(db, "user_dropped"),
-                    where("userId", "==", userId)
-                );
-                const snap = await getDocs(q);
-                const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                return docs.sort((a, b) => {
-                    const aTime = a.droppedAt?.seconds || 0;
-                    const bTime = b.droppedAt?.seconds || 0;
-                    return bTime - aTime;
-                });
-            },
-            "user_dropped"
-        );
+        try {
+            const { data, error } = await supabase
+                .from("user_dropped")
+                .select('*')
+                .eq("userId", userId)
+                .order("droppedAt", { ascending: false });
 
-        return this.applyCustomizations(items, customizationsMap);
+            if (error) {
+                console.error("[ProfileService] Error in user_dropped:", error);
+                return [];
+            }
+
+            const items = (data || []).map(row => ({ id: row.id, ...row }));
+            return this.applyCustomizations(items, customizationsMap);
+        } catch (error) {
+            console.error("[ProfileService] Error in user_dropped:", error);
+            return [];
+        }
     },
 };

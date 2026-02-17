@@ -20,7 +20,7 @@ export default function SignupPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
-    const { signUp, signInWithGoogle, getFirebaseErrorMessage } = useAuth();
+    const { signUp, signInWithGoogle, getAuthErrorMessage } = useAuth();
     const router = useRouter();
     const usernameCheckTimeout = useRef(null);
 
@@ -97,7 +97,7 @@ export default function SignupPage() {
             await signUp(email, password, undefined, username.trim() || undefined);
             router.replace("/");
         } catch (err) {
-            setError(getFirebaseErrorMessage(err));
+            setError(getAuthErrorMessage(err));
         } finally {
             setLoading(false);
         }
@@ -114,7 +114,7 @@ export default function SignupPage() {
                 router.replace("/");
             }
         } catch (err) {
-            setError(getFirebaseErrorMessage(err));
+            setError(getAuthErrorMessage(err));
         } finally {
             setGoogleLoading(false);
         }

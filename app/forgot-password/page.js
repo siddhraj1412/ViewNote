@@ -12,7 +12,7 @@ export default function ForgotPasswordPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [sent, setSent] = useState(false);
-    const { resetPassword, getFirebaseErrorMessage } = useAuth();
+    const { resetPassword, getAuthErrorMessage } = useAuth();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -22,7 +22,7 @@ export default function ForgotPasswordPage() {
             await resetPassword(email);
             setSent(true);
         } catch (err) {
-            setError(getFirebaseErrorMessage(err));
+            setError(getAuthErrorMessage(err));
         } finally {
             setLoading(false);
         }

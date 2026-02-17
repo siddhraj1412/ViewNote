@@ -373,7 +373,6 @@ export default function RatingModal({
                                     placeholder="Share your thoughts..."
                                     rows={3}
                                     maxLength={2000}
-                                    disabled={loadingExisting}
                                     className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-textSecondary/50 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 resize-none transition-all"
                                 />
                                 <p className="text-xs text-textSecondary/50 mt-0.5 text-right">
@@ -525,7 +524,7 @@ export default function RatingModal({
                             <Button
                                 className="flex-1"
                                 onClick={handleSubmit}
-                                disabled={loading}
+                                disabled={loading || loadingExisting}
                             >
                                 {loading ? "Saving..." : mode === "rateAgain" ? "Save New Review" : currentRating > 0 ? "Update" : "Save"}
                             </Button>

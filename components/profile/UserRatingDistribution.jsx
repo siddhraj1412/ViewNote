@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import supabase from "@/lib/supabase";
 import { Star, Film, Tv, Layers, Play } from "lucide-react";
 import eventBus from "@/lib/eventBus";
 
@@ -27,19 +26,16 @@ export default function UserRatingDistribution({ userId }) {
         if (!userId) { setLoading(false); return; }
         setLoading(true);
         try {
-            const q = query(
-                collection(db, "user_ratings"),
-                where("userId", "==", userId)
-            );
-            const snap = await getDocs(q);
-            const ratings = snap.docs.map((d) => {
-                const data = d.data();
-                return {
-                    rating: Number(data.rating || 0),
-                    mediaType: data.mediaType || "movie",
-                    targetType: data.targetType || null,
-                };
-            }).filter((r) => r.rating > 0 && r.rating <= 5);
+            const { data, error } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", userId);
+
+            const ratings = (data || []).map((row) => ({
+                rating: Number(row.rating || 0),
+                mediaType: row.mediaType || "movie",
+                targetType: row.targetType || null,
+            })).filter((r) => r.rating > 0 && r.rating <= 5);
 
             setAllRatings(ratings);
         } catch (e) {

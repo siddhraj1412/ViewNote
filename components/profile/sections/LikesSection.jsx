@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Heart, Star, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
 import { getMediaUrl } from "@/lib/slugify";
 import { useParams } from "next/navigation";
@@ -27,16 +26,14 @@ export default function LikesSection({ userId }) {
         if (!ownerId) { setLoading(false); return; }
         setLoading(true);
         try {
-            const q = query(
-                collection(db, "user_ratings"),
-                where("userId", "==", ownerId),
-                where("liked", "==", true)
-            );
-            const snap = await getDocs(q);
-            const items = snap.docs
-                .map((d) => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
-            setLikes(items);
+            const { data, error } = await supabase
+                .from("user_ratings")
+                .select("*")
+                .eq("userId", ownerId)
+                .eq("liked", true)
+                .order("ratedAt", { ascending: false });
+
+            setLikes(data || []);
         } catch (error) {
             console.error("Error loading likes:", error);
         } finally {
@@ -62,7 +59,7 @@ export default function LikesSection({ userId }) {
         const copy = [...likes];
         switch (sortBy) {
             case "oldest":
-                copy.sort((a, b) => (a.ratedAt?.seconds || 0) - (b.ratedAt?.seconds || 0));
+                copy.sort((a, b) => new Date(a.ratedAt || 0).getTime() - new Date(b.ratedAt || 0).getTime());
                 break;
             case "a-z":
                 copy.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
@@ -78,7 +75,7 @@ export default function LikesSection({ userId }) {
                 break;
             case "newest":
             default:
-                copy.sort((a, b) => (b.ratedAt?.seconds || 0) - (a.ratedAt?.seconds || 0));
+                copy.sort((a, b) => new Date(b.ratedAt || 0).getTime() - new Date(a.ratedAt || 0).getTime());
                 break;
         }
         return copy;

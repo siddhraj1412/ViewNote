@@ -2,17 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/lib/firebase";
-import {
-    collection,
-    addDoc,
-    deleteDoc,
-    doc,
-    query,
-    where,
-    getDocs,
-    serverTimestamp,
-} from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import eventBus from "@/lib/eventBus";
 import showToast from "@/lib/toast";
 
@@ -24,16 +14,13 @@ export function useWatchlist() {
     const fetchWatchlist = useCallback(async () => {
         if (!user) return;
         try {
-            const q = query(
-                collection(db, "user_watchlist"),
-                where("userId", "==", user.uid)
-            );
-            const snapshot = await getDocs(q);
-            const items = snapshot.docs.map((d) => ({
-                id: d.id,
-                ...d.data(),
-            }));
-            setWatchlist(items);
+            const { data, error } = await supabase
+                .from("user_watchlist")
+                .select("*")
+                .eq("userId", user.uid);
+
+            if (error) throw error;
+            setWatchlist(data || []);
         } catch (error) {
             console.error("Error fetching watchlist:", error);
             showToast.error("Failed to load your watchlist");
@@ -48,11 +35,9 @@ export function useWatchlist() {
             setLoading(false);
             return;
         }
-
         fetchWatchlist();
     }, [user, fetchWatchlist]);
 
-    // Re-fetch when watchlist changes externally
     useEffect(() => {
         const handler = () => fetchWatchlist();
         eventBus.on("MEDIA_UPDATED", handler);
@@ -70,29 +55,27 @@ export function useWatchlist() {
     const addToWatchlist = async (mediaId, mediaType, title, poster_path) => {
         if (!user) throw new Error("User not authenticated");
 
+        const id = `${user.uid}_${mediaType}_${mediaId}`;
+        const newItem = {
+            id,
+            userId: user.uid,
+            mediaId,
+            mediaType,
+            title,
+            poster_path,
+            addedAt: new Date().toISOString(),
+        };
+
+        // Optimistic update
+        const previousWatchlist = [...watchlist];
+        setWatchlist(prev => [...prev, newItem]);
+
         try {
-            const docRef = await addDoc(collection(db, "user_watchlist"), {
-                userId: user.uid,
-                mediaId,
-                mediaType,
-                title,
-                poster_path,
-                addedAt: serverTimestamp(),
-            });
-
-            const newItem = {
-                id: docRef.id,
-                userId: user.uid,
-                mediaId,
-                mediaType,
-                title,
-                poster_path,
-                addedAt: new Date(),
-            };
-
-            setWatchlist(prev => [...prev, newItem]);
-            return docRef.id;
+            const { error } = await supabase.from("user_watchlist").upsert(newItem);
+            if (error) throw error;
+            return id;
         } catch (error) {
+            setWatchlist(previousWatchlist); // Rollback
             console.error("Error adding to watchlist:", error);
             throw error;
         }
@@ -101,23 +84,22 @@ export function useWatchlist() {
     const removeFromWatchlist = async (mediaId) => {
         if (!user) throw new Error("User not authenticated");
 
-        try {
-            const item = watchlist.find((i) => i.mediaId === mediaId);
-            if (!item) return;
+        const item = watchlist.find((i) => i.mediaId === mediaId);
+        if (!item) return;
 
-            await deleteDoc(doc(db, "user_watchlist", item.id));
-            setWatchlist(prev => prev.filter((i) => i.mediaId !== mediaId));
+        // Optimistic update
+        const previousWatchlist = [...watchlist];
+        setWatchlist(prev => prev.filter((i) => i.mediaId !== mediaId));
+
+        try {
+            const { error } = await supabase.from("user_watchlist").delete().eq("id", item.id);
+            if (error) throw error;
         } catch (error) {
+            setWatchlist(previousWatchlist); // Rollback
             console.error("Error removing from watchlist:", error);
             throw error;
         }
     };
 
-    return {
-        watchlist,
-        loading,
-        isInWatchlist,
-        addToWatchlist,
-        removeFromWatchlist,
-    };
+    return { watchlist, loading, isInWatchlist, addToWatchlist, removeFromWatchlist };
 }

@@ -1,18 +1,4 @@
-import { db } from "@/lib/firebase";
-import {
-    doc,
-    getDoc,
-    setDoc,
-    deleteDoc,
-    collection,
-    query,
-    where,
-    getDocs,
-    addDoc,
-    orderBy,
-    serverTimestamp,
-    updateDoc,
-} from "firebase/firestore";
+import supabase from "@/lib/supabase";
 
 export const listService = {
     // ── Likes ──
@@ -23,22 +9,41 @@ export const listService = {
     async toggleLike(listId, user) {
         if (!user) return { liked: false, count: 0 };
         const likeId = this.getLikeId(listId, user.uid);
-        const likeRef = doc(db, "list_likes", likeId);
 
         try {
-            const existing = await getDoc(likeRef);
-            if (existing.exists()) {
-                await deleteDoc(likeRef);
+            // Check if like exists
+            const { data: existing, error: fetchError } = await supabase
+                .from("list_likes")
+                .select('id')
+                .eq('id', likeId)
+                .single();
+
+            if (fetchError && fetchError.code !== 'PGRST116') {
+                throw fetchError;
+            }
+
+            if (existing) {
+                // Unlike
+                await supabase
+                    .from("list_likes")
+                    .delete()
+                    .eq('id', likeId);
+
                 const count = await this.getLikeCount(listId);
                 return { liked: false, count };
             } else {
-                await setDoc(likeRef, {
-                    listId,
-                    userId: user.uid,
-                    username: user.username || "",
-                    photoURL: user.photoURL || "",
-                    createdAt: serverTimestamp(),
-                });
+                // Like
+                await supabase
+                    .from("list_likes")
+                    .insert({
+                        id: likeId,
+                        listId,
+                        userId: user.uid,
+                        username: user.username || "",
+                        photoURL: user.photoURL || "",
+                        createdAt: new Date().toISOString(),
+                    });
+
                 const count = await this.getLikeCount(listId);
                 return { liked: true, count };
             }
@@ -50,9 +55,13 @@ export const listService = {
 
     async getLikeCount(listId) {
         try {
-            const q = query(collection(db, "list_likes"), where("listId", "==", listId));
-            const snap = await getDocs(q);
-            return snap.size;
+            const { count, error } = await supabase
+                .from("list_likes")
+                .select('*', { count: 'exact', head: true })
+                .eq("listId", listId);
+
+            if (error) return 0;
+            return count || 0;
         } catch {
             return 0;
         }
@@ -61,8 +70,14 @@ export const listService = {
     async hasUserLiked(listId, userId) {
         if (!userId) return false;
         try {
-            const snap = await getDoc(doc(db, "list_likes", this.getLikeId(listId, userId)));
-            return snap.exists();
+            const { data, error } = await supabase
+                .from("list_likes")
+                .select('id')
+                .eq('id', this.getLikeId(listId, userId))
+                .single();
+
+            if (error && error.code === 'PGRST116') return false;
+            return !!data;
         } catch {
             return false;
         }
@@ -82,17 +97,27 @@ export const listService = {
         const trimmed = text.trim().substring(0, 1000);
 
         try {
-            const ref = await addDoc(collection(db, "list_comments"), {
-                listId,
-                userId: user.uid,
-                username: user.username || "",
-                photoURL: user.photoURL || "",
-                displayName: user.displayName || user.username || "",
-                text: trimmed,
-                createdAt: serverTimestamp(),
-            });
+            const { data, error } = await supabase
+                .from("list_comments")
+                .insert({
+                    listId,
+                    userId: user.uid,
+                    username: user.username || "",
+                    photoURL: user.photoURL || "",
+                    displayName: user.displayName || user.username || "",
+                    text: trimmed,
+                    createdAt: new Date().toISOString(),
+                })
+                .select()
+                .single();
+
+            if (error) {
+                console.error("Error adding list comment:", error);
+                throw error;
+            }
+
             return {
-                id: ref.id,
+                id: data.id,
                 userId: user.uid,
                 username: user.username || "",
                 photoURL: user.photoURL || "",
@@ -108,32 +133,22 @@ export const listService = {
 
     async getComments(listId) {
         try {
-            const q = query(
-                collection(db, "list_comments"),
-                where("listId", "==", listId),
-                orderBy("createdAt", "desc")
-            );
-            const snap = await getDocs(q);
-            return snap.docs.map((d) => {
-                const data = d.data();
-                return {
-                    id: d.id,
-                    ...data,
-                    createdAt: data.createdAt?.toDate?.() || new Date(),
-                };
-            });
-        } catch (error) {
-            // Fallback if composite index not yet deployed
-            if (error?.code === "failed-precondition") {
-                const q2 = query(collection(db, "list_comments"), where("listId", "==", listId));
-                const snap = await getDocs(q2);
-                return snap.docs
-                    .map((d) => {
-                        const data = d.data();
-                        return { id: d.id, ...data, createdAt: data.createdAt?.toDate?.() || new Date() };
-                    })
-                    .sort((a, b) => b.createdAt - a.createdAt);
+            const { data, error } = await supabase
+                .from("list_comments")
+                .select('*')
+                .eq("listId", listId)
+                .order("createdAt", { ascending: false });
+
+            if (error) {
+                console.error("Error getting list comments:", error);
+                return [];
             }
+
+            return (data || []).map((d) => ({
+                ...d,
+                createdAt: d.createdAt ? new Date(d.createdAt) : new Date(),
+            }));
+        } catch (error) {
             console.error("Error getting list comments:", error);
             return [];
         }
@@ -141,10 +156,25 @@ export const listService = {
 
     async deleteComment(commentId, userId) {
         try {
-            const commentRef = doc(db, "list_comments", commentId);
-            const snap = await getDoc(commentRef);
-            if (!snap.exists() || snap.data().userId !== userId) return false;
-            await deleteDoc(commentRef);
+            // Verify ownership first
+            const { data: comment, error: fetchError } = await supabase
+                .from("list_comments")
+                .select('userId')
+                .eq('id', commentId)
+                .single();
+
+            if (fetchError || !comment || comment.userId !== userId) return false;
+
+            const { error } = await supabase
+                .from("list_comments")
+                .delete()
+                .eq('id', commentId);
+
+            if (error) {
+                console.error("Error deleting list comment:", error);
+                return false;
+            }
+
             return true;
         } catch (error) {
             console.error("Error deleting list comment:", error);
@@ -155,7 +185,16 @@ export const listService = {
     // ── Banner ──
     async updateBanner(listId, bannerUrl) {
         try {
-            await updateDoc(doc(db, "user_lists", listId), { bannerUrl });
+            const { error } = await supabase
+                .from("user_lists")
+                .update({ bannerUrl })
+                .eq('id', listId);
+
+            if (error) {
+                console.error("Error updating list banner:", error);
+                return false;
+            }
+
             return true;
         } catch (error) {
             console.error("Error updating list banner:", error);
@@ -170,26 +209,34 @@ export const listService = {
 
             // Clean up associated likes
             try {
-                const likesQ = query(collection(db, "list_likes"), where("listId", "==", listId));
-                const likesSnap = await getDocs(likesQ);
-                const likeDeletes = likesSnap.docs.map((d) => deleteDoc(d.ref));
-                await Promise.all(likeDeletes);
+                await supabase
+                    .from("list_likes")
+                    .delete()
+                    .eq("listId", listId);
             } catch (e) {
                 console.warn("Failed to clean up list likes:", e);
             }
 
             // Clean up associated comments
             try {
-                const commentsQ = query(collection(db, "list_comments"), where("listId", "==", listId));
-                const commentsSnap = await getDocs(commentsQ);
-                const commentDeletes = commentsSnap.docs.map((d) => deleteDoc(d.ref));
-                await Promise.all(commentDeletes);
+                await supabase
+                    .from("list_comments")
+                    .delete()
+                    .eq("listId", listId);
             } catch (e) {
                 console.warn("Failed to clean up list comments:", e);
             }
 
             // Delete the list document LAST
-            await deleteDoc(doc(db, "user_lists", listId));
+            const { error } = await supabase
+                .from("user_lists")
+                .delete()
+                .eq('id', listId);
+
+            if (error) {
+                console.error("Error deleting list:", error);
+                throw error;
+            }
 
             return true;
         } catch (error) {

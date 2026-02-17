@@ -1,63 +1,37 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import {
-    onAuthStateChanged,
-    signOut,
-    GoogleAuthProvider,
-    signInWithPopup,
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
-    updateProfile,
-    deleteUser,
-    EmailAuthProvider,
-    reauthenticateWithCredential,
-    reauthenticateWithPopup,
-    sendPasswordResetEmail,
-} from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
-import {
-    doc,
-    getDoc,
-    setDoc,
-    deleteDoc,
-    serverTimestamp,
-    collection,
-    query,
-    where,
-    getDocs,
-    writeBatch,
-} from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import showToast from "@/lib/toast";
 import eventBus from "@/lib/eventBus";
 
 const AuthContext = createContext({});
 
 // ───────────────────────────────────────────────
-// Firebase auth error → human-readable message
+// Supabase auth error → human-readable message
 // ───────────────────────────────────────────────
-const FIREBASE_ERROR_MAP = {
-    "auth/email-already-in-use": "An account with this email already exists.",
-    "auth/invalid-email": "Please enter a valid email address.",
-    "auth/weak-password": "Password must be at least 6 characters.",
-    "auth/user-not-found": "No account found with this email.",
-    "auth/wrong-password": "Incorrect password. Please try again.",
-    "auth/invalid-credential": "Invalid email or password.",
-    "auth/too-many-requests": "Too many attempts. Please wait a moment and try again.",
-    "auth/popup-closed-by-user": "Sign-in popup was closed. Please try again.",
-    "auth/cancelled-popup-request": "Sign-in was cancelled.",
-    "auth/account-exists-with-different-credential":
-        "An account already exists with this email using a different sign-in method.",
-    "auth/popup-blocked": "Sign-in popup was blocked by your browser. Please allow popups.",
-    "auth/network-request-failed": "Network error. Please check your connection.",
-    "auth/requires-recent-login": "Please sign in again before performing this action.",
-    "auth/user-disabled": "This account has been disabled.",
+const ERROR_MAP = {
+    "User already registered": "An account with this email already exists.",
+    "Invalid login credentials": "Invalid email or password.",
+    "Email not confirmed": "Please verify your email before signing in.",
+    "Signup requires a valid password": "Password must be at least 6 characters.",
+    "Password should be at least 6 characters": "Password must be at least 6 characters.",
+    "Unable to validate email address: invalid format": "Please enter a valid email address.",
+    "Email rate limit exceeded": "Too many attempts. Please wait a moment and try again.",
+    "For security purposes, you can only request this once every 60 seconds": "Please wait 60 seconds before trying again.",
+    "New password should be different from the old password": "New password must be different from your current password.",
 };
 
-function getFirebaseErrorMessage(error) {
-    const code = error?.code || "";
-    return FIREBASE_ERROR_MAP[code] || error?.message || "An unexpected error occurred.";
+function getAuthErrorMessage(error) {
+    if (!error) return "An unexpected error occurred.";
+    const msg = error?.message || error?.error_description || "";
+    for (const [key, value] of Object.entries(ERROR_MAP)) {
+        if (msg.includes(key)) return value;
+    }
+    return msg || "An unexpected error occurred.";
 }
+
+
 
 // ───────────────────────────────────────────────
 // Generate a unique username
@@ -71,12 +45,12 @@ async function generateUniqueUsername(baseName) {
 
     let candidate = base.length >= 3 ? base : `${base}_user`;
     for (let attempt = 0; attempt < 10; attempt++) {
-        const q = query(
-            collection(db, "user_profiles"),
-            where("username_lowercase", "==", candidate)
-        );
-        const snap = await getDocs(q);
-        if (snap.empty) return candidate;
+        const { data } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("username_lowercase", candidate)
+            .limit(1);
+        if (!data || data.length === 0) return candidate;
         candidate = `${base}${Math.floor(Math.random() * 9999)}`;
     }
     return `${base}_${Date.now().toString(36)}`;
@@ -90,63 +64,129 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     // Helper: attach profile data to user object
-    const attachProfileData = useCallback(async (firebaseUser) => {
-        if (!firebaseUser) return null;
+    const attachProfileData = useCallback(async (supabaseUser) => {
+        if (!supabaseUser) return null;
         try {
-            const snap = await getDoc(doc(db, "user_profiles", firebaseUser.uid));
-            if (snap.exists()) {
-                const data = snap.data();
-                let photo = data.profile_picture_url || firebaseUser.photoURL;
+            let { data: profile } = await supabase
+                .from("profiles")
+                .select("*")
+                .eq("id", supabaseUser.id)
+                .single();
+
+            // If profile doesn't exist (trigger may have failed), create it now
+            if (!profile) {
+                const fallbackName =
+                    supabaseUser.user_metadata?.display_name ||
+                    supabaseUser.user_metadata?.full_name ||
+                    supabaseUser.email?.split("@")[0] ||
+                    "user";
+                const { data: created } = await supabase
+                    .from("profiles")
+                    .upsert(
+                        {
+                            id: supabaseUser.id,
+                            email: supabaseUser.email,
+                            displayName: fallbackName,
+                            provider: supabaseUser.app_metadata?.provider || "email",
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                        },
+                        { onConflict: "id" }
+                    )
+                    .select("*")
+                    .single();
+                profile = created;
+            }
+
+            // Build a user-like object compatible with the rest of the app
+            const enriched = {
+                uid: supabaseUser.id,
+                email: supabaseUser.email,
+                displayName: supabaseUser.user_metadata?.display_name || supabaseUser.user_metadata?.full_name || supabaseUser.email?.split("@")[0],
+                emailVerified: supabaseUser.email_confirmed_at != null,
+                providerData: [{ providerId: supabaseUser.app_metadata?.provider || "email" }],
+            };
+
+            if (profile) {
+                let photo = profile.profile_picture_url || supabaseUser.user_metadata?.avatar_url;
                 if (photo && (typeof photo !== "string" || !photo.startsWith("http"))) {
                     photo = null;
                 }
-                firebaseUser.photoURL = photo;
-                firebaseUser.username = data.username || null;
-                firebaseUser.username_lowercase = data.username_lowercase || null;
-                firebaseUser.onboardingComplete = data.onboardingComplete === true;
-                firebaseUser.needsUsername = !data.username || data.onboardingComplete === false;
+                enriched.photoURL = photo;
+                enriched.username = profile.username || null;
+                enriched.username_lowercase = profile.username_lowercase || null;
+                enriched.onboardingComplete = profile.onboardingComplete === true;
+                enriched.needsUsername = !profile.username || profile.onboardingComplete === false;
                 // Auto-backfill onboardingComplete for existing users with username
-                if (data.username && data.onboardingComplete === undefined) {
-                    setDoc(doc(db, "user_profiles", firebaseUser.uid), { onboardingComplete: true }, { merge: true }).catch(() => {});
-                    firebaseUser.onboardingComplete = true;
-                    firebaseUser.needsUsername = false;
+                if (profile.username && profile.onboardingComplete === undefined) {
+                    supabase
+                        .from("profiles")
+                        .update({ onboardingComplete: true })
+                        .eq("id", supabaseUser.id)
+                        .then(() => {});
+                    enriched.onboardingComplete = true;
+                    enriched.needsUsername = false;
                 }
             } else {
-                firebaseUser.needsUsername = true;
-                firebaseUser.onboardingComplete = false;
+                enriched.photoURL = supabaseUser.user_metadata?.avatar_url || null;
+                enriched.needsUsername = true;
+                enriched.onboardingComplete = false;
             }
+
+            return enriched;
         } catch (e) {
             console.error("Error fetching user profile:", e);
+            return {
+                uid: supabaseUser.id,
+                email: supabaseUser.email,
+                displayName: supabaseUser.user_metadata?.display_name || supabaseUser.email?.split("@")[0],
+                photoURL: supabaseUser.user_metadata?.avatar_url || null,
+                needsUsername: true,
+                onboardingComplete: false,
+                providerData: [{ providerId: supabaseUser.app_metadata?.provider || "email" }],
+            };
         }
-        return firebaseUser;
     }, []);
 
     // ──── auth state listener ────
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (u) => {
-            if (u) {
-                await attachProfileData(u);
-                setUser({ ...u });
+        // Get initial session
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
+            if (session?.user) {
+                const enriched = await attachProfileData(session.user);
+                setUser(enriched);
             } else {
                 setUser(null);
             }
             setLoading(false);
         });
-        return () => unsubscribe();
+
+        // Listen for auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+                if (session?.user) {
+                    const enriched = await attachProfileData(session.user);
+                    setUser(enriched);
+                }
+            } else if (event === "SIGNED_OUT") {
+                setUser(null);
+            }
+            setLoading(false);
+        });
+
+        return () => subscription.unsubscribe();
     }, [attachProfileData]);
 
     // ──── Listen for profile updates (avatar, etc.) ────
     useEffect(() => {
-        const handleProfileUpdate = (data) => {
-            if (!auth.currentUser) return;
+        const handleProfileUpdate = async (data) => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.user) return;
             if (data?.type === "avatar" && data?.url) {
-                // Immediately update user state with new photo
                 setUser(prev => prev ? { ...prev, photoURL: data.url } : prev);
             } else {
-                // Refetch profile from Firestore for other updates
-                attachProfileData(auth.currentUser).then(u => {
-                    if (u) setUser({ ...u });
-                });
+                const enriched = await attachProfileData(session.user);
+                if (enriched) setUser(enriched);
             }
         };
         eventBus.on("PROFILE_UPDATED", handleProfileUpdate);
@@ -155,62 +195,77 @@ export const AuthProvider = ({ children }) => {
 
     // ──── Email Sign Up ────
     const emailSignUp = async (email, password, displayName, username) => {
-        // 1. Create auth user — let Firebase throw specific errors (no generic catch)
-        const result = await createUserWithEmailAndPassword(auth, email, password);
-
-        // 2. Update display name
         const name = displayName || email.split("@")[0];
-        await updateProfile(result.user, { displayName: name });
-
-        // 3. Generate username if not provided
         const finalUsername = username || (await generateUniqueUsername(name));
 
-        // 4. Create Firestore profile ONLY if it doesn't already exist
-        const userDocRef = doc(db, "user_profiles", result.user.uid);
-        const existing = await getDoc(userDocRef);
-        if (!existing.exists()) {
-            await setDoc(userDocRef, {
-                email,
-                displayName: name,
-                username: finalUsername,
-                username_lowercase: finalUsername.toLowerCase(),
-                provider: "email",
-                profile_picture_url: null,
-                onboardingComplete: true,
-                createdAt: serverTimestamp(),
-            });
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: { display_name: name },
+            },
+        });
+
+        if (error) throw error;
+        if (!data.user) throw new Error("Signup failed — no user returned.");
+
+        // Create profile (trigger may also create one, use upsert)
+        const { error: profileError } = await supabase.from("profiles").upsert({
+            id: data.user.id,
+            email,
+            displayName: name,
+            username: finalUsername,
+            username_lowercase: finalUsername.toLowerCase(),
+            provider: "email",
+            profile_picture_url: null,
+            onboardingComplete: true,
+            createdAt: new Date().toISOString(),
+        }, { onConflict: "id" });
+        if (profileError) {
+            console.error("Profile creation failed:", profileError);
+            // Auth user exists but profile failed — don't leave user in a broken state
+            throw new Error("Account created but profile setup failed. Please try logging in.");
         }
 
-        // 5. Attach data to user object
+        // Build result compatible with the rest of the app
+        const result = { user: data.user };
+        result.user.uid = data.user.id;
         result.user.username = finalUsername;
         result.user.username_lowercase = finalUsername.toLowerCase();
         result.user.needsUsername = false;
+        result.user.displayName = name;
 
         return result;
     };
 
     // ──── Email Login ────
     const emailLogin = async (email, password) => {
-        // Let Firebase throw specific errors (no generic catch)
-        const result = await signInWithEmailAndPassword(auth, email, password);
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+
+        const result = { user: data.user };
+        result.user.uid = data.user.id;
 
         // Fetch profile & backfill username if missing
-        const userDocRef = doc(db, "user_profiles", result.user.uid);
-        const snap = await getDoc(userDocRef);
-        if (snap.exists()) {
-            const data = snap.data();
-            result.user.username = data.username || null;
-            if (!data.username) {
-                const username = await generateUniqueUsername(
-                    data.displayName || email.split("@")[0]
+        const { data: profile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", data.user.id)
+            .single();
+
+        if (profile) {
+            result.user.username = profile.username || null;
+            result.user.displayName = profile.displayName || email.split("@")[0];
+            if (!profile.username) {
+                const newUsername = await generateUniqueUsername(
+                    profile.displayName || email.split("@")[0]
                 );
-                await setDoc(
-                    userDocRef,
-                    { username, username_lowercase: username.toLowerCase() },
-                    { merge: true }
-                );
-                result.user.username = username;
-                result.user.username_lowercase = username.toLowerCase();
+                await supabase
+                    .from("profiles")
+                    .update({ username: newUsername, username_lowercase: newUsername.toLowerCase() })
+                    .eq("id", data.user.id);
+                result.user.username = newUsername;
+                result.user.username_lowercase = newUsername.toLowerCase();
             }
         }
         return result;
@@ -218,79 +273,40 @@ export const AuthProvider = ({ children }) => {
 
     // ──── Google Sign In / Sign Up ────
     const googleSignIn = async () => {
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: "select_account" });
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: {
+                redirectTo: `${window.location.origin}/auth/callback`,
+                queryParams: { prompt: "select_account" },
+            },
+        });
 
-        const result = await signInWithPopup(auth, provider);
-        const userDocRef = doc(db, "user_profiles", result.user.uid);
-        const snap = await getDoc(userDocRef);
+        if (error) throw error;
 
-        if (!snap.exists()) {
-            // New Google user — create profile
-            const autoUsername = await generateUniqueUsername(
-                result.user.displayName || result.user.email?.split("@")[0]
-            );
-            await setDoc(userDocRef, {
-                email: result.user.email,
-                displayName: result.user.displayName,
-                username: autoUsername,
-                username_lowercase: autoUsername.toLowerCase(),
-                provider: "google",
-                profile_picture_url: result.user.photoURL,
-                onboardingComplete: false,
-                createdAt: serverTimestamp(),
-            });
-            result.user.username = autoUsername;
-            result.user.username_lowercase = autoUsername.toLowerCase();
-            result.user.needsUsername = true; // send to onboarding
-            result.user.onboardingComplete = false;
-            result.isNewUser = true;
-        } else {
-            const data = snap.data();
-            result.user.username = data.username || null;
-            result.user.onboardingComplete = data.onboardingComplete !== false;
-            result.user.needsUsername = !data.username || data.onboardingComplete === false;
-            result.isNewUser = false;
-
-            // Backfill username if missing
-            if (!data.username) {
-                const username = await generateUniqueUsername(
-                    data.displayName || result.user.email?.split("@")[0]
-                );
-                await setDoc(
-                    userDocRef,
-                    { username, username_lowercase: username.toLowerCase() },
-                    { merge: true }
-                );
-                result.user.username = username;
-                result.user.username_lowercase = username.toLowerCase();
-                result.user.needsUsername = true;
-            }
-
-            // Backfill onboardingComplete for existing users who already have a username
-            if (data.username && data.onboardingComplete === undefined) {
-                await setDoc(userDocRef, { onboardingComplete: true }, { merge: true });
-                result.user.onboardingComplete = true;
-                result.user.needsUsername = false;
-            }
-        }
-
-        return result;
+        // OAuth redirects the browser — profile creation happens in onAuthStateChange
+        // after the redirect returns via /auth/callback.
+        // Return data for compatibility.
+        return data;
     };
 
     // ──── Re-authenticate (for sensitive ops like delete) ────
     const reauthenticate = async (password) => {
-        const currentUser = auth.currentUser;
-        if (!currentUser) throw new Error("Not signed in");
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error("Not signed in");
 
-        const providers = currentUser.providerData.map((p) => p.providerId);
+        const provider = session.user.app_metadata?.provider;
 
-        if (providers.includes("google.com")) {
-            const googleProvider = new GoogleAuthProvider();
-            await reauthenticateWithPopup(currentUser, googleProvider);
-        } else if (providers.includes("password") && password) {
-            const credential = EmailAuthProvider.credential(currentUser.email, password);
-            await reauthenticateWithCredential(currentUser, credential);
+        if (provider === "google") {
+            // For Google users, just verify the session is fresh
+            const { error } = await supabase.auth.refreshSession();
+            if (error) throw new Error("Unable to re-authenticate. Please sign in again.");
+        } else if (password) {
+            // Re-login with password to verify identity
+            const { error } = await supabase.auth.signInWithPassword({
+                email: session.user.email,
+                password,
+            });
+            if (error) throw error;
         } else {
             throw new Error("Unable to re-authenticate. Please sign in again.");
         }
@@ -298,64 +314,72 @@ export const AuthProvider = ({ children }) => {
 
     // ──── Delete Account (hard cascade delete) ────
     const deleteAccount = async (password) => {
-        const currentUser = auth.currentUser;
-        if (!currentUser) throw new Error("Not signed in");
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error("Not signed in");
 
         // 1. Re-authenticate first
         await reauthenticate(password);
 
-        const uid = currentUser.uid;
+        const uid = session.user.id;
 
-        // 2. Delete all Firestore user data
-        const collectionsToClean = [
-            { name: "user_watched", field: "userId" },
-            { name: "user_watchlist", field: "userId" },
-            { name: "user_paused", field: "userId" },
-            { name: "user_dropped", field: "userId" },
-            { name: "user_ratings", field: "userId" },
-            { name: "favorites_movies", field: "userId" },
-            { name: "favorites_shows", field: "userId" },
-            { name: "user_media_preferences", field: "userId" },
-        ];
-
-        for (const col of collectionsToClean) {
-            try {
-                const q = query(collection(db, col.name), where(col.field, "==", uid));
-                const snapshot = await getDocs(q);
-                if (snapshot.empty) continue;
-
-                // Process in batches of 450 (Firestore limit is 500)
-                const docs = snapshot.docs;
-                for (let i = 0; i < docs.length; i += 450) {
-                    const batch = writeBatch(db);
-                    const chunk = docs.slice(i, i + 450);
-                    chunk.forEach((d) => batch.delete(d.ref));
-                    await batch.commit();
-                }
-            } catch (e) {
-                console.error(`Error cleaning ${col.name}:`, e);
-            }
+        // 2. Delete all user data via RPC (cascade)
+        const { error: rpcError } = await supabase.rpc("delete_user_data", { p_user_id: uid });
+        if (rpcError) {
+            console.error("Error deleting user data:", rpcError);
+            throw new Error("Failed to delete account data. Please try again.");
         }
 
-        // 3. Delete user profile doc
-        try {
-            await deleteDoc(doc(db, "user_profiles", uid));
-        } catch (e) {
-            console.error("Error deleting user profile:", e);
-        }
+        // 3. Sign out (Supabase doesn't allow client-side user deletion;
+        // use a server-side admin call or Edge Function for that)
+        await supabase.auth.signOut();
 
-        // 4. Delete Firebase Auth user
-        await deleteUser(currentUser);
-
-        // 5. Clear local state
+        // 4. Clear local state
         setUser(null);
     };
 
+    // ──── Change Email ────
+    const changeEmail = async (newEmail, password) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error("Not signed in");
+        await reauthenticate(password);
+        const { error } = await supabase.auth.updateUser({ email: newEmail });
+        if (error) throw error;
+        // Update profile with pending email
+        await supabase
+            .from("profiles")
+            .update({ pendingEmail: newEmail })
+            .eq("id", session.user.id);
+    };
+
+    // ──── Change Password ────
+    const changePassword = async (currentPassword, newPassword) => {
+        await reauthenticate(currentPassword);
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+    };
+
+    // ──── Resend Verification Email ────
+    const resendVerificationEmail = async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error("Not signed in");
+        const { error } = await supabase.auth.resend({
+            type: "signup",
+            email: session.user.email,
+        });
+        if (error) throw error;
+    };
+
     // ──── Logout ────
-    const logout = () => signOut(auth);
+    const logout = async () => {
+        await supabase.auth.signOut();
+        setUser(null);
+    };
 
     const resetPassword = async (email) => {
-        await sendPasswordResetEmail(auth, email);
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${typeof window !== "undefined" ? window.location.origin : ""}/settings`,
+        });
+        if (error) throw error;
     };
 
     return (
@@ -372,9 +396,12 @@ export const AuthProvider = ({ children }) => {
                 signInWithGoogle: googleSignIn,
                 reauthenticate,
                 deleteAccount,
+                changeEmail,
+                changePassword,
+                resendVerificationEmail,
                 logout,
                 resetPassword,
-                getFirebaseErrorMessage,
+                getAuthErrorMessage,
             }}
         >
             {children}

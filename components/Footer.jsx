@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Github, Twitter, Linkedin } from "lucide-react";
 
 export default function Footer() {
     const year = new Date().getFullYear();
@@ -26,18 +25,18 @@ export default function Footer() {
                     </div>
 
                     <div className="md:col-span-3">
-                        <div className="text-sm font-semibold text-white mb-3">Social</div>
-                        <div className="flex items-center gap-3">
-                            <a href="#" className="p-2 rounded-lg bg-white/5 border border-white/10 text-textSecondary hover:text-white hover:bg-white/10 transition-colors" aria-label="GitHub">
-                                <Github size={16} />
-                            </a>
-                            <a href="#" className="p-2 rounded-lg bg-white/5 border border-white/10 text-textSecondary hover:text-white hover:bg-white/10 transition-colors" aria-label="Twitter">
-                                <Twitter size={16} />
-                            </a>
-                            <a href="#" className="p-2 rounded-lg bg-white/5 border border-white/10 text-textSecondary hover:text-white hover:bg-white/10 transition-colors" aria-label="LinkedIn">
-                                <Linkedin size={16} />
-                            </a>
-                        </div>
+                        <div className="text-sm font-semibold text-white mb-3">Contact</div>
+                        <a href="mailto:viewnote799@gmail.com" className="text-sm text-textSecondary hover:text-accent transition-colors block mb-2">
+                            viewnote799@gmail.com
+                        </a>
+                        <a
+                            href="https://buymeacoffee.com/viewnote"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-sm text-textSecondary hover:text-accent transition-colors"
+                        >
+                            ☕ Buy Me a Coffee
+                        </a>
                     </div>
                 </div>
 
@@ -46,7 +45,7 @@ export default function Footer() {
                     <div className="text-xs text-textSecondary/70">
                         This product uses the <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" className="text-accent hover:underline">TMDB</a> API but is not endorsed or certified by TMDB.
                     </div>
-                    <div className="text-xs text-textSecondary/70">© {year} ViewNote. All rights reserved.</div>
+                    <div className="text-xs text-textSecondary/70">&copy; {year} ViewNote. All rights reserved.</div>
                 </div>
             </div>
         </footer>

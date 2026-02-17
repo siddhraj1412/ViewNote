@@ -1,15 +1,7 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { createClient } from "@/lib/supabaseServer";
 import { validateUsername, suggestUsernames } from "@/lib/slugify";
 
-/**
- * POST /api/auth/check-username
- * 
- * Check if a username is available and valid.
- * Body: { username: string }
- * Response: { available: boolean, valid: boolean, error?: string, suggestions?: string[] }
- */
 export async function POST(request) {
     try {
         const { username } = await request.json();
@@ -21,7 +13,6 @@ export async function POST(request) {
             );
         }
 
-        // Validate format
         const validation = validateUsername(username);
         if (!validation.valid) {
             return NextResponse.json(
@@ -30,15 +21,18 @@ export async function POST(request) {
             );
         }
 
-        // Check uniqueness (case-insensitive)
         const lowerUsername = username.toLowerCase();
-        const q = query(
-            collection(db, "user_profiles"),
-            where("username_lowercase", "==", lowerUsername)
-        );
-        const snapshot = await getDocs(q);
+        const supabase = await createClient();
 
-        if (!snapshot.empty) {
+        const { data, error } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("username_lowercase", lowerUsername)
+            .limit(1);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
             const suggestions = suggestUsernames(username);
             return NextResponse.json(
                 {

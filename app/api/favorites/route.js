@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
+import { createClient } from "@/lib/supabaseServer";
 
-// GET /api/favorites - Get all favorites for a user
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -12,24 +10,27 @@ export async function GET(request) {
             return NextResponse.json({ error: "User ID required" }, { status: 400 });
         }
 
-        const [moviesSnap, showsSnap, episodesSnap] = await Promise.all([
-            getDocs(query(collection(db, "favorites_movies"), where("userId", "==", userId))),
-            getDocs(query(collection(db, "favorites_shows"), where("userId", "==", userId))),
-            getDocs(query(collection(db, "favorites_episodes"), where("userId", "==", userId))),
-        ]);
+        const supabase = await createClient();
+        const { data, error } = await supabase
+            .from("favorites")
+            .select("*")
+            .eq("userId", userId)
+            .order("order", { ascending: true });
 
-        const movies = moviesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.order - b.order);
-        const shows = showsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.order - b.order);
-        const episodes = episodesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => a.order - b.order);
+        if (error) throw error;
 
-        return NextResponse.json({ movies, shows, episodes });
+        const grouped = { movies: [], shows: [], episodes: [] };
+        (data || []).forEach((row) => {
+            if (grouped[row.category]) grouped[row.category].push(row);
+        });
+
+        return NextResponse.json(grouped);
     } catch (error) {
         console.error("Error fetching favorites:", error);
         return NextResponse.json({ error: "Failed to fetch favorites" }, { status: 500 });
     }
 }
 
-// POST /api/favorites - Add a favorite
 export async function POST(request) {
     try {
         const body = await request.json();
@@ -39,13 +40,13 @@ export async function POST(request) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
-        const collectionName = `favorites_${type}`;
-        const docRef = doc(db, collectionName, `${userId}_${media.id}`);
-
+        const id = `${userId}_${type}_${media.id}`;
         const favoriteData = {
+            id,
             userId,
             mediaId: media.id,
             mediaType: type === "movies" ? "movie" : type === "shows" ? "tv" : "episode",
+            category: type,
             title: media.title || media.name,
             poster_path: media.poster_path,
             release_date: media.release_date || media.first_air_date,
@@ -53,9 +54,11 @@ export async function POST(request) {
             createdAt: new Date().toISOString(),
         };
 
-        await setDoc(docRef, favoriteData);
+        const supabase = await createClient();
+        const { error } = await supabase.from("favorites").upsert(favoriteData);
+        if (error) throw error;
 
-        return NextResponse.json({ success: true, data: { id: docRef.id, ...favoriteData } });
+        return NextResponse.json({ success: true, data: favoriteData });
     } catch (error) {
         console.error("Error adding favorite:", error);
         return NextResponse.json({ error: "Failed to add favorite" }, { status: 500 });

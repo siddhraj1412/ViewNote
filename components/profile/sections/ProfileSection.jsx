@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import supabase from "@/lib/supabase";
 import ProfileFavoritesGrid from "@/components/profile/ProfileFavoritesGrid";
 import UserRatingDistribution from "@/components/profile/UserRatingDistribution";
 import RecentActivity from "@/components/profile/RecentActivity";
@@ -14,12 +13,12 @@ export default function ProfileSection({ userId }) {
         if (!userId) return;
         const check = async () => {
             try {
-                const q = query(
-                    collection(db, "user_ratings"),
-                    where("userId", "==", userId)
-                );
-                const snap = await getDocs(q);
-                setHasRatings(snap.size > 0);
+                const { data, error } = await supabase
+                    .from("user_ratings")
+                    .select("id")
+                    .eq("userId", userId)
+                    .limit(1);
+                setHasRatings(!error && data && data.length > 0);
             } catch {
                 setHasRatings(false);
             }

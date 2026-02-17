@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import { db } from "@/lib/firebase";
-import { doc, onSnapshot, collection, query, where, getDocs, setDoc, serverTimestamp } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import { Clock, Eye, Heart, Star } from "lucide-react";
 import eventBus from "@/lib/eventBus";
+import { aggregateAndWriteStats } from "@/lib/statsService";
+
+// Re-export for backward compatibility
+export { aggregateAndWriteStats };
 
 function bucketFromRating(rating) {
     if (rating == null) return null;
@@ -17,96 +20,6 @@ function bucketFromRating(rating) {
 
 const BUCKETS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
 const BAR_MAX_PX = 112; // h-28 = 7rem = 112px
-
-/**
- * Aggregates rating data from user_ratings for a given media,
- * then writes the result into the media_stats doc so onSnapshot fires.
- * Supports scope-aware stats: pass statsKey and scopeFilter to write
- * season/episode-specific stats.
- */
-export async function aggregateAndWriteStats(mediaId, mediaType, statsKey = null, scopeFilter = {}) {
-    if (!mediaId || !mediaType) return null;
-    const key = statsKey || `${mediaType}_${String(mediaId)}`;
-    const targetType = scopeFilter?.targetType || null;
-    const seasonNumber = scopeFilter?.seasonNumber ?? null;
-    const episodeNumber = scopeFilter?.episodeNumber ?? null;
-
-    try {
-        const ratingsQ = query(
-            collection(db, "user_ratings"),
-            where("mediaId", "==", Number(mediaId))
-        );
-        const ratingsSnap = await getDocs(ratingsQ);
-
-        const ratingBuckets = Object.fromEntries(BUCKETS.map((b) => [String(b), 0]));
-        let totalRatings = 0;
-        let totalReviews = 0;
-        let totalLikes = 0;
-
-        ratingsSnap.docs.forEach((d) => {
-            const data = d.data();
-            if (data.mediaType !== mediaType) return;
-
-            // Scope filtering for TV
-            if (mediaType === "tv" && targetType) {
-                if (targetType === "series") {
-                    // Only include series-level ratings (no tvTargetType or tvTargetType === "series")
-                    if (data.tvTargetType && data.tvTargetType !== "series") return;
-                } else if (targetType === "season" && seasonNumber != null) {
-                    if (data.tvTargetType !== "season" || data.tvSeasonNumber !== seasonNumber) return;
-                } else if (targetType === "episode" && seasonNumber != null && episodeNumber != null) {
-                    if (data.tvTargetType !== "episode" || data.tvSeasonNumber !== seasonNumber || data.tvEpisodeNumber !== episodeNumber) return;
-                }
-            }
-
-            const r = Number(data.rating);
-            if (!Number.isFinite(r) || r <= 0 || r > 5) return; // Reject zero and invalid ratings
-
-            const bucket = bucketFromRating(r);
-            if (bucket !== null) {
-                ratingBuckets[String(bucket)] = (ratingBuckets[String(bucket)] || 0) + 1;
-                totalRatings++;
-            }
-            if (data.review && data.review.trim().length > 0) {
-                totalReviews++;
-            }
-            if (data.liked === true) {
-                totalLikes++;
-            }
-        });
-
-        const watchedQ = query(
-            collection(db, "user_watched"),
-            where("mediaId", "==", Number(mediaId))
-        );
-        const watchedSnap = await getDocs(watchedQ);
-        const totalWatchers = watchedSnap.docs.filter((d) => d.data().mediaType === mediaType).length;
-
-        const statsData = {
-            ratingBuckets,
-            totalRatings,
-            totalReviews,
-            totalWatchers,
-            totalLikes,
-            lastUpdated: serverTimestamp(),
-        };
-
-        const statsRef = doc(db, "media_stats", key);
-        await setDoc(statsRef, statsData, { merge: true });
-
-        if (process.env.NODE_ENV === "development") {
-            console.log(`[RatingDistribution] Stats refreshed for ${key}:`, {
-                totalRatings, totalReviews, totalWatchers, totalLikes,
-                buckets: ratingBuckets,
-            });
-        }
-
-        return statsData;
-    } catch (error) {
-        console.error(`[RatingDistribution] Error aggregating stats:`, error);
-        return null;
-    }
-}
 
 export default function RatingDistribution({ mediaId, mediaType = null, statsId = null }) {
     const [loading, setLoading] = useState(true);
@@ -140,16 +53,19 @@ export default function RatingDistribution({ mediaId, mediaType = null, statsId 
 
     const applyStatsData = useCallback((data) => {
         const next = Object.fromEntries(BUCKETS.map((b) => [String(b), 0]));
-        const buckets = data.ratingBuckets || data.buckets || {};
+        // Data comes from media_stats table: ratingDistribution is a JSONB column
+        // containing { buckets: {...}, totalReviews, totalWatchers, totalLikes }
+        const dist = data.ratingDistribution || {};
+        const buckets = dist.buckets || {};
         for (const b of BUCKETS) {
             const key = String(b);
             next[key] = Number(buckets[key] || 0);
         }
         setCounts(next);
-        setTotalRatings(Number(data.totalRatings || 0));
-        setTotalReviews(Number(data.totalReviews || 0));
-        setTotalWatchers(Number(data.totalWatchers || 0));
-        setTotalLikes(Number(data.totalLikes || 0));
+        setTotalRatings(Number(data.ratingCount || 0));
+        setTotalReviews(Number(dist.totalReviews || 0));
+        setTotalWatchers(Number(dist.totalWatchers || 0));
+        setTotalLikes(Number(dist.totalLikes || 0));
     }, []);
 
     const resetStats = useCallback(() => {
@@ -170,15 +86,20 @@ export default function RatingDistribution({ mediaId, mediaType = null, statsId 
 
         setLoading(true);
         aggregatedRef.current = false;
-        const statsRef = doc(db, "media_stats", statsKey);
+        // Initial fetch
+        const fetchStats = async () => {
+            const { data, error } = await supabase
+                .from("media_stats")
+                .select("*")
+                .eq("id", statsKey)
+                .single();
 
-        const unsub = onSnapshot(statsRef, (snap) => {
-            if (snap.exists()) {
-                const data = snap.data() || {};
+            if (data && !error) {
                 applyStatsData(data);
 
-                // If ratingBuckets missing or empty, trigger one-time aggregation
-                const buckets = data.ratingBuckets || data.buckets || {};
+                // If ratingDistribution buckets missing or empty, trigger one-time aggregation
+                const dist = data.ratingDistribution || {};
+                const buckets = dist.buckets || {};
                 const hasData = BUCKETS.some((b) => Number(buckets[String(b)] || 0) > 0);
                 if (!hasData && !aggregatedRef.current && mediaId && mediaType) {
                     aggregatedRef.current = true;
@@ -193,13 +114,21 @@ export default function RatingDistribution({ mediaId, mediaType = null, statsId 
                 }
             }
             setLoading(false);
-        }, () => {
-            resetStats();
-            setLoading(false);
-        });
+        };
+        fetchStats();
+
+        // Realtime subscription
+        const channel = supabase
+            .channel(`media_stats_${statsKey}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "media_stats", filter: `id=eq.${statsKey}` }, (payload) => {
+                if (payload.new) {
+                    applyStatsData(payload.new);
+                }
+            })
+            .subscribe();
 
         return () => {
-            try { unsub(); } catch (_) {}
+            supabase.removeChannel(channel);
         };
     }, [statsKey, mediaId, mediaType, scopeFilter, applyStatsData, resetStats]);
 

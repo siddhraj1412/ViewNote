@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import supabase from "@/lib/supabase";
 import eventBus from "@/lib/eventBus";
 
 export default function ProfileBio({ userId }) {
@@ -34,11 +33,13 @@ export default function ProfileBio({ userId }) {
     const loadBio = async () => {
         setLoading(true);
         try {
-            const profileRef = doc(db, "user_profiles", userId);
-            const profileSnap = await getDoc(profileRef);
+            const { data, error } = await supabase
+                .from("profiles")
+                .select("*")
+                .eq("id", userId)
+                .single();
 
-            if (profileSnap.exists()) {
-                const data = profileSnap.data();
+            if (data) {
                 setBio(data.bio || "");
             }
         } catch (error) {

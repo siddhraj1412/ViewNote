@@ -6,10 +6,12 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { useRatings } from "@/hooks/useRatings";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { useFollow } from "@/hooks/useFollow";
+import supabase from "@/lib/supabase";
 import { RESERVED_ROUTES, getProfileUrl } from "@/lib/slugify";
 import ProfileBio from "@/components/profile/ProfileBio";
+import ProfileSocialLinks from "@/components/profile/ProfileSocialLinks";
+import ProfileStats from "@/components/profile/ProfileStats";
 import ProfileTabs from "@/components/profile/ProfileTabs";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ProfileSection from "@/components/profile/sections/ProfileSection";
@@ -46,13 +48,16 @@ function UsernameProfileContent() {
     const [bannerAspectRatio, setBannerAspectRatio] = useState(2.5);
     const [profileData, setProfileData] = useState(null);
 
+    // MUST be called unconditionally — React hook rules
+    const { isFollowing, toggling, followersCount, followingCount, toggleFollow, loading: followLoading } = useFollow(profileUserId);
+
     // Sync tab state when URL changes
     useEffect(() => {
         const tab = searchParams.get("tab") || "profile";
         setActiveSection(tab);
     }, [searchParams]);
 
-    // Resolve username to Firebase UID
+    // Resolve username to user ID
     useEffect(() => {
         if (isReserved) {
             setResolving(false);
@@ -63,32 +68,34 @@ function UsernameProfileContent() {
             setResolving(true);
             try {
                 // Try looking up by username_lowercase
-                const q = query(
-                    collection(db, "user_profiles"),
-                    where("username_lowercase", "==", usernameParam.toLowerCase())
-                );
-                const snap = await getDocs(q);
+                const { data: profileResults } = await supabase
+                    .from("profiles")
+                    .select("*")
+                    .eq("username_lowercase", usernameParam.toLowerCase())
+                    .limit(1);
 
-                if (!snap.empty) {
-                    const userDoc = snap.docs[0];
+                if (profileResults && profileResults.length > 0) {
+                    const userDoc = profileResults[0];
                     setProfileUserId(userDoc.id);
-                    const data = userDoc.data();
-                    setProfileData(data);
-                    loadBanner(data.profile_banner_url);
-                    document.title = `${data.display_name || data.username || usernameParam} (@${data.username || usernameParam}) — ViewNote`;
+                    setProfileData(userDoc);
+                    loadBanner(userDoc.profile_banner_url);
+                    document.title = `${userDoc.display_name || userDoc.username || usernameParam} (@${userDoc.username || usernameParam}) — ViewNote`;
                 } else {
                     // Fallback: try treating the param as a UID (backward compat)
                     try {
-                        const uidDoc = await getDoc(doc(db, "user_profiles", usernameParam));
-                        if (uidDoc.exists()) {
-                            const data = uidDoc.data();
+                        const { data: uidData } = await supabase
+                            .from("profiles")
+                            .select("*")
+                            .eq("id", usernameParam)
+                            .single();
+                        if (uidData) {
                             setProfileUserId(usernameParam);
-                            setProfileData(data);
-                            loadBanner(data.profile_banner_url);
+                            setProfileData(uidData);
+                            loadBanner(uidData.profile_banner_url);
                             // If user has a username, redirect to the username URL
-                            if (data.username) {
+                            if (uidData.username) {
                                 const tab = searchParams.get("tab");
-                                router.replace(getProfileUrl(data.username, tab));
+                                router.replace(getProfileUrl(uidData.username, tab));
                                 return;
                             }
                         } else {
@@ -225,8 +232,8 @@ function UsernameProfileContent() {
                 </div>
 
                 <div className="relative site-container min-h-[calc(100vh-4rem)] flex items-end pb-12">
-                    <div className="flex items-center gap-5">
-                        <div className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center text-4xl font-bold border-4 border-background shadow-xl overflow-hidden relative">
+                    <div className="flex items-start gap-5 w-full">
+                        <div className="w-24 h-24 rounded-full bg-secondary flex items-center justify-center text-4xl font-bold border-4 border-background shadow-xl overflow-hidden relative flex-shrink-0">
                             {profileData?.profile_picture_url ? (
                                 <img
                                     src={profileData.profile_picture_url}
@@ -239,12 +246,12 @@ function UsernameProfileContent() {
                                     }}
                                 />
                             ) : (
-                                (profileData?.username?.[0] || user.username?.[0] || user.email?.[0] || "U").toUpperCase()
+                                (profileData?.username?.[0] || user?.username?.[0] || user?.email?.[0] || "U").toUpperCase()
                             )}
                         </div>
 
-                        <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-3">
+                        <div className="flex flex-col gap-1 flex-1 min-w-0">
+                            <div className="flex items-center gap-3 flex-wrap">
                                 <h1 className="text-4xl font-bold text-white drop-shadow-lg leading-none">
                                     {displayName}
                                 </h1>
@@ -256,11 +263,35 @@ function UsernameProfileContent() {
                                         <span>Edit Profile</span>
                                     </button>
                                 )}
+                                {!isOwnProfile && user && !followLoading && (
+                                    <button
+                                        onClick={toggleFollow}
+                                        disabled={toggling}
+                                        className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-all h-fit ${
+                                            isFollowing
+                                                ? "bg-white/10 text-white border border-white/20 hover:bg-red-500/20 hover:text-red-400 hover:border-red-400/30"
+                                                : "bg-accent text-white hover:bg-accent/85"
+                                        } disabled:opacity-50`}
+                                    >
+                                        {isFollowing ? "Following" : "Follow"}
+                                    </button>
+                                )}
                             </div>
+
+                            {/* Profile Stats Row */}
+                            <ProfileStats
+                                userId={profileUserId}
+                                followersCount={followersCount}
+                                followingCount={followingCount}
+                                username={profileData?.username || usernameParam}
+                            />
 
                             <div className="text-white/80 max-w-2xl mt-1">
                                 <ProfileBio userId={profileUserId} />
                             </div>
+
+                            {/* Social Links */}
+                            <ProfileSocialLinks userId={profileUserId} />
                         </div>
                     </div>
                 </div>
