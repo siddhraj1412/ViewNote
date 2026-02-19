@@ -82,6 +82,13 @@ export default function SocialLinksEditor() {
     const handleSave = async () => {
         if (!user) return;
         setSaving(true);
+
+        // Timeout safety — prevent hanging forever
+        const timeoutId = setTimeout(() => {
+            setSaving(false);
+            showToast.error("Save timed out. Please try again.");
+        }, 10000);
+
         try {
             const payload = {
                 location: location.trim(),
@@ -135,6 +142,7 @@ export default function SocialLinksEditor() {
             console.error("Error saving social links:", err);
             showToast.error(err?.message || "Failed to save. Please try again.");
         } finally {
+            clearTimeout(timeoutId);
             setSaving(false);
         }
     };

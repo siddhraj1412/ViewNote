@@ -179,6 +179,24 @@ export const useStore = create(
                     return { pendingUpdates: newPending };
                 });
             },
+
+            // Clear all per-user data (called on logout)
+            clearUserData: () => {
+                set({
+                    customizations: {},
+                    ratings: {},
+                    watchlist: {},
+                    mediaData: {
+                        watched: [],
+                        paused: [],
+                        dropped: [],
+                        watchlist: [],
+                        ratings: [],
+                    },
+                    favorites: { movies: [], shows: [] },
+                    pendingUpdates: {},
+                });
+            },
         }),
         {
             name: "viewnote-storage",
@@ -193,6 +211,13 @@ export const useStore = create(
         }
     )
 );
+
+// Clear user data on sign out
+if (typeof window !== "undefined") {
+    eventBus.on("SIGNED_OUT", () => {
+        useStore.getState().clearUserData();
+    });
+}
 
 // Cross-tab synchronization
 if (typeof window !== "undefined") {
@@ -215,8 +240,9 @@ if (typeof window !== "undefined") {
                     });
                 }
             } catch (error) {
-                console.error("Error syncing across tabs:", error);
+                console.error("Error syncing across tabs:", error?.message || error);
             }
         }
     });
 }
+

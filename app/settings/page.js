@@ -215,7 +215,7 @@ export default function SettingsPage() {
         } catch (err) {
             console.error("Logout error:", err);
             // Force clear state even if signOut throws
-            try { await logout(); } catch {}
+            try { await logout(); } catch { }
             router.push("/login");
         }
     };
@@ -230,17 +230,19 @@ export default function SettingsPage() {
         }
     };
 
-    if (authLoading || (!user && loading)) {
+    if (authLoading || loading || !user) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
-                <div className="text-2xl text-textSecondary">Loading...</div>
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                    <div className="text-sm text-textSecondary">Loading settings...</div>
+                </div>
             </div>
         );
     }
 
-    if (!user) {
-        return null;
-    }
+
+
 
     return (
         <main className="min-h-screen bg-background">

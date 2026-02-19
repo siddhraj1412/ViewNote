@@ -16,6 +16,7 @@ export default function BannerSelectionModal({ isOpen, onClose, onSelect }) {
     const [loading, setLoading] = useState(false);
     const [loadedImages, setLoadedImages] = useState({});
     const observerRef = useRef(null);
+    const searchTimer = useRef(null);
 
     useEffect(() => {
         if (!isOpen) {
@@ -28,25 +29,31 @@ export default function BannerSelectionModal({ isOpen, onClose, onSelect }) {
         }
     }, [isOpen]);
 
-    const searchMedia = async (query) => {
-        if (!query.trim()) {
+    // Debounced search
+    useEffect(() => {
+        if (!searchQuery.trim()) {
             setResults([]);
             return;
         }
 
-        setLoading(true);
-        try {
-            const searchFn = mediaType === "movie" ? tmdb.searchMovies : tmdb.searchTV;
-            const data = await searchFn(query);
-            // No slice — show all results
-            setResults(data);
-        } catch (error) {
-            console.error("Search error:", error);
-            setResults([]);
-        } finally {
-            setLoading(false);
-        }
-    };
+        if (searchTimer.current) clearTimeout(searchTimer.current);
+
+        searchTimer.current = setTimeout(async () => {
+            setLoading(true);
+            try {
+                const searchFn = mediaType === "movie" ? tmdb.searchMovies : tmdb.searchTV;
+                const data = await searchFn(searchQuery);
+                setResults(data);
+            } catch (error) {
+                console.error("Search error:", error);
+                setResults([]);
+            } finally {
+                setLoading(false);
+            }
+        }, 300);
+
+        return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+    }, [searchQuery, mediaType]);
 
     const selectMedia = async (media) => {
         setSelectedMedia(media);
@@ -128,10 +135,7 @@ export default function BannerSelectionModal({ isOpen, onClose, onSelect }) {
                         <input
                             type="text"
                             value={searchQuery}
-                            onChange={(e) => {
-                                setSearchQuery(e.target.value);
-                                searchMedia(e.target.value);
-                            }}
+                            onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder={`Search ${mediaType === "movie" ? "movies" : "TV shows"}...`}
                             className="w-full px-4 py-3 bg-background border border-white/10 rounded-xl focus:outline-none focus:border-accent transition"
                         />

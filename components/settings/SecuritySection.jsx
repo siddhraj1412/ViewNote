@@ -19,8 +19,9 @@ export default function SecuritySection() {
         getAuthErrorMessage,
     } = useAuth();
 
-    const isGoogleUser = user?.providerData?.some((p) => p.providerId === "google.com") || false;
-    const isEmailUser = user?.providerData?.some((p) => p.providerId === "password") || false;
+    // Supabase stores provider as "google" and "email" (not Firebase's "google.com" / "password")
+    const isGoogleUser = user?.providerData?.some((p) => p.providerId === "google") || false;
+    const isEmailUser = user?.providerData?.some((p) => p.providerId === "email") || false;
     const emailVerified = user?.emailVerified || false;
 
     // ── Change Email state ──

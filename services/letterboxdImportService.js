@@ -314,9 +314,9 @@ async function getExistingImportedIds(userId) {
             supabase.from("user_watchlist").select('"mediaId"').eq("userId", userId).limit(10000),
         ]);
 
-        (watchedRes.data || []).forEach((d) => existing.watched.add(d.mediaId));
+        (watchedRes.data || []).forEach((d) => existing.watched.add(String(d.mediaId)));
         (ratingsRes.data || []).forEach((d) => existing.ratings.set(d.id, d));
-        (watchlistRes.data || []).forEach((d) => existing.watchlist.add(d.mediaId));
+        (watchlistRes.data || []).forEach((d) => existing.watchlist.add(String(d.mediaId)));
     } catch (err) {
         console.warn("[LBImport] Error fetching existing data (continuing anyway):", err);
     }
@@ -361,7 +361,7 @@ async function commitBatches(operations) {
  * All rated/reviewed/watched items get added to user_watched.
  * Reviews merge into the rating doc.
  */
-export async function importLetterboxdData(zipFile, user, onProgress = () => {}) {
+export async function importLetterboxdData(zipFile, user, onProgress = () => { }) {
     if (!zipFile || !user?.uid) {
         throw new Error("Missing ZIP file or user");
     }
@@ -478,10 +478,11 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
         return "movie";
     };
 
-    const ensureWatched = (mediaId, mediaType, tmdbData) => {
-        if (processedMediaIds.has(`watched_${mediaId}`)) return;
-        if (existing.watched.has(mediaId)) {
-            processedMediaIds.add(`watched_${mediaId}`);
+    const ensureWatched = (mediaId, mediaType, tmdbData, originalDate = null) => {
+        const mediaIdStr = String(mediaId);
+        if (processedMediaIds.has(`watched_${mediaIdStr}`)) return;
+        if (existing.watched.has(mediaIdStr)) {
+            processedMediaIds.add(`watched_${mediaIdStr}`);
             return;
         }
         const docId = `${userId}_${mediaType}_${mediaId}`;
@@ -495,12 +496,12 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                 mediaType,
                 title: tmdbData.title || tmdbData.name || "",
                 poster_path: tmdbData.poster_path || "",
-                addedAt: new Date().toISOString(),
+                addedAt: originalDate ? dateToTimestamp(originalDate) : new Date().toISOString(),
                 importedFrom: "letterboxd",
             },
         });
-        existing.watched.add(mediaId);
-        processedMediaIds.add(`watched_${mediaId}`);
+        existing.watched.add(mediaIdStr);
+        processedMediaIds.add(`watched_${mediaIdStr}`);
         summary.watched.imported++;
     };
 
@@ -547,7 +548,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
             });
 
             existing.ratings.set(ratingDocId, { rating });
-            ensureWatched(mediaId, mediaType, tmdbData);
+            ensureWatched(mediaId, mediaType, tmdbData, ratingDateStr);
             summary.ratings.imported++;
         }
     }
@@ -602,7 +603,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
             });
 
             existing.ratings.set(ratingDocId, { rating: rating || 0, review: reviewText });
-            ensureWatched(mediaId, mediaType, tmdbData);
+            ensureWatched(mediaId, mediaType, tmdbData, watchedDate || getCol(row, "Date"));
             summary.reviews.imported++;
         }
     }
@@ -619,7 +620,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
             const mediaId = tmdbData.id;
             const mediaType = getMediaType(tmdbData);
 
-            if (existing.watched.has(mediaId) || existing.watchlist.has(mediaId)) {
+            if (existing.watched.has(String(mediaId)) || existing.watchlist.has(String(mediaId))) {
                 summary.watchlist.skipped++;
                 continue;
             }
@@ -642,7 +643,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                 },
             });
 
-            existing.watchlist.add(mediaId);
+            existing.watchlist.add(String(mediaId));
             summary.watchlist.imported++;
         }
     }
@@ -656,7 +657,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
             // Update progress during commit
             let completed = 0;
             const originalCommit = commitBatches;
-            
+
             // Wrap commitBatches to track progress
             const progressTracker = async (ops) => {
                 const grouped = {};
@@ -679,15 +680,15 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                             console.error(`[LBImport] Upsert error for ${table} chunk ${i / CHUNK_SIZE + 1}:`, error);
                             throw error;
                         }
-                        
+
                         completed += chunk.length;
-                        onProgress({ 
-                            phase: "commit", 
-                            current: completed, 
-                            total: totalOps, 
-                            message: `Saved ${completed}/${totalOps} records...` 
+                        onProgress({
+                            phase: "commit",
+                            current: completed,
+                            total: totalOps,
+                            message: `Saved ${completed}/${totalOps} records...`
                         });
-                        
+
                         if (i + CHUNK_SIZE < rows.length) {
                             await new Promise(resolve => setTimeout(resolve, 100));
                         }

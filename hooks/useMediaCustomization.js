@@ -63,9 +63,9 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
                     .from("user_media_preferences")
                     .select("*")
                     .eq("id", prefId)
-                    .single();
+                    .maybeSingle();
 
-                if (error && error.code !== "PGRST116") throw error;
+                if (error) throw error;
 
                 if (data) {
                     setCustomPoster(data.customPoster || dp);

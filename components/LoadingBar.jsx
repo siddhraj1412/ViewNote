@@ -9,17 +9,23 @@ export default function LoadingBar() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const isFirst = useRef(true);
+    const prevUrl = useRef("");
+
+    // Build current full URL for comparison
+    const currentUrl = pathname + (searchParams?.toString() ? `?${searchParams}` : "");
 
     useEffect(() => {
         // On first mount, just force-complete any stale bar
         if (isFirst.current) {
             isFirst.current = false;
+            prevUrl.current = currentUrl;
             loadingBar.forceDone();
             return;
         }
         // Route changed — complete the loading bar
+        prevUrl.current = currentUrl;
         loadingBar.done();
-    }, [pathname, searchParams]);
+    }, [currentUrl]);
 
     // Intercept anchor clicks to start the bar before navigation
     useEffect(() => {
@@ -27,14 +33,27 @@ export default function LoadingBar() {
             const anchor = e.target.closest("a[href]");
             if (!anchor) return;
             const href = anchor.getAttribute("href");
-            if (!href || href.startsWith("#") || href.startsWith("http") || href.startsWith("mailto:") || anchor.target === "_blank") return;
-            // Don't start if navigating to same page
-            if (href === pathname) return;
+            if (
+                !href ||
+                href.startsWith("#") ||
+                href.startsWith("http") ||
+                href.startsWith("mailto:") ||
+                href.startsWith("tel:") ||
+                anchor.target === "_blank" ||
+                anchor.hasAttribute("download") ||
+                e.ctrlKey || e.metaKey || e.shiftKey // new tab clicks
+            ) return;
+
+            // Don't start if navigating to the exact same URL (including search params)
+            const hrefPath = href.split("?")[0].split("#")[0];
+            const currentPath = pathname;
+            if (href === currentUrl || hrefPath === currentPath) return;
+
             loadingBar.start();
         };
         document.addEventListener("click", handleClick);
         return () => document.removeEventListener("click", handleClick);
-    }, [pathname]);
+    }, [pathname, currentUrl]);
 
     // Intercept programmatic navigation (router.push / router.replace)
     useEffect(() => {
@@ -43,12 +62,16 @@ export default function LoadingBar() {
 
         router.push = (...args) => {
             const target = typeof args[0] === "string" ? args[0] : "";
-            if (target && target !== pathname) loadingBar.start();
+            if (target && target !== currentUrl && target !== pathname) {
+                loadingBar.start();
+            }
             return origPush.apply(router, args);
         };
         router.replace = (...args) => {
             const target = typeof args[0] === "string" ? args[0] : "";
-            if (target && target !== pathname) loadingBar.start();
+            if (target && target !== currentUrl && target !== pathname) {
+                loadingBar.start();
+            }
             return origReplace.apply(router, args);
         };
 
@@ -56,7 +79,7 @@ export default function LoadingBar() {
             router.push = origPush;
             router.replace = origReplace;
         };
-    }, [router, pathname]);
+    }, [router, pathname, currentUrl]);
 
     // Listen for custom routeChangeStart events from any component
     useEffect(() => {

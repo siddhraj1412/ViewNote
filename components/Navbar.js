@@ -66,15 +66,19 @@ function NavbarContent() {
         setDropdownOpen(false);
         try {
             await logout();
-            // Clear any cached data
-            if (typeof window !== 'undefined') {
-                sessionStorage.clear();
-            }
             router.push("/");
+            // Fallback: force hard navigation if router.push doesn't work within 1.5s
+            setTimeout(() => {
+                if (typeof window !== "undefined" && window.location.pathname !== "/") {
+                    window.location.href = "/";
+                }
+            }, 1500);
         } catch (err) {
             console.error("Logout error:", err);
-            // Force redirect even if logout fails
-            router.push("/");
+            // Force hard redirect on error
+            if (typeof window !== "undefined") {
+                window.location.href = "/";
+            }
         }
     };
 

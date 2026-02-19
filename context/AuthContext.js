@@ -116,16 +116,16 @@ export const AuthProvider = ({ children }) => {
                 enriched.username = profile.username || null;
                 enriched.username_lowercase = profile.username_lowercase || null;
                 enriched.onboardingComplete = profile.onboardingComplete === true;
-                enriched.needsUsername = !profile.username || profile.onboardingComplete === false;
+                // If a username exists, onboarding is done — period.
+                enriched.needsUsername = !profile.username;
                 // Auto-backfill onboardingComplete for existing users with username
-                if (profile.username && profile.onboardingComplete === undefined) {
+                if (profile.username && !profile.onboardingComplete) {
                     supabase
                         .from("profiles")
                         .update({ onboardingComplete: true })
                         .eq("id", supabaseUser.id)
-                        .then(() => {});
+                        .then(() => { });
                     enriched.onboardingComplete = true;
-                    enriched.needsUsername = false;
                 }
             } else {
                 enriched.photoURL = supabaseUser.user_metadata?.avatar_url || null;
@@ -380,9 +380,9 @@ export const AuthProvider = ({ children }) => {
                 // Delete data from known tables manually
                 const tables = ["user_ratings", "user_reviews", "user_watched", "user_watchlist", "user_lists", "favorites", "user_series_progress", "user_imports", "followers"];
                 for (const table of tables) {
-                    try { await supabase.from(table).delete().eq("userId", uid); } catch {}
+                    try { await supabase.from(table).delete().eq("userId", uid); } catch { }
                 }
-                try { await supabase.from("profiles").delete().eq("id", uid); } catch {}
+                try { await supabase.from("profiles").delete().eq("id", uid); } catch { }
             } else {
                 throw new Error("Failed to delete account data. Please try again.");
             }
@@ -433,12 +433,30 @@ export const AuthProvider = ({ children }) => {
 
     // ──── Logout ────
     const logout = async () => {
+        // Clear user state immediately so UI reacts right away
+        setUser(null);
+
+        // Clear any cached auth data from localStorage
+        if (typeof window !== "undefined") {
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.startsWith("sb-") || key.includes("supabase"))) {
+                    keysToRemove.push(key);
+                }
+            }
+            keysToRemove.forEach((k) => localStorage.removeItem(k));
+            sessionStorage.clear();
+        }
+
+        // Emit event so other components can react
+        eventBus.emit("SIGNED_OUT");
+
         try {
             await supabase.auth.signOut();
         } catch (err) {
             console.warn("signOut error (ignored):", err);
         }
-        setUser(null);
     };
 
     const resetPassword = async (email) => {
