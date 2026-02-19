@@ -9,8 +9,8 @@ import supabase from "@/lib/supabase";
  * Hook for media detail pages to get and subscribe to live customization updates.
  * Returns custom poster/banner if available, with live updates.
  *
- * Cross-user visibility: When profileUserId is provided, fetches THAT user's
- * customizations. When omitted, uses the current authenticated user.
+ * PRIORITY: Default TMDB → Personal user override (isolated per user)
+ * Personal overrides are scoped to the logged-in user only and never affect other users.
  */
 export function useMediaCustomization(mediaId, mediaType, defaultPoster, defaultBanner, profileUserId) {
     const { user } = useAuth();
@@ -19,7 +19,9 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
     const [customBanner, setCustomBanner] = useState(defaultBanner);
     const [loading, setLoading] = useState(true);
 
-    const ownerId = profileUserId || user?.uid;
+    // Only show customizations for the logged-in user viewing their own content
+    const ownerId = user?.uid;
+    const shouldShowCustomization = ownerId && (!profileUserId || profileUserId === ownerId);
 
     // Track defaults in refs so effect doesn't re-fire when they change
     const defaultPosterRef = useRef(defaultPoster);
@@ -33,7 +35,7 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
     }, [defaultPoster, defaultBanner]);
 
     useEffect(() => {
-        if (!ownerId || !mediaId) {
+        if (!shouldShowCustomization || !mediaId) {
             setCustomPoster(defaultPosterRef.current);
             setCustomBanner(defaultBannerRef.current);
             setLoading(false);
@@ -49,14 +51,12 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
             setLoading(true);
             try {
                 // Check store first (for own profile)
-                if (user?.uid === ownerId) {
-                    const storeCustomization = store.getCustomization(mediaId, mediaType);
-                    if (storeCustomization) {
-                        setCustomPoster(storeCustomization.customPoster || dp);
-                        setCustomBanner(storeCustomization.customBanner || db);
-                        setLoading(false);
-                        return;
-                    }
+                const storeCustomization = store.getCustomization(mediaId, mediaType);
+                if (storeCustomization) {
+                    setCustomPoster(storeCustomization.customPoster || dp);
+                    setCustomBanner(storeCustomization.customBanner || db);
+                    setLoading(false);
+                    return;
                 }
 
                 const { data, error } = await supabase
@@ -70,18 +70,14 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
                 if (data) {
                     setCustomPoster(data.customPoster || dp);
                     setCustomBanner(data.customBanner || db);
-                    if (user?.uid === ownerId) {
-                        store.setCustomization(mediaId, mediaType, {
-                            customPoster: data.customPoster,
-                            customBanner: data.customBanner,
-                        });
-                    }
+                    store.setCustomization(mediaId, mediaType, {
+                        customPoster: data.customPoster,
+                        customBanner: data.customBanner,
+                    });
                 } else {
                     setCustomPoster(dp);
                     setCustomBanner(db);
-                    if (user?.uid === ownerId) {
-                        store.setCustomization(mediaId, mediaType, { customPoster: null, customBanner: null });
-                    }
+                    store.setCustomization(mediaId, mediaType, { customPoster: null, customBanner: null });
                 }
             } catch (error) {
                 console.error("Customization load error:", error);
@@ -109,19 +105,15 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
                     if (payload.eventType === "DELETE") {
                         setCustomPoster(defaultPosterRef.current);
                         setCustomBanner(defaultBannerRef.current);
-                        if (user?.uid === ownerId) {
-                            store.setCustomization(mediaId, mediaType, { customPoster: null, customBanner: null });
-                        }
+                        store.setCustomization(mediaId, mediaType, { customPoster: null, customBanner: null });
                     } else {
                         const data = payload.new;
                         setCustomPoster(data.customPoster || defaultPosterRef.current);
                         setCustomBanner(data.customBanner || defaultBannerRef.current);
-                        if (user?.uid === ownerId) {
-                            store.setCustomization(mediaId, mediaType, {
-                                customPoster: data.customPoster,
-                                customBanner: data.customBanner,
-                            });
-                        }
+                        store.setCustomization(mediaId, mediaType, {
+                            customPoster: data.customPoster,
+                            customBanner: data.customBanner,
+                        });
                     }
                     setLoading(false);
                 }
@@ -131,7 +123,7 @@ export function useMediaCustomization(mediaId, mediaType, defaultPoster, default
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [ownerId, mediaId, mediaType]);
+    }, [shouldShowCustomization, ownerId, mediaId, mediaType]);
 
     return { customPoster, customBanner, loading };
 }

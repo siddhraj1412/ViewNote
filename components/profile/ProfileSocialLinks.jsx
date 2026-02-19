@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import supabase from "@/lib/supabase";
-import { MapPin, Globe, ExternalLink } from "lucide-react";
+import { Globe, ExternalLink } from "lucide-react";
 import eventBus from "@/lib/eventBus";
 
 /**
@@ -11,6 +11,8 @@ import eventBus from "@/lib/eventBus";
 const PLATFORMS = [
     { key: "twitter", pattern: /twitter\.com|x\.com/i, label: "Twitter/X", icon: "𝕏" },
     { key: "instagram", pattern: /instagram\.com/i, label: "Instagram", icon: "📷" },
+    { key: "threads", pattern: /threads\.net/i, label: "Threads", icon: "🧵" },
+    { key: "snapchat", pattern: /snapchat\.com/i, label: "Snapchat", icon: "👻" },
     { key: "letterboxd", pattern: /letterboxd\.com/i, label: "Letterboxd", icon: "🎬" },
     { key: "github", pattern: /github\.com/i, label: "GitHub", icon: "🐙" },
     { key: "youtube", pattern: /youtube\.com|youtu\.be/i, label: "YouTube", icon: "▶️" },
@@ -89,7 +91,7 @@ export default function ProfileSocialLinks({ userId }) {
         <div className="flex flex-wrap items-center gap-3 mt-1">
             {location && (
                 <span className="flex items-center gap-1 text-white/60 text-sm">
-                    <MapPin size={13} className="text-accent" />
+                    <span className="text-sm">📍</span>
                     {location}
                 </span>
             )}

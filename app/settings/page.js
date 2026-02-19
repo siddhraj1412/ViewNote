@@ -103,7 +103,19 @@ export default function SettingsPage() {
     const saveProfile = async (updates) => {
         setSaving(true);
         try {
-            await supabase.from("profiles").upsert({ id: user.uid, ...profile, ...updates, userId: user.uid });
+            // Use update() with only the changed fields — avoids overwriting with stale data
+            const { error } = await supabase
+                .from("profiles")
+                .update({ ...updates, updatedAt: new Date().toISOString() })
+                .eq("id", user.uid);
+
+            if (error) {
+                // Fallback: upsert if row might not exist yet
+                const { error: upsertError } = await supabase
+                    .from("profiles")
+                    .upsert({ id: user.uid, ...updates, updatedAt: new Date().toISOString() }, { onConflict: "id" });
+                if (upsertError) throw upsertError;
+            }
 
             setProfile((prev) => ({ ...prev, ...updates }));
 

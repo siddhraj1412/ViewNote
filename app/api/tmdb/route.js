@@ -101,34 +101,59 @@ export async function GET(request) {
         const url = `${TMDB_BASE_URL}/${normalized}${normalized.includes("?") ? "&" : "?"}api_key=${TMDB_API_KEY}`;
 
         const fetchPromise = (async () => {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 20000);
+            // Retry up to 2 times with exponential backoff for transient failures
+            let lastError = null;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-            const res = await fetch(url, {
-                next: { revalidate: 300 },
-                signal: controller.signal,
-            });
-            clearTimeout(timeoutId);
+                    const res = await fetch(url, {
+                        next: { revalidate: 300 },
+                        signal: controller.signal,
+                    });
+                    clearTimeout(timeoutId);
 
-            const contentType = res.headers.get("content-type") || "";
-            const isJson = contentType.includes("application/json");
+                    const contentType = res.headers.get("content-type") || "";
+                    const isJson = contentType.includes("application/json");
 
-            if (!res.ok) {
-                const body = isJson
-                    ? await res.json().catch(() => null)
-                    : await res.text().catch(() => "");
-                const err = new Error("TMDB API error");
-                err.status = res.status;
-                err.statusText = res.statusText;
-                err.body = body;
-                throw err;
+                    if (!res.ok) {
+                        // Retry on 5xx or 429
+                        if ((res.status >= 500 || res.status === 429) && attempt < 2) {
+                            const retryDelay = res.status === 429
+                                ? parseInt(res.headers.get("Retry-After") || "2", 10) * 1000
+                                : 500 * Math.pow(2, attempt);
+                            await new Promise(r => setTimeout(r, retryDelay));
+                            continue;
+                        }
+                        const body = isJson
+                            ? await res.json().catch(() => null)
+                            : await res.text().catch(() => "");
+                        const err = new Error("TMDB API error");
+                        err.status = res.status;
+                        err.statusText = res.statusText;
+                        err.body = body;
+                        throw err;
+                    }
+
+                    const data = isJson ? await res.json() : await res.text();
+
+                    // Cache success (10 minutes default in tmdbCache)
+                    tmdbCache.set(cacheKey, data);
+                    return data;
+                } catch (err) {
+                    lastError = err;
+                    // Don't retry if it's a non-retryable error (has a 4xx status)
+                    if (err.status && err.status >= 400 && err.status < 500 && err.status !== 429) {
+                        throw err;
+                    }
+                    if (attempt < 2) {
+                        await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)));
+                        continue;
+                    }
+                }
             }
-
-            const data = isJson ? await res.json() : await res.text();
-
-            // Cache success (10 minutes default in tmdbCache)
-            tmdbCache.set(cacheKey, data);
-            return data;
+            throw lastError || new Error("TMDB fetch failed after retries");
         })();
 
         inFlight.set(cacheKey, fetchPromise);

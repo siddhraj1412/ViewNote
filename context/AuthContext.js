@@ -236,31 +236,53 @@ export const AuthProvider = ({ children }) => {
             }
         }
 
-        // Create profile (trigger may also create one, use upsert)
-        const { error: profileError } = await supabase.from("profiles").upsert({
-            id: data.user.id,
-            email,
-            displayName: name,
-            username: finalUsername,
-            username_lowercase: finalUsername.toLowerCase(),
-            provider: "email",
-            profile_picture_url: null,
-            onboardingComplete: true,
-            createdAt: new Date().toISOString(),
-        }, { onConflict: "id" });
-        if (profileError) {
-            console.error("Profile creation failed:", profileError);
-            // Auth user exists but profile failed — don't leave user in a broken state
+        const userId = data.user.id;
+
+        // Create profile with retry logic
+        let profileCreated = false;
+        let lastProfileError = null;
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const { error: profileError } = await supabase.from("profiles").upsert({
+                    id: userId,
+                    email,
+                    displayName: name,
+                    username: finalUsername,
+                    username_lowercase: finalUsername.toLowerCase(),
+                    provider: "email",
+                    profile_picture_url: null,
+                    onboardingComplete: true,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                }, { onConflict: "id" });
+
+                if (!profileError) {
+                    profileCreated = true;
+                    break;
+                }
+                lastProfileError = profileError;
+                console.error(`Profile creation attempt ${attempt + 1} failed:`, profileError);
+                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+            } catch (err) {
+                lastProfileError = err;
+                console.error(`Profile creation attempt ${attempt + 1} error:`, err);
+            }
+        }
+
+        if (!profileCreated) {
+            console.error("Profile creation failed after retries:", lastProfileError);
             throw new Error("Account created but profile setup failed. Please try logging in.");
         }
 
         // Build result compatible with the rest of the app
         const result = { user: data.user };
-        result.user.uid = data.user.id;
+        result.user.uid = userId;
         result.user.username = finalUsername;
         result.user.username_lowercase = finalUsername.toLowerCase();
         result.user.needsUsername = false;
         result.user.displayName = name;
+        result.user.onboardingComplete = true;
 
         return result;
     };

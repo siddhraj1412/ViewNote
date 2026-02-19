@@ -83,27 +83,57 @@ export default function SocialLinksEditor() {
         if (!user) return;
         setSaving(true);
         try {
+            const payload = {
+                location: location.trim(),
+                socialLinks: socialLinks,
+                updatedAt: new Date().toISOString(),
+            };
+
+            // Try update first
             const { error } = await supabase
                 .from("profiles")
-                .update({
-                    location: location.trim(),
-                    socialLinks: socialLinks,
-                })
+                .update(payload)
                 .eq("id", user.uid);
+
             if (error) {
-                // Handle missing columns error gracefully
-                if (error.message?.includes("column") || error.code === "42703") {
-                    showToast.error("Database migration needed — please run the SQL migration file in Supabase.");
-                } else {
-                    throw error;
+                console.error("Update error:", error);
+                // Handle missing columns
+                if (error.message?.includes("column") || error.code === "42703" || error.code === "PGRST204") {
+                    showToast.error("Database migration needed — please run supabase-migration-fix.sql in Supabase SQL Editor.");
+                    return;
                 }
-            } else {
-                eventBus.emit("PROFILE_UPDATED", { type: "social" });
-                showToast.success("Social links saved");
+                // Fallback: upsert if row might not exist
+                const { error: upsertError } = await supabase
+                    .from("profiles")
+                    .upsert({ id: user.uid, ...payload }, { onConflict: "id" });
+                if (upsertError) {
+                    console.error("Upsert error:", upsertError);
+                    throw upsertError;
+                }
             }
+
+            // Re-fetch to confirm persistence
+            const { data: verified, error: verifyError } = await supabase
+                .from("profiles")
+                .select("location, socialLinks")
+                .eq("id", user.uid)
+                .single();
+
+            if (verifyError) {
+                console.error("Verification error:", verifyError);
+                throw verifyError;
+            }
+
+            if (verified) {
+                setLocation(verified.location || "");
+                setSocialLinks(verified.socialLinks || []);
+            }
+
+            eventBus.emit("PROFILE_UPDATED", { type: "social" });
+            showToast.success("Social links saved successfully");
         } catch (err) {
             console.error("Error saving social links:", err);
-            showToast.error(err?.message || "Failed to save");
+            showToast.error(err?.message || "Failed to save. Please try again.");
         } finally {
             setSaving(false);
         }

@@ -20,15 +20,39 @@ const ACTIVITY_SOURCES = [
 ];
 
 /**
- * Fetch season poster from TMDB for season-level ratings.
+ * Fetch per-user custom poster/banner map from user_media_preferences.
+ * Returns: { "movie_123": { customPoster, customBanner }, ... }
+ */
+async function fetchCustomizationsMap(userId) {
+    if (!userId) return {};
+    try {
+        const { data, error } = await supabase
+            .from("user_media_preferences")
+            .select('"mediaType", "mediaId", "customPoster", "customBanner"')
+            .eq("userId", userId);
+        if (error || !data) return {};
+        const map = {};
+        data.forEach(row => {
+            map[`${row.mediaType}_${row.mediaId}`] = {
+                customPoster: row.customPoster,
+                customBanner: row.customBanner,
+            };
+        });
+        return map;
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Fetch season poster from TMDB via server proxy for season-level ratings.
  * Returns poster path string or null.
  */
 async function fetchSeasonPoster(seriesId, seasonNumber) {
     if (!seriesId || seasonNumber == null) return null;
     try {
-        const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
         const res = await fetch(
-            `https://api.themoviedb.org/3/tv/${seriesId}/season/${seasonNumber}?api_key=${TMDB_API_KEY}`
+            `/api/tmdb?endpoint=${encodeURIComponent(`tv/${seriesId}/season/${seasonNumber}`)}`
         );
         if (!res.ok) return null;
         const data = await res.json();
@@ -39,21 +63,20 @@ async function fetchSeasonPoster(seriesId, seasonNumber) {
 }
 
 /**
- * Fetch episode still from TMDB for episode-level ratings.
+ * Fetch episode still from TMDB via server proxy for episode-level ratings.
  */
 async function fetchEpisodeStill(seriesId, seasonNumber, episodeNumber) {
     if (!seriesId || seasonNumber == null || episodeNumber == null) return null;
     try {
-        const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY;
         const res = await fetch(
-            `https://api.themoviedb.org/3/tv/${seriesId}/season/${seasonNumber}/episode/${episodeNumber}?api_key=${TMDB_API_KEY}`
+            `/api/tmdb?endpoint=${encodeURIComponent(`tv/${seriesId}/season/${seasonNumber}/episode/${episodeNumber}`)}`
         );
         if (!res.ok) return null;
         const data = await res.json();
         return {
             still_path: data.still_path || null,
             name: data.name || null,
-            poster_path: null, // episodes don't have poster_path, use season's
+            poster_path: null,
         };
     } catch {
         return null;
@@ -71,36 +94,39 @@ export default function RecentActivity({ userId }) {
         }
         setLoading(true);
         try {
-            const promises = ACTIVITY_SOURCES.map(async (source) => {
-                try {
-                    const { data } = await supabase
-                        .from(source.collection)
-                        .select("*")
-                        .eq("userId", userId)
-                        .order(source.timestampField, { ascending: false })
-                        .limit(ACTIVITY_LIMIT);
+            // Fetch user customizations in parallel with activity
+            const [customizationsMap, ...activityResults] = await Promise.all([
+                fetchCustomizationsMap(userId),
+                ...ACTIVITY_SOURCES.map(async (source) => {
+                    try {
+                        const { data } = await supabase
+                            .from(source.collection)
+                            .select("*")
+                            .eq("userId", userId)
+                            .order(source.timestampField, { ascending: false })
+                            .limit(ACTIVITY_LIMIT);
 
-                    return (data || []).map((row) => {
-                        const ts = row[source.timestampField]
-                            ? Math.floor(new Date(row[source.timestampField]).getTime() / 1000)
-                            : row.createdAt
-                                ? Math.floor(new Date(row.createdAt).getTime() / 1000)
-                                : 0;
-                        return {
-                            ...row,
-                            activityType: source.label,
-                            activityIcon: source.icon,
-                            activityColor: source.color,
-                            timestamp: ts,
-                        };
-                    });
-                } catch {
-                    return [];
-                }
-            });
+                        return (data || []).map((row) => {
+                            const ts = row[source.timestampField]
+                                ? Math.floor(new Date(row[source.timestampField]).getTime() / 1000)
+                                : row.createdAt
+                                    ? Math.floor(new Date(row.createdAt).getTime() / 1000)
+                                    : 0;
+                            return {
+                                ...row,
+                                activityType: source.label,
+                                activityIcon: source.icon,
+                                activityColor: source.color,
+                                timestamp: ts,
+                            };
+                        });
+                    } catch {
+                        return [];
+                    }
+                }),
+            ]);
 
-            const results = await Promise.all(promises);
-            const allItems = results.flat();
+            const allItems = activityResults.flat();
 
             // Sort by timestamp descending and deduplicate
             allItems.sort((a, b) => b.timestamp - a.timestamp);
@@ -118,32 +144,39 @@ export default function RecentActivity({ userId }) {
                 if (unique.length >= ACTIVITY_LIMIT) break;
             }
 
-            // Enrich season/episode items with posters from TMDB
+            // Enrich items with custom posters + season/episode data from TMDB
             const enriched = await Promise.all(
                 unique.map(async (item) => {
                     const isSeason = item.tvTargetType === "season" && item.tvSeasonNumber != null;
                     const isEpisode = item.tvTargetType === "episode" && item.tvSeasonNumber != null && item.tvEpisodeNumber != null;
                     const seriesId = item.seriesId || item.mediaId;
 
-                    if (isSeason && !item._seasonPoster) {
-                        const posterPath = await fetchSeasonPoster(seriesId, item.tvSeasonNumber);
+                    // Attach custom poster from user_media_preferences
+                    const customKey = `${item.mediaType}_${item.mediaId}`;
+                    const custom = customizationsMap[customKey];
+                    const enrichedItem = custom
+                        ? { ...item, _customPoster: custom.customPoster || null, _customBanner: custom.customBanner || null }
+                        : item;
+
+                    if (isSeason && !enrichedItem._seasonPoster) {
+                        const posterPath = await fetchSeasonPoster(seriesId, enrichedItem.tvSeasonNumber);
                         if (posterPath) {
-                            return { ...item, _seasonPoster: posterPath };
+                            return { ...enrichedItem, _seasonPoster: posterPath };
                         }
                     }
-                    if (isEpisode && !item._episodeStill) {
+                    if (isEpisode && !enrichedItem._episodeStill) {
                         const [epData, seasonPoster] = await Promise.all([
-                            fetchEpisodeStill(seriesId, item.tvSeasonNumber, item.tvEpisodeNumber),
-                            fetchSeasonPoster(seriesId, item.tvSeasonNumber),
+                            fetchEpisodeStill(seriesId, enrichedItem.tvSeasonNumber, enrichedItem.tvEpisodeNumber),
+                            fetchSeasonPoster(seriesId, enrichedItem.tvSeasonNumber),
                         ]);
                         return {
-                            ...item,
+                            ...enrichedItem,
                             _episodeStill: epData?.still_path || null,
                             _episodeName: epData?.name || null,
                             _seasonPoster: seasonPoster || null,
                         };
                     }
-                    return item;
+                    return enrichedItem;
                 })
             );
 
@@ -224,11 +257,16 @@ export default function RecentActivity({ userId }) {
                         );
 
                     // Poster priority:
-                    // Episode: episode still → season poster → series poster → fallback
-                    // Season: season poster → series poster → fallback
-                    // Movie/Series: poster_path → fallback
+                    // 1. User's custom poster (from user_media_preferences)
+                    // 2. Episode: season poster → series poster → fallback
+                    // 3. Season: season poster → series poster → fallback
+                    // 4. Movie/Series: poster_path → fallback
                     let posterUrl = null;
-                    if (isEpisode) {
+                    if (item._customPoster) {
+                        posterUrl = item._customPoster.startsWith("http")
+                            ? item._customPoster
+                            : tmdb.getImageUrl(item._customPoster);
+                    } else if (isEpisode) {
                         posterUrl = item._seasonPoster
                             ? tmdb.getImageUrl(item._seasonPoster)
                             : item.poster_path

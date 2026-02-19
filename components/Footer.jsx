@@ -56,6 +56,12 @@ export default function Footer() {
                         Not endorsed or certified by TMDB.
                     </div>
                 </div>
+
+                <div className="mt-4 text-center">
+                    <p className="text-xs text-textSecondary/50">
+                        Pro tip: If a page isn't loading properly, try refreshing.
+                    </p>
+                </div>
             </div>
         </footer>
     );

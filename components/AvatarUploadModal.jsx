@@ -259,25 +259,33 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                 if (profileError) {
                     console.error("Profile update error:", profileError);
                     // Try upsert as fallback
-                    await supabase
+                    const { error: upsertErr } = await supabase
                         .from("profiles")
                         .upsert({
                             id: userId,
                             profile_picture_url: cacheBustedUrl,
                             updatedAt: new Date().toISOString(),
                         }, { onConflict: "id" });
+                    if (upsertErr) console.error("Upsert fallback error:", upsertErr);
                 }
 
                 // Update Supabase auth user metadata
                 await supabase.auth.updateUser({ data: { avatar_url: cacheBustedUrl } });
 
                 setProgress(100);
-                showToast.success("Profile photo updated!");
+                showToast.success("Profile photo updated successfully");
                 if (onUploadSuccess) onUploadSuccess(cacheBustedUrl);
                 eventBus.emit("PROFILE_UPDATED", { type: "avatar", url: cacheBustedUrl });
-                onClose();
-                setUploading(false);
-                setProgress(0);
+                // Small delay so user sees 100% progress before modal closes
+                setTimeout(() => {
+                    setFile(null);
+                    setImgElement(null);
+                    setZoom(1);
+                    setPosition({ x: 0, y: 0 });
+                    onClose();
+                    setUploading(false);
+                    setProgress(0);
+                }, 300);
             } catch (err) {
                 if (attempt < 3) {
                     showToast.error(`Upload failed, retrying (${attempt}/3)...`);
@@ -285,7 +293,7 @@ export default function AvatarUploadModal({ isOpen, onClose, userId, currentAvat
                     setTimeout(() => attemptUpload(attempt + 1), 1000 * attempt);
                 } else {
                     console.error("Upload failed after retries:", err);
-                    showToast.error("Failed to upload after 3 attempts.");
+                    showToast.error("Upload failed. Please try again.");
                     setUploading(false);
                     setProgress(0);
                 }

@@ -103,14 +103,21 @@ export default function UsernameOnboardingPage() {
         setSaving(true);
         try {
             const trimmed = username.trim();
-            await supabase
+            const { error } = await supabase
                 .from("profiles")
                 .update({
                     username: trimmed,
                     username_lowercase: trimmed.toLowerCase(),
                     onboardingComplete: true,
+                    updatedAt: new Date().toISOString(),
                 })
                 .eq("id", user.uid);
+
+            if (error) {
+                console.error("Username save error:", error);
+                throw error;
+            }
+
             // Update local user state so needsUsername is cleared
             if (user) {
                 user.username = trimmed;
@@ -123,7 +130,6 @@ export default function UsernameOnboardingPage() {
         } catch (error) {
             console.error("Error saving username:", error);
             setErrorMsg("Failed to save username. Please try again.");
-        } finally {
             setSaving(false);
         }
     };

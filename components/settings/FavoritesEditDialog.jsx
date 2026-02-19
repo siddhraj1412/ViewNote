@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Search, X, Loader2, Film, Tv } from "lucide-react";
 import Image from "next/image";
@@ -233,12 +233,19 @@ export default function FavoritesEditDialog({ isOpen, onClose, onSave, type = "m
                     </div>
 
                     {/* Search Results */}
-                    <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+                    <div
+                        className="max-h-[300px] overflow-y-auto transition-all duration-300 ease-out"
+                        style={{
+                            opacity: results.length > 0 || (query && loading) ? 1 : (query && !loading) ? 1 : 0,
+                            maxHeight: results.length > 0 || query ? "300px" : "0px",
+                        }}
+                    >
+                        <div className="space-y-1.5">
                         {results.length === 0 && query && !loading && (
-                            <p className="text-center text-textSecondary py-6 text-sm">No results found</p>
+                            <p className="text-center text-textSecondary py-6 text-sm animate-in fade-in duration-200">No results found</p>
                         )}
 
-                        {results.map((item) => {
+                        {results.map((item, idx) => {
                             const selected = isAlreadySelected(item.id);
                             const title = item.title || item.name;
                             const year = (item.release_date || item.first_air_date || "").split("-")[0];
@@ -248,12 +255,13 @@ export default function FavoritesEditDialog({ isOpen, onClose, onSave, type = "m
                                     key={item.id}
                                     onClick={() => handleSelectResult(item)}
                                     disabled={selected || filledCount >= 5}
-                                    className={`w-full flex items-center gap-3 p-2.5 rounded-lg transition-colors text-left ${selected
+                                    className={`w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 text-left animate-in fade-in slide-in-from-bottom-2 ${selected
                                         ? "bg-accent/10 border border-accent/30 opacity-60 cursor-not-allowed"
                                         : filledCount >= 5
                                             ? "bg-white/5 opacity-40 cursor-not-allowed"
                                             : "bg-white/5 hover:bg-white/10 border border-transparent"
                                         }`}
+                                    style={{ animationDelay: `${idx * 30}ms`, animationFillMode: "both" }}
                                 >
                                     <div className="relative w-10 h-14 flex-shrink-0 rounded overflow-hidden bg-white/5">
                                         {item.poster_path ? (
@@ -282,6 +290,7 @@ export default function FavoritesEditDialog({ isOpen, onClose, onSave, type = "m
                                 </button>
                             );
                         })}
+                        </div>
                     </div>
                 </div>
 

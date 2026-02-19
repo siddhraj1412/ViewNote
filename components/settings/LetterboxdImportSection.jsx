@@ -230,8 +230,6 @@ export default function LetterboxdImportSection() {
                             { label: "Watched", v: summary.watched },
                             { label: "Ratings", v: summary.ratings },
                             { label: "Reviews", v: summary.reviews },
-                            { label: "Diary", v: summary.diary },
-                            { label: "Likes", v: summary.likes },
                             { label: "Watchlist", v: summary.watchlist },
                         ].filter((s) => s.v && s.v.total > 0).map((s) => (
                             <div key={s.label} className="bg-white/5 rounded-lg p-2.5 text-center">

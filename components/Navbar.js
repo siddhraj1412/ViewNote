@@ -64,8 +64,18 @@ function NavbarContent() {
 
     const handleLogout = async () => {
         setDropdownOpen(false);
-        await logout();
-        router.push("/login");
+        try {
+            await logout();
+            // Clear any cached data
+            if (typeof window !== 'undefined') {
+                sessionStorage.clear();
+            }
+            router.push("/");
+        } catch (err) {
+            console.error("Logout error:", err);
+            // Force redirect even if logout fails
+            router.push("/");
+        }
     };
 
     const getDropdownItems = () => {

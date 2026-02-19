@@ -5,8 +5,9 @@ import { tmdb } from "@/lib/tmdb";
 import eventBus from "@/lib/eventBus";
 
 /**
- * Letterboxd Data Import Service — v2
- * Focuses on ratings.csv, reviews.csv, and watchlist.csv for maximum reliability.
+ * Letterboxd Data Import Service — v3
+ * Imports ONLY from ratings.csv, reviews.csv, and watchlist.csv.
+ * All other CSV files in the export are ignored.
  * Uses multi-stage TMDB matching with aggressive fuzzy search.
  */
 
@@ -278,36 +279,20 @@ async function extractZip(file) {
     const zip = await JSZip.loadAsync(file);
     const parsed = {};
 
+    // Only import these 3 CSV files — ignore diary, watched, likes
     const fileMap = {
         "ratings.csv": "ratings",
         "reviews.csv": "reviews",
         "watchlist.csv": "watchlist",
-        "diary.csv": "diary",
-        "watched.csv": "watched",
-        "films.csv": "watched",
     };
 
     for (const [path, zipEntry] of Object.entries(zip.files)) {
         if (zipEntry.dir) continue;
         const filename = path.split("/").pop().toLowerCase();
-        const pathLower = path.toLowerCase();
-
-        // Handle likes/films.csv specifically (Letterboxd exports likes in a likes/ subfolder)
-        if (pathLower.includes("likes/") && filename === "films.csv" && !parsed.likes) {
-            const text = await zipEntry.async("text");
-            parsed.likes = parseCSV(text);
-            continue;
-        }
 
         if (fileMap[filename] && !parsed[fileMap[filename]]) {
             const text = await zipEntry.async("text");
             parsed[fileMap[filename]] = parseCSV(text);
-            continue;
-        }
-
-        if (pathLower.includes("likes") && filename.endsWith(".csv") && !parsed.likes) {
-            const text = await zipEntry.async("text");
-            parsed.likes = parseCSV(text);
         }
     }
 
@@ -350,8 +335,8 @@ async function commitBatches(operations) {
     }
 
     for (const [table, rows] of Object.entries(grouped)) {
-        // Upsert in chunks of 500 (Supabase limit)
-        const CHUNK_SIZE = 500;
+        // Upsert in chunks of 100 to prevent timeouts
+        const CHUNK_SIZE = 100;
         for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
             const chunk = rows.slice(i, i + CHUNK_SIZE);
             const { error } = await supabase
@@ -359,8 +344,12 @@ async function commitBatches(operations) {
                 .upsert(chunk, { onConflict: 'id' });
 
             if (error) {
-                console.error(`[LBImport] Upsert error for ${table}:`, error);
+                console.error(`[LBImport] Upsert error for ${table} chunk ${i / CHUNK_SIZE + 1}:`, error);
                 throw error;
+            }
+            // Small delay between chunks to prevent overwhelming the database
+            if (i + CHUNK_SIZE < rows.length) {
+                await new Promise(resolve => setTimeout(resolve, 100));
             }
         }
     }
@@ -381,9 +370,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
         watched: { total: 0, imported: 0, skipped: 0, failed: 0 },
         ratings: { total: 0, imported: 0, skipped: 0, failed: 0 },
         reviews: { total: 0, imported: 0, skipped: 0, failed: 0 },
-        likes: { total: 0, imported: 0, skipped: 0, failed: 0 },
         watchlist: { total: 0, imported: 0, skipped: 0, failed: 0 },
-        diary: { total: 0, imported: 0, skipped: 0, failed: 0 },
         errors: [],
         tmdbMatches: 0,
         tmdbMisses: 0,
@@ -403,7 +390,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
 
     const detectedFiles = Object.keys(parsed);
     if (detectedFiles.length === 0) {
-        throw new Error("No supported Letterboxd CSV files found in ZIP. Expected: ratings.csv, reviews.csv, watchlist.csv, diary.csv, watched.csv");
+        throw new Error("No supported Letterboxd CSV files found in ZIP. Expected: ratings.csv, reviews.csv, watchlist.csv");
     }
 
     // Phase 2: Get existing data for deduplication
@@ -431,9 +418,6 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
     collectTitles(parsed.ratings);
     collectTitles(parsed.reviews);
     collectTitles(parsed.watchlist);
-    collectTitles(parsed.diary);
-    collectTitles(parsed.watched);
-    collectTitles(parsed.likes);
 
     // Phase 4: TMDB matching
     const uniqueMovies = Array.from(movieMap.entries());
@@ -623,113 +607,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
         }
     }
 
-    // ── 3. Import Diary (additional watched + ratings) ──
-    if (parsed.diary) {
-        summary.diary.total = parsed.diary.length;
-        onProgress({ phase: "import", current: 0, total: parsed.diary.length, message: "Importing diary..." });
-
-        for (const row of parsed.diary) {
-            const tmdbData = getTMDB(row);
-            if (!tmdbData) { summary.diary.failed++; continue; }
-
-            const mediaId = tmdbData.id;
-            const mediaType = getMediaType(tmdbData);
-            const ratingDocId = `${userId}_${mediaType}_${mediaId}`;
-            const rating = normalizeRating(getCol(row, "Rating"));
-            const watchedDate = parseDate(getCol(row, "Watched Date", "Date"));
-            const reviewText = getCol(row, "Review");
-            const liked = ["yes", "true"].includes(getCol(row, "Liked").toString().toLowerCase());
-            const isRewatch = ["yes", "true"].includes(getCol(row, "Rewatch").toString().toLowerCase());
-
-            const existingData = existing.ratings.get(ratingDocId);
-            const hasNewData = (rating > 0 && (!existingData || !existingData.rating)) ||
-                              (reviewText && (!existingData || !existingData.review)) ||
-                              liked;
-
-            if (hasNewData || !existingData) {
-                const data = {
-                    userId,
-                    mediaId: Number(mediaId),
-                    mediaType,
-                    title: tmdbData.title || tmdbData.name || "",
-                    poster_path: tmdbData.poster_path || "",
-                    username,
-                    ratedAt: dateToTimestamp(watchedDate || getCol(row, "Date")),
-                    importedFrom: "letterboxd",
-                };
-                if (rating > 0) data.rating = rating;
-                if (reviewText) data.review = reviewText;
-                if (watchedDate) data.watchedDate = watchedDate;
-                if (liked) data.liked = true;
-                if (isRewatch) { data.isRewatch = true; data.viewCount = 2; }
-
-                operations.push({
-                    type: "set",
-                    collection: "user_ratings",
-                    docId: ratingDocId,
-                    data,
-                });
-                existing.ratings.set(ratingDocId, { rating, review: reviewText });
-                summary.diary.imported++;
-            } else {
-                summary.diary.skipped++;
-            }
-
-            ensureWatched(mediaId, mediaType, tmdbData);
-        }
-    }
-
-    // ── 4. Import Watched (ensure in watched collection) ──
-    if (parsed.watched) {
-        summary.watched.total += parsed.watched.length;
-        onProgress({ phase: "import", current: 0, total: parsed.watched.length, message: "Importing watched films..." });
-
-        for (const row of parsed.watched) {
-            const tmdbData = getTMDB(row);
-            if (!tmdbData) { summary.watched.failed++; continue; }
-            const mediaId = tmdbData.id;
-            const mediaType = getMediaType(tmdbData);
-            ensureWatched(mediaId, mediaType, tmdbData);
-        }
-    }
-
-    // ── 5. Import Likes ──
-    if (parsed.likes) {
-        summary.likes.total = parsed.likes.length;
-        onProgress({ phase: "import", current: 0, total: parsed.likes.length, message: "Importing likes..." });
-
-        for (const row of parsed.likes) {
-            const tmdbData = getTMDB(row);
-            if (!tmdbData) { summary.likes.failed++; continue; }
-
-            const mediaId = tmdbData.id;
-            const mediaType = getMediaType(tmdbData);
-            const ratingDocId = `${userId}_${mediaType}_${mediaId}`;
-
-            operations.push({
-                type: "set",
-                collection: "user_ratings",
-                docId: ratingDocId,
-                data: {
-                    userId,
-                    mediaId: Number(mediaId),
-                    mediaType,
-                    title: tmdbData.title || tmdbData.name || "",
-                    poster_path: tmdbData.poster_path || "",
-                    liked: true,
-                    username,
-                    ...(existing.ratings.has(ratingDocId) ? {} : { ratedAt: new Date().toISOString() }),
-                    importedFrom: "letterboxd",
-                },
-            });
-
-            existing.ratings.set(ratingDocId, { ...existing.ratings.get(ratingDocId), liked: true });
-            ensureWatched(mediaId, mediaType, tmdbData);
-            summary.likes.imported++;
-        }
-    }
-
-    // ── 6. Import Watchlist ──
+    // ── 3. Import Watchlist ──
     if (parsed.watchlist) {
         summary.watchlist.total = parsed.watchlist.length;
         onProgress({ phase: "import", current: 0, total: parsed.watchlist.length, message: "Importing watchlist..." });
@@ -775,7 +653,49 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
         onProgress({ phase: "commit", current: 0, total: totalOps, message: `Saving ${totalOps} records...` });
 
         try {
-            await commitBatches(operations);
+            // Update progress during commit
+            let completed = 0;
+            const originalCommit = commitBatches;
+            
+            // Wrap commitBatches to track progress
+            const progressTracker = async (ops) => {
+                const grouped = {};
+                for (const op of ops) {
+                    if (op.type === "set") {
+                        if (!grouped[op.collection]) grouped[op.collection] = [];
+                        grouped[op.collection].push({ id: op.docId, ...op.data });
+                    }
+                }
+
+                for (const [table, rows] of Object.entries(grouped)) {
+                    const CHUNK_SIZE = 100;
+                    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+                        const chunk = rows.slice(i, i + CHUNK_SIZE);
+                        const { error } = await supabase
+                            .from(table)
+                            .upsert(chunk, { onConflict: 'id' });
+
+                        if (error) {
+                            console.error(`[LBImport] Upsert error for ${table} chunk ${i / CHUNK_SIZE + 1}:`, error);
+                            throw error;
+                        }
+                        
+                        completed += chunk.length;
+                        onProgress({ 
+                            phase: "commit", 
+                            current: completed, 
+                            total: totalOps, 
+                            message: `Saved ${completed}/${totalOps} records...` 
+                        });
+                        
+                        if (i + CHUNK_SIZE < rows.length) {
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                        }
+                    }
+                }
+            };
+
+            await progressTracker(operations);
             onProgress({ phase: "commit", current: totalOps, total: totalOps, message: "All records saved!" });
         } catch (err) {
             summary.errors.push(`Database write error: ${err.message}`);
@@ -796,9 +716,7 @@ export async function importLetterboxdData(zipFile, user, onProgress = () => {})
                     watched: summary.watched.imported,
                     ratings: summary.ratings.imported,
                     reviews: summary.reviews.imported,
-                    likes: summary.likes.imported,
                     watchlist: summary.watchlist.imported,
-                    diary: summary.diary.imported,
                     tmdbMatches: summary.tmdbMatches,
                     tmdbMisses: summary.tmdbMisses,
                     errorCount: summary.errors.length,
